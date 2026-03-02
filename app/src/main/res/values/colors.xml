@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="zeroclaw_red">#E53935</color>
+    <color name="zeroclaw_red_dark">#B71C1C</color>
+    <color name="zeroclaw_orange">#FF6D00</color>
+    <color name="zeroclaw_surface">#1A1A2E</color>
+    <color name="zeroclaw_green">#4CAF50</color>
+    <color name="white">#FFFFFF</color>
+</resources>

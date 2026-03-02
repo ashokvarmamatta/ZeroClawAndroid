@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ZeroClaw crab icon — vector drawable -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#1A1A2E"
+        android:pathData="M0,0h108v108h-108z"/>
+    <!-- Crab body -->
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M54,35 C42,35 33,44 33,54 C33,64 42,73 54,73 C66,73 75,64 75,54 C75,44 66,35 54,35 Z"/>
+    <!-- Crab claws left -->
+    <path
+        android:fillColor="#FF6D00"
+        android:pathData="M33,50 C26,46 20,48 18,52 C16,56 19,61 26,62 C30,63 33,61 33,58 Z"/>
+    <!-- Crab claws right -->
+    <path
+        android:fillColor="#FF6D00"
+        android:pathData="M75,50 C82,46 88,48 90,52 C92,56 89,61 82,62 C78,63 75,61 75,58 Z"/>
+    <!-- Crab legs left -->
+    <path
+        android:strokeColor="#E53935"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M38,58 L25,65 M38,62 L27,72 M38,66 L30,78"/>
+    <!-- Crab legs right -->
+    <path
+        android:strokeColor="#E53935"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M70,58 L83,65 M70,62 L81,72 M70,66 L78,78"/>
+    <!-- Eyes - White circles -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46,47m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,47m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"/>
+    <!-- Eyes - Pupils -->
+    <path
+        android:fillColor="#1A1A2E"
+        android:pathData="M47,48m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+    <path
+        android:fillColor="#1A1A2E"
+        android:pathData="M63,48m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"/>
+</vector>

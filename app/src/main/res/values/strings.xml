@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZeroClaw</string>
+    <string name="service_running">ZeroClaw Agent is running</string>
+    <string name="service_stopped">Tap Start to launch the agent</string>
+    <string name="settings_title">Settings</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="telegram_label">Telegram</string>
+    <string name="whatsapp_label">WhatsApp</string>
+    <string name="tunnel_label">Tunnel URL</string>
+    <string name="save">Save</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+</resources>

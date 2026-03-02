@@ -1,0 +1,41 @@
+# Android build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+/build/
+app/build/
+**/build/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# Local config — NEVER commit these (contains API keys, signing config)
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# IDE — Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test results
+/test-results/
+/reports/
+
+# ProGuard
+/proguard/
