@@ -70,6 +70,17 @@
 | 45 | ApiKeysScreen.kt — add ↑↓ reorder buttons on each key card so user can drag priority order up/down | ✅ DONE |
 | 46 | ApiKeysScreen.kt — add "Set Active" button/tap on key card: sets that key as the current active (index 0 in failover chain); shown with green ACTIVE badge | ✅ DONE |
 | 47 | LlmKeyManager.kt — persist active key id in DataStore so the chosen active key survives app restart | ✅ DONE |
+| 48 | LlmRouter.kt — listOpenAIModels(): fetch /v1/models, return sorted list for OpenAI + OpenRouter + custom endpoints | ✅ DONE |
+| 49 | LlmRouter.kt — listAnthropicModels(): return hardcoded curated Anthropic model list (API has no public list endpoint) | ✅ DONE |
+| 50 | LlmRouter.kt — listOllamaModels(): fetch /api/tags, return local model names | ✅ DONE |
+| 51 | LlmRouter.kt — validateKey() extended: for openai/openrouter/custom call listOpenAIModels(); for anthropic return curated list; for ollama return /api/tags list — all providers now return availableModels in ValidationResult | ✅ DONE |
+| 52 | LlmRouter.kt — callOpenAICompatible() uses safePreferredModel if set, falls back to provider default | ✅ DONE |
+| 53 | LlmRouter.kt — callAnthropic() uses safePreferredModel if set, falls back to claude-haiku-4-5-20251001 | ✅ DONE |
+| 54 | ApiKeysScreen.kt — model picker shown for ALL providers after Test Key succeeds (not just Gemini); label and best-model highlight logic per provider | ✅ DONE |
+| 55 | ApiKeysScreen.kt — fix stale model bug: when editing an existing key, reset selectedModel to "" if provider changes so old cross-provider model IDs don't carry over | ✅ DONE |
+| 56 | LlmRouter.kt — listOpenRouterModels(): call GET /v1/models with Bearer token, parse full model list including id + name + context_length + pricing, return as OpenRouterModel data objects | ✅ DONE |
+| 57 | ApiKeysScreen.kt — "Browse Models" button for OpenRouter: opens full-screen bottom sheet/dialog showing live model catalog; searchable by name; shows context size + pricing; user taps model → sets it as selectedModel | ✅ DONE |
+| 58 | ApiKeysScreen.kt — after Browse Models picks a model, auto-run Test Key against that model; show result inline so user knows it works before saving | ✅ DONE |
 
 ---
 

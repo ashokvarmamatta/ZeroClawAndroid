@@ -113,6 +113,135 @@ class LlmRouter(private val context: Context) {
         }
     }
 
+    // ── Model listing helpers ─────────────────────────────────────────────────
+
+    /** Fetch model list from any OpenAI-compatible /v1/models endpoint */
+    private suspend fun listOpenAIModels(apiKey: String, provider: String, baseUrl: String): List<String> {
+        val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+        val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
+        val req = Request.Builder()
+            .url("$resolvedBase/models")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .get().build()
+        return withContext(Dispatchers.IO) {
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
+                        ?: return@withContext emptyList()
+                    val arr = json.optJSONArray("data") ?: return@withContext emptyList()
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val id = arr.getJSONObject(i).optString("id", "")
+                        if (id.isNotBlank()) list.add(id)
+                    }
+                    // Sort: newest/best first — GPT-4 family first, then gpt-3.5, then others
+                    list.sortedWith(compareBy(
+                        { !it.contains("gpt-4o") },
+                        { !it.contains("gpt-4") },
+                        { !it.contains("gpt-3.5") },
+                        { it }
+                    ))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+    }
+
+    /** Curated Anthropic model list — Anthropic has no public /models endpoint */
+    private fun listAnthropicModels(): List<String> = listOf(
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-opus-20240229",
+        "claude-3-haiku-20240307"
+    )
+
+    // ── OpenRouter rich model catalog ─────────────────────────────────────────
+
+    data class OpenRouterModel(
+        val id: String,
+        val name: String,
+        val contextLength: Int,
+        val promptPricePer1M: Double,   // USD per 1M prompt tokens
+        val completionPricePer1M: Double // USD per 1M completion tokens
+    ) {
+        val isFree: Boolean get() = promptPricePer1M == 0.0 && completionPricePer1M == 0.0
+        val priceLabel: String get() = when {
+            isFree -> "FREE"
+            promptPricePer1M < 1.0 -> "<\$1/M"
+            else -> "\$${String.format("%.0f", promptPricePer1M)}/M"
+        }
+        val contextLabel: String get() = when {
+            contextLength >= 1_000_000 -> "${contextLength / 1_000_000}M ctx"
+            contextLength >= 1_000     -> "${contextLength / 1_000}K ctx"
+            else                       -> "$contextLength ctx"
+        }
+    }
+
+    /** Fetch full OpenRouter model catalog with pricing + context info */
+    suspend fun listOpenRouterModels(apiKey: String): List<OpenRouterModel> {
+        val req = Request.Builder()
+            .url("https://openrouter.ai/api/v1/models")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .get().build()
+        return withContext(Dispatchers.IO) {
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
+                        ?: return@withContext emptyList()
+                    val arr = json.optJSONArray("data") ?: return@withContext emptyList()
+                    val list = mutableListOf<OpenRouterModel>()
+                    for (i in 0 until arr.length()) {
+                        val m = arr.getJSONObject(i)
+                        val id = m.optString("id", "")
+                        if (id.isBlank()) continue
+                        val name = m.optString("name", id)
+                        val ctx = m.optInt("context_length", 0)
+                        val pricing = m.optJSONObject("pricing")
+                        val prompt = pricing?.optString("prompt", "0")?.toDoubleOrNull() ?: 0.0
+                        val completion = pricing?.optString("completion", "0")?.toDoubleOrNull() ?: 0.0
+                        // OpenRouter prices are per-token; convert to per-1M
+                        list.add(OpenRouterModel(
+                            id = id,
+                            name = name,
+                            contextLength = ctx,
+                            promptPricePer1M = prompt * 1_000_000,
+                            completionPricePer1M = completion * 1_000_000
+                        ))
+                    }
+                    // Sort: free first, then by name
+                    list.sortedWith(compareBy({ !it.isFree }, { it.name.lowercase() }))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+    }
+
+    /** Fetch local Ollama models from /api/tags */
+    private suspend fun listOllamaModels(): List<String> {
+        val req = Request.Builder().url("http://127.0.0.1:11434/api/tags").get().build()
+        return withContext(Dispatchers.IO) {
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
+                        ?: return@withContext emptyList()
+                    val arr = json.optJSONArray("models") ?: return@withContext emptyList()
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val name = arr.getJSONObject(i).optString("name", "")
+                        if (name.isNotBlank()) list.add(name)
+                    }
+                    list.sorted()
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+    }
+
     /** Test using a raw cURL-style call to a custom endpoint */
     suspend fun validateKeyWithCurl(bearerToken: String, baseUrl: String, model: String): ValidationResult {
         return try {
@@ -210,13 +339,13 @@ class LlmRouter(private val context: Context) {
     private suspend fun validateOpenAICompatible(apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = ""): ValidationResult {
         val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
-        val defaultModel = when {
+        val testModel = when {
             preferredModel.isNotBlank() -> preferredModel
-            provider == "openrouter" -> "openai/gpt-4o-mini"
-            else -> "gpt-4o-mini"
+            provider == "openrouter"    -> "openai/gpt-4o-mini"
+            else                        -> "gpt-4o-mini"
         }
         val body = JSONObject().apply {
-            put("model", defaultModel)
+            put("model", testModel)
             put("max_tokens", 5)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","user"); put("content","hi") })
@@ -237,7 +366,13 @@ class LlmRouter(private val context: Context) {
                         provider == "openrouter" -> "OpenRouter"
                         else -> "OpenAI"
                     }
-                    ValidationResult(true, "✅ Valid $label key")
+                    // Fetch full model list in parallel after confirming key is valid
+                    val models = listOpenAIModels(apiKey, provider, baseUrl)
+                    val msg = if (models.isNotEmpty())
+                        "✅ Valid $label key — ${models.size} models available"
+                    else
+                        "✅ Valid $label key"
+                    ValidationResult(true, msg, models)
                 } else {
                     val json = runCatching { JSONObject(respBody) }.getOrNull()
                     val msg = json?.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
@@ -265,7 +400,8 @@ class LlmRouter(private val context: Context) {
         return withContext(Dispatchers.IO) {
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) {
-                    ValidationResult(true, "✅ Valid Anthropic key")
+                    val models = listAnthropicModels()
+                    ValidationResult(true, "✅ Valid Anthropic key — ${models.size} models available", models)
                 } else {
                     val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
                     val msg = json?.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
@@ -280,8 +416,16 @@ class LlmRouter(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 client.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) ValidationResult(true, "✅ Ollama running locally")
-                    else ValidationResult(false, "❌ Ollama not responding (HTTP ${resp.code})")
+                    if (resp.isSuccessful) {
+                        val models = listOllamaModels()
+                        val msg = if (models.isNotEmpty())
+                            "✅ Ollama running locally — ${models.size} models installed"
+                        else
+                            "✅ Ollama running locally (no models installed yet)"
+                        ValidationResult(true, msg, models)
+                    } else {
+                        ValidationResult(false, "❌ Ollama not responding (HTTP ${resp.code})")
+                    }
                 }
             } catch (e: Exception) {
                 ValidationResult(false, "❌ Ollama not found — is it running on this device?")
@@ -293,17 +437,21 @@ class LlmRouter(private val context: Context) {
 
     private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry): String {
         return when (entry.safeProvider) {
-            "anthropic" -> callAnthropic(message, entry.safeApiKey)
+            "anthropic" -> callAnthropic(message, entry.safeApiKey, entry.safePreferredModel)
             "gemini"    -> callGemini(message, entry.safeApiKey, entry.safePreferredModel)
-            "ollama"    -> callOllama(message)
-            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl)
+            "ollama"    -> callOllama(message, entry.safePreferredModel)
+            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, entry.safePreferredModel)
         }
     }
 
-    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = ""): String {
+    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = ""): String {
         val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
-        val model = if (provider == "openrouter") "openai/gpt-4o-mini" else "gpt-4o-mini"
+        val model = when {
+            preferredModel.isNotBlank() -> preferredModel
+            provider == "openrouter"    -> "openai/gpt-4o-mini"
+            else                        -> "gpt-4o-mini"
+        }
         val body = JSONObject().apply {
             put("model", model); put("max_tokens", MAX_TOKENS)
             put("messages", JSONArray().apply {
@@ -326,9 +474,10 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callAnthropic(message: String, apiKey: String): String {
+    private suspend fun callAnthropic(message: String, apiKey: String, preferredModel: String = ""): String {
+        val model = preferredModel.ifBlank { "claude-haiku-4-5-20251001" }
         val body = JSONObject().apply {
-            put("model","claude-haiku-4-5-20251001"); put("max_tokens", MAX_TOKENS)
+            put("model", model); put("max_tokens", MAX_TOKENS)
             put("system", SYSTEM_PROMPT)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","user"); put("content", message) })
@@ -384,9 +533,10 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callOllama(message: String): String {
+    private suspend fun callOllama(message: String, preferredModel: String = ""): String {
+        val model = preferredModel.ifBlank { "llama3.2" }
         val body = JSONObject().apply {
-            put("model","llama3.2"); put("stream",false)
+            put("model", model); put("stream", false)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
                 put(JSONObject().apply { put("role","user");   put("content", message) })

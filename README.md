@@ -186,7 +186,7 @@ These are the planned features and improvements for future development:
 - [ ] **Conversation memory** — maintain per-user chat history so the AI remembers context across messages, not just single-turn replies
 - [ ] **WhatsApp direct API** — replace Twilio with WhatsApp Business Cloud API (Meta) for free messaging
 - [ ] **Custom system prompt** — let the user configure the AI's personality/instructions from the Settings screen
-- [ ] **Per-key model selection** — for OpenAI / Anthropic / OpenRouter keys, add a model picker (not just Gemini)
+- [x] **Per-key model selection** — model picker after Test Key for all providers: OpenAI (fetches /v1/models live), Anthropic (curated list), OpenRouter (fetches live), Ollama (fetches /api/tags), Gemini (fetches v1beta/models) ✅
 - [ ] **Webhook mode** — switch Telegram from polling to webhook using the tunnel URL for lower latency and battery savings
 
 ### 🟡 Medium Priority

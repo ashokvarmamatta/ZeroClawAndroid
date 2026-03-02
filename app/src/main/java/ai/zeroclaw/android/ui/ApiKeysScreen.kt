@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -223,7 +224,7 @@ fun ApiKeyCard(
                     Text(entry.safeLabel, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                         color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant)
-                    val modelSuffix = if (entry.safeProvider == "gemini" && entry.safePreferredModel.isNotBlank())
+                    val modelSuffix = if (entry.safePreferredModel.isNotBlank())
                         " · ${entry.safePreferredModel}" else ""
                     Text(provider.displayName + modelSuffix, fontSize = 11.sp,
                         color = accentColor.copy(alpha = if (entry.enabled) 1f else 0.5f),
@@ -347,10 +348,17 @@ fun KeyEditDialog(
 
     var validation      by remember { mutableStateOf(ValidationUi()) }
 
-    // Gemini model picker state
-    var geminiModels          by remember { mutableStateOf<List<String>>(emptyList()) }
-    var selectedModel         by remember { mutableStateOf(existing?.safePreferredModel?.ifBlank { GEMINI_DEFAULT_MODEL } ?: GEMINI_DEFAULT_MODEL) }
+    // Model picker state — used for ALL providers after successful Test Key
+    var availableModels       by remember { mutableStateOf<List<String>>(emptyList()) }
+    // selectedModel: always pre-fill from existing; LaunchedEffect below resets it if provider changes
+    var selectedModel         by remember { mutableStateOf(existing?.safePreferredModel ?: "") }
     var modelPickerExpanded   by remember { mutableStateOf(false) }
+
+    // OpenRouter browse-models sheet
+    var showBrowseModels         by remember { mutableStateOf(false) }
+    var browseLoading            by remember { mutableStateOf(false) }
+    var openRouterCatalog        by remember { mutableStateOf<List<LlmRouter.OpenRouterModel>>(emptyList()) }
+    var browseSearch             by remember { mutableStateOf("") }
 
     // cURL mode
     var curlMode        by remember { mutableStateOf(false) }
@@ -361,9 +369,20 @@ fun KeyEditDialog(
 
     val selProvider = LlmProvider.fromId(provider)
 
-    LaunchedEffect(apiKey, provider, baseUrl) {
+    // Reset state when provider changes so stale model IDs from another provider don't carry over
+    LaunchedEffect(provider) {
         validation = ValidationUi()
-        if (provider != "gemini") geminiModels = emptyList()
+        availableModels = emptyList()
+        // Only keep existing model if we're editing and provider hasn't changed
+        if (existing?.safeProvider != provider) {
+            selectedModel = ""
+        }
+    }
+    LaunchedEffect(apiKey, baseUrl) {
+        if (apiKey.isNotBlank() || baseUrl.isNotBlank()) {
+            validation = ValidationUi()
+            availableModels = emptyList()
+        }
     }
 
     /** Parse a cURL command and populate fields */
@@ -616,41 +635,79 @@ fun KeyEditDialog(
                                 fontSize = 10.sp)
                         })
 
-                    // Gemini model picker — after successful validation
-                    AnimatedVisibility(visible = provider == "gemini" && geminiModels.isNotEmpty()) {
+                    // ── OpenRouter: Browse Models button ─────────────────────
+                    AnimatedVisibility(visible = provider == "openrouter" && apiKey.isNotBlank()) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    showBrowseModels = true
+                                    if (openRouterCatalog.isEmpty()) {
+                                        browseLoading = true
+                                        val router = LlmRouter.getInstance(context)
+                                        openRouterCatalog = router.listOpenRouterModels(apiKey.trim())
+                                        browseLoading = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF7C4DFF)
+                            )
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (selectedModel.isNotBlank()) "Model: $selectedModel" else "Browse 400+ Models",
+                                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // ── Universal model picker — shown for ALL providers after successful Test Key ──
+                    AnimatedVisibility(visible = availableModels.isNotEmpty() && provider != "ollama" || (provider == "ollama" && availableModels.isNotEmpty())) {
+                        val pickerLabel = when (provider) {
+                            "gemini"    -> "Gemini Model"
+                            "anthropic" -> "Claude Model"
+                            "ollama"    -> "Ollama Model"
+                            "openrouter"-> "OpenRouter Model"
+                            else        -> "Model"
+                        }
+                        val accentCol = providerColor(provider)
                         ExposedDropdownMenuBox(expanded = modelPickerExpanded,
                             onExpandedChange = { modelPickerExpanded = it }) {
                             OutlinedTextField(
-                                value = selectedModel,
+                                value = selectedModel.ifBlank { "Select model…" },
                                 onValueChange = {}, readOnly = true,
-                                label = { Text("Gemini Model") },
+                                label = { Text(pickerLabel) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(modelPickerExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF4285F4),
-                                    unfocusedBorderColor = Color(0xFF4285F4).copy(alpha = 0.5f)))
+                                    focusedBorderColor = accentCol,
+                                    unfocusedBorderColor = accentCol.copy(alpha = 0.5f)))
                             ExposedDropdownMenu(expanded = modelPickerExpanded,
                                 onDismissRequest = { modelPickerExpanded = false }) {
-                                geminiModels.forEach { model ->
+                                availableModels.forEach { model ->
                                     val clean = model.substringBefore(" (")
+                                    val isBest = isBestModel(clean, provider)
                                     DropdownMenuItem(
                                         text = {
                                             Row(verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                if (clean.contains("2.5-flash")) {
+                                                if (isBest) {
                                                     Surface(shape = RoundedCornerShape(4.dp),
-                                                        color = Color(0xFF4285F4).copy(alpha = 0.15f)) {
+                                                        color = accentCol.copy(alpha = 0.15f)) {
                                                         Text("★ BEST",
                                                             modifier = Modifier.padding(
                                                                 horizontal = 4.dp, vertical = 2.dp),
                                                             fontSize = 9.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFF4285F4))
+                                                            color = accentCol)
                                                     }
                                                 }
                                                 Text(clean, fontSize = 12.sp,
-                                                    fontFamily = FontFamily.Monospace)
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = if (clean == selectedModel) FontWeight.Bold else FontWeight.Normal)
                                             }
                                         },
                                         onClick = { selectedModel = clean; modelPickerExpanded = false }
@@ -679,28 +736,19 @@ fun KeyEditDialog(
                                         provider       = provider,
                                         apiKey         = if (provider == "ollama") "local" else apiKey.trim(),
                                         baseUrl        = baseUrl.trim(),
-                                        preferredModel = if (provider == "gemini") selectedModel else ""
+                                        preferredModel = selectedModel.ifBlank { null }
                                     )
                                     val result = router.validateKey(testEntry)
                                     when {
                                         result.isValid -> {
                                             validation = ValidationUi(ValidationState.SUCCESS, result.message)
-                                            if (provider == "gemini" && result.availableModels.isNotEmpty()) {
-                                                geminiModels = result.availableModels
-                                                // Keep the user's currently selected model if it's in the list
+                                            if (result.availableModels.isNotEmpty()) {
+                                                availableModels = result.availableModels
                                                 val currentClean = selectedModel.substringBefore(" (")
-                                                val modelInList = result.availableModels
+                                                val stillValid = result.availableModels
                                                     .any { it.substringBefore(" (") == currentClean }
-                                                if (!modelInList) {
-                                                    // Fall back to best model
-                                                    val best = result.availableModels
-                                                        .firstOrNull { it.contains("2.5-flash") }
-                                                        ?: result.availableModels
-                                                            .firstOrNull { it.contains("2.0-flash") }
-                                                        ?: result.availableModels
-                                                            .firstOrNull { it.contains("1.5-flash") }
-                                                        ?: result.availableModels.first()
-                                                    selectedModel = best.substringBefore(" (")
+                                                if (!stillValid) {
+                                                    selectedModel = pickBestModel(result.availableModels, provider)
                                                 }
                                             }
                                         }
@@ -744,7 +792,7 @@ fun KeyEditDialog(
                                     provider       = provider,
                                     apiKey         = key.trim(),
                                     baseUrl        = baseUrl.trim().ifBlank { null },
-                                    preferredModel = if (provider == "gemini") selectedModel else ""
+                                    preferredModel = selectedModel.ifBlank { null }
                                 ))
                             },
                             modifier = Modifier.weight(1f),
@@ -763,6 +811,247 @@ fun KeyEditDialog(
                 TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                     Text("Cancel")
                 }
+            }
+        }
+    }
+
+    // ── OpenRouter Browse Models dialog ───────────────────────────────────────
+    if (showBrowseModels) {
+        OpenRouterBrowseDialog(
+            loading      = browseLoading,
+            models       = openRouterCatalog,
+            search       = browseSearch,
+            onSearchChange = { browseSearch = it },
+            selectedId   = selectedModel,
+            apiKey       = apiKey.trim(),
+            onSelect     = { modelId ->
+                selectedModel = modelId
+                showBrowseModels = false
+                browseSearch = ""
+                // Auto-test the picked model
+                scope.launch {
+                    validation = ValidationUi(ValidationState.LOADING, "Testing $modelId…")
+                    val router = LlmRouter.getInstance(context)
+                    val result = router.validateKey(ApiKeyEntry(
+                        label    = "test",
+                        provider = "openrouter",
+                        apiKey   = apiKey.trim(),
+                        preferredModel = modelId
+                    ))
+                    validation = when {
+                        result.isValid -> ValidationUi(ValidationState.SUCCESS,
+                            "✅ $modelId works — ready to save!")
+                        result.message.contains("429") || result.message.lowercase().contains("quota") ->
+                            ValidationUi(ValidationState.RATE_LIMITED,
+                                "⚠️ Rate limited — key valid, quota hit. Save anyway?")
+                        else -> ValidationUi(ValidationState.ERROR, result.message)
+                    }
+                }
+            },
+            onDismiss = { showBrowseModels = false; browseSearch = "" }
+        )
+    }
+}
+
+// ── OpenRouter Browse Models dialog ──────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OpenRouterBrowseDialog(
+    loading: Boolean,
+    models: List<LlmRouter.OpenRouterModel>,
+    search: String,
+    onSearchChange: (String) -> Unit,
+    selectedId: String,
+    apiKey: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val filtered = remember(search, models) {
+        if (search.isBlank()) models
+        else models.filter {
+            it.id.contains(search, ignoreCase = true) ||
+            it.name.contains(search, ignoreCase = true)
+        }
+    }
+    val freeModels    = filtered.filter { it.isFree }
+    val paidModels    = filtered.filter { !it.isFree }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+
+                // ── Header ────────────────────────────────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF7C4DFF))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Color.White,
+                        modifier = Modifier.size(22.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("OpenRouter Models", color = Color.White,
+                            fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            if (loading) "Loading catalog…"
+                            else "${models.size} models · ${models.count { it.isFree }} free",
+                            color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, null, tint = Color.White)
+                    }
+                }
+
+                // ── Search bar ────────────────────────────────────────────────
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = onSearchChange,
+                    placeholder = { Text("Search models…", fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (search.isNotBlank())
+                            IconButton(onClick = { onSearchChange("") }) {
+                                Icon(Icons.Default.Clear, null, modifier = Modifier.size(16.dp))
+                            }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                // ── Body ──────────────────────────────────────────────────────
+                if (loading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(color = Color(0xFF7C4DFF))
+                            Text("Fetching model catalog…", fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else if (filtered.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No models match \"$search\"", fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Free models section
+                        if (freeModels.isNotEmpty()) {
+                            item {
+                                Text("🆓 FREE MODELS (${freeModels.size})",
+                                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4CAF50),
+                                    modifier = Modifier.padding(vertical = 4.dp))
+                            }
+                            items(freeModels) { model ->
+                                OpenRouterModelCard(
+                                    model = model,
+                                    isSelected = model.id == selectedId,
+                                    onClick = { onSelect(model.id) }
+                                )
+                            }
+                        }
+                        // Paid models section
+                        if (paidModels.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(4.dp))
+                                Text("💳 PAID MODELS (${paidModels.size})",
+                                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 4.dp))
+                            }
+                            items(paidModels) { model ->
+                                OpenRouterModelCard(
+                                    model = model,
+                                    isSelected = model.id == selectedId,
+                                    onClick = { onSelect(model.id) }
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(8.dp)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OpenRouterModelCard(
+    model: LlmRouter.OpenRouterModel,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val accentColor = Color(0xFF7C4DFF)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                accentColor.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = if (isSelected) CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(accentColor), width = 1.5.dp
+        ) else null
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Selection indicator
+            if (isSelected) {
+                Icon(Icons.Default.CheckCircle, null,
+                    tint = accentColor, modifier = Modifier.size(18.dp))
+            } else {
+                Spacer(Modifier.size(18.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(model.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(model.id, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                // Price badge
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (model.isFree) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        model.priceLabel,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        color = if (model.isFree) Color(0xFF4CAF50)
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(model.contextLabel, fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -811,6 +1100,36 @@ fun ValidationCard(v: ValidationUi) {
 fun maskKey(key: String): String {
     if (key.length <= 8) return "••••••••"
     return "${key.take(6)}${"•".repeat(minOf(key.length - 10, 20))}${key.takeLast(4)}"
+}
+
+/** Returns true if this model ID should get the ★ BEST badge for a given provider */
+fun isBestModel(modelId: String, provider: String): Boolean = when (provider) {
+    "gemini"     -> modelId.contains("2.5-flash")
+    "anthropic"  -> modelId.contains("claude-sonnet-4") || modelId.contains("claude-3-5-sonnet")
+    "openrouter" -> modelId.contains("gpt-4o") && !modelId.contains("mini")
+    "ollama"     -> false // local — no universal "best"
+    else         -> modelId.contains("gpt-4o") && !modelId.contains("mini")
+}
+
+/** Pick the best default model from a list for a given provider */
+fun pickBestModel(models: List<String>, provider: String): String {
+    val clean = { m: String -> m.substringBefore(" (") }
+    return when (provider) {
+        "gemini" -> models.firstOrNull { it.contains("2.5-flash") }
+            ?: models.firstOrNull { it.contains("2.0-flash") }
+            ?: models.firstOrNull { it.contains("1.5-flash") }
+            ?: models.first()
+        "anthropic" -> models.firstOrNull { it.contains("claude-sonnet-4") }
+            ?: models.firstOrNull { it.contains("claude-3-5-sonnet") }
+            ?: models.firstOrNull { it.contains("haiku") }
+            ?: models.first()
+        "openrouter" -> models.firstOrNull { it.contains("gpt-4o") && !it.contains("mini") }
+            ?: models.firstOrNull { it.contains("gpt-4o-mini") }
+            ?: models.first()
+        else -> models.firstOrNull { it.contains("gpt-4o") && !it.contains("mini") }
+            ?: models.firstOrNull { it.contains("gpt-4o") }
+            ?: models.first()
+    }.let { clean(it) }
 }
 
 fun providerColor(provider: String): Color = when (provider) {
