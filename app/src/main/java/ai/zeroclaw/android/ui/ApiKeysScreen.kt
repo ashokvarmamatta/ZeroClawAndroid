@@ -70,6 +70,10 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     var showDeleteModel by remember { mutableStateOf<OfflineModelManager.ModelFile?>(null) }
     var offlineValidation by remember { mutableStateOf(ValidationUi()) }
 
+    // Pending picked file — shown in import dialog
+    var pendingPickedUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingPickedName by remember { mutableStateOf("") }
+
     // Check which offline key exists
     val offlineKey = keys.firstOrNull { it.safeProvider == "offline" }
     val onlineKeys = keys.filter { it.safeProvider != "offline" }
@@ -86,20 +90,9 @@ fun ApiKeysScreen(onBack: () -> Unit) {
             if (nameIndex >= 0) cursor.getString(nameIndex) else null
         } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "model.bin"
 
-        offlineImporting = true
-        offlineValidation = ValidationUi(ValidationState.LOADING, "Importing $fileName…")
-        scope.launch {
-            try {
-                val imported = offlineManager.importModel(uri, fileName)
-                offlineValidation = ValidationUi(ValidationState.SUCCESS,
-                    "✅ Saved: ${imported.name} (${imported.sizeMB})")
-                offlineModelsApp = offlineManager.listAppModels()
-            } catch (e: Exception) {
-                offlineValidation = ValidationUi(ValidationState.ERROR,
-                    "❌ Import failed: ${e.message}")
-            }
-            offlineImporting = false
-        }
+        // Show dialog asking whether to import or use from current location
+        pendingPickedUri = uri
+        pendingPickedName = fileName
     }
 
     fun refresh() {
@@ -281,6 +274,88 @@ fun ApiKeysScreen(onBack: () -> Unit) {
             existing = key,
             onDismiss = { editingKey = null },
             onSave = { updated -> keyManager.updateKey(updated); refresh(); editingKey = null }
+        )
+    }
+
+    // ── Import or use-in-place dialog ──────────────────────────────────
+    if (pendingPickedUri != null) {
+        val pickedUri = pendingPickedUri!!
+        val pickedName = pendingPickedName
+        val resolvedPath = remember(pickedUri) { offlineManager.resolveFilePath(pickedUri) }
+        val canUseInPlace = resolvedPath != null && java.io.File(resolvedPath).exists()
+
+        AlertDialog(
+            onDismissRequest = { pendingPickedUri = null },
+            icon = { Text("📁", fontSize = 28.sp) },
+            title = { Text("Import Model?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(pickedName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        "Save to app storage? This is recommended for reliable background use — " +
+                        "the model stays available even if the original file is deleted.",
+                        fontSize = 12.sp, lineHeight = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingPickedUri = null
+                    offlineImporting = true
+                    offlineValidation = ValidationUi(ValidationState.LOADING, "Importing $pickedName…")
+                    scope.launch {
+                        try {
+                            val imported = offlineManager.importModel(pickedUri, pickedName)
+                            offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                                "✅ Saved: ${imported.name} (${imported.sizeMB})")
+                            offlineModelsApp = offlineManager.listAppModels()
+                        } catch (e: Exception) {
+                            offlineValidation = ValidationUi(ValidationState.ERROR,
+                                "❌ Import failed: ${e.message}")
+                        }
+                        offlineImporting = false
+                    }
+                }) { Text("Save to App") }
+            },
+            dismissButton = {
+                if (canUseInPlace) {
+                    TextButton(onClick = {
+                        pendingPickedUri = null
+                        // Use from current location — load directly
+                        offlineLoading = true
+                        scope.launch {
+                            val result = offlineManager.loadModel(resolvedPath!!)
+                            if (result.isSuccess) {
+                                val file = java.io.File(resolvedPath)
+                                val model = OfflineModelManager.ModelFile(
+                                    file.name, file.absolutePath, file.length(), isInAppStorage = false
+                                )
+                                if (offlineKey != null) {
+                                    keyManager.updateKey(offlineKey.copy(
+                                        preferredModel = file.name, enabled = true
+                                    ))
+                                } else {
+                                    keyManager.addKey(ApiKeyEntry(
+                                        label = "Offline: ${file.name}",
+                                        provider = "offline", apiKey = "offline",
+                                        preferredModel = file.name, enabled = true
+                                    ))
+                                }
+                                offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                                    "✅ Loaded from: ${file.name} (${model.sizeMB})")
+                            } else {
+                                offlineValidation = ValidationUi(ValidationState.ERROR,
+                                    "❌ Failed: ${result.exceptionOrNull()?.message}")
+                            }
+                            offlineLoading = false
+                            refresh()
+                        }
+                    }) { Text("Use from Current Location") }
+                } else {
+                    TextButton(onClick = { pendingPickedUri = null }) { Text("Cancel") }
+                }
+            }
         )
     }
 

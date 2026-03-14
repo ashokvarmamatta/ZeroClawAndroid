@@ -2,6 +2,8 @@ package ai.zeroclaw.android.data
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.os.Environment
 import ai.zeroclaw.android.service.ZeroClawService
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
@@ -101,6 +103,45 @@ class OfflineModelManager private constructor(private val context: Context) {
             destroyEngine()
         }
         return deleted
+    }
+
+    /**
+     * Try to resolve a real file path from a content URI.
+     * Works for files picked from Downloads via most file managers.
+     * Returns null if the path cannot be resolved.
+     */
+    fun resolveFilePath(uri: Uri): String? {
+        try {
+            // Handle document URIs (content://com.android.providers.downloads.documents/...)
+            if (DocumentsContract.isDocumentUri(context, uri)) {
+                val docId = DocumentsContract.getDocumentId(uri)
+                val authority = uri.authority ?: ""
+
+                // Downloads provider
+                if (authority == "com.android.providers.downloads.documents") {
+                    // docId might be "raw:/storage/emulated/0/Download/model.bin"
+                    if (docId.startsWith("raw:")) {
+                        return docId.removePrefix("raw:")
+                    }
+                }
+
+                // External storage provider (e.g. "primary:Download/model.bin")
+                if (authority == "com.android.externalstorage.documents") {
+                    val parts = docId.split(":")
+                    if (parts.size == 2 && parts[0] == "primary") {
+                        return "${Environment.getExternalStorageDirectory()}/${parts[1]}"
+                    }
+                }
+            }
+
+            // Try file:// scheme
+            if (uri.scheme == "file") {
+                return uri.path
+            }
+        } catch (e: Exception) {
+            ZeroClawService.log("Offline: could not resolve path from URI — ${e.message}")
+        }
+        return null
     }
 
     /** Initialize the LlmInference engine with the given model file */
