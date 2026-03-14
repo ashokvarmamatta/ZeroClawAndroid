@@ -57,6 +57,11 @@ enum class LlmProvider(
         "ollama", "Ollama (local, no key)", "⚫",
         "no-key-needed",
         "Runs locally — enter any value or 'local'"
+    ),
+    OFFLINE(
+        "offline", "Offline Model (on-device)", "📱",
+        "no-key-needed",
+        "Runs a .bin model locally via MediaPipe — no internet needed"
     );
 
     companion object {

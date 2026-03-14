@@ -31,6 +31,7 @@ import ai.zeroclaw.android.data.ApiKeyEntry
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
 import ai.zeroclaw.android.data.LlmRouter
+import ai.zeroclaw.android.data.OfflineModelManager
 import kotlinx.coroutines.launch
 
 // ── Validation state ──────────────────────────────────────────────────────────
@@ -592,7 +593,7 @@ fun KeyEditDialog(
                     }
 
                     // Provider hint
-                    if (provider != "ollama") {
+                    if (provider != "ollama" && provider != "offline") {
                         Surface(shape = RoundedCornerShape(8.dp),
                             color = providerColor(provider).copy(alpha = 0.1f)) {
                             Row(modifier = Modifier.padding(10.dp),
@@ -606,34 +607,43 @@ fun KeyEditDialog(
                         }
                     }
 
-                    // API Key field
-                    OutlinedTextField(
-                        value = apiKey, onValueChange = { apiKey = it },
-                        label = { Text("API Key") },
-                        placeholder = { Text(selProvider.keyPlaceholder) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp), singleLine = true,
-                        visualTransformation = if (showKey) VisualTransformation.None
-                                               else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { showKey = !showKey }) {
-                                Icon(if (showKey) Icons.Default.VisibilityOff
-                                     else Icons.Default.Visibility, null)
-                            }
-                        })
+                    if (provider == "offline") {
+                        // ── OFFLINE MODEL PICKER ─────────────────────────────
+                        OfflineModelPicker(
+                            selectedModel = selectedModel,
+                            onModelSelected = { selectedModel = it },
+                            onValidation = { validation = it }
+                        )
+                    } else {
+                        // API Key field
+                        OutlinedTextField(
+                            value = apiKey, onValueChange = { apiKey = it },
+                            label = { Text("API Key") },
+                            placeholder = { Text(selProvider.keyPlaceholder) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp), singleLine = true,
+                            visualTransformation = if (showKey) VisualTransformation.None
+                                                   else PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { showKey = !showKey }) {
+                                    Icon(if (showKey) Icons.Default.VisibilityOff
+                                         else Icons.Default.Visibility, null)
+                                }
+                            })
 
-                    // Base URL field (optional, for custom/modal providers)
-                    OutlinedTextField(
-                        value = baseUrl, onValueChange = { baseUrl = it },
-                        label = { Text("Base URL (optional)") },
-                        placeholder = { Text("https://api.us-west-2.modal.direct/v1") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp), singleLine = true,
-                        leadingIcon = { Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp)) },
-                        supportingText = {
-                            Text("Leave blank for default. Set for custom/proxy endpoints.",
-                                fontSize = 10.sp)
-                        })
+                        // Base URL field (optional, for custom/modal providers)
+                        OutlinedTextField(
+                            value = baseUrl, onValueChange = { baseUrl = it },
+                            label = { Text("Base URL (optional)") },
+                            placeholder = { Text("https://api.us-west-2.modal.direct/v1") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp), singleLine = true,
+                            leadingIcon = { Icon(Icons.Default.Language, null, modifier = Modifier.size(18.dp)) },
+                            supportingText = {
+                                Text("Leave blank for default. Set for custom/proxy endpoints.",
+                                    fontSize = 10.sp)
+                            })
+                    }
 
                     // ── OpenRouter: Browse Models button ─────────────────────
                     AnimatedVisibility(visible = provider == "openrouter" && apiKey.isNotBlank()) {
@@ -764,7 +774,7 @@ fun KeyEditDialog(
                                 }
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = (provider == "ollama" || apiKey.isNotBlank()) &&
+                            enabled = (provider == "ollama" || provider == "offline" || apiKey.isNotBlank()) &&
                                       validation.state != ValidationState.LOADING
                         ) {
                             if (validation.state == ValidationState.LOADING) {
@@ -785,7 +795,11 @@ fun KeyEditDialog(
                         Button(
                             onClick = {
                                 if (label.isBlank()) return@Button
-                                val key = if (provider == "ollama" && apiKey.isBlank()) "local" else apiKey
+                                val key = when {
+                                    provider == "ollama" && apiKey.isBlank() -> "local"
+                                    provider == "offline" -> "offline"
+                                    else -> apiKey
+                                }
                                 val base = existing ?: ApiKeyEntry(label = "", provider = "", apiKey = "")
                                 onSave(base.copy(
                                     label          = label.trim(),
@@ -797,7 +811,7 @@ fun KeyEditDialog(
                             },
                             modifier = Modifier.weight(1f),
                             enabled = label.isNotBlank() &&
-                                      (provider == "ollama" || apiKey.isNotBlank()) &&
+                                      (provider == "ollama" || provider == "offline" || apiKey.isNotBlank()) &&
                                       validation.state != ValidationState.LOADING
                         ) {
                             Icon(Icons.Default.Save, null, modifier = Modifier.size(14.dp))
@@ -1138,5 +1152,263 @@ fun providerColor(provider: String): Color = when (provider) {
     "gemini"     -> Color(0xFF4285F4)
     "openrouter" -> Color(0xFF7C4DFF)
     "ollama"     -> Color(0xFF607D8B)
+    "offline"    -> Color(0xFF795548)
     else         -> Color(0xFF9E9E9E)
+}
+
+// ── Offline Model Picker composable ──────────────────────────────────────────
+
+@Composable
+fun OfflineModelPicker(
+    selectedModel: String,
+    onModelSelected: (String) -> Unit,
+    onValidation: (ValidationUi) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val offlineManager = remember { OfflineModelManager.getInstance(context) }
+
+    var appModels by remember { mutableStateOf(offlineManager.listAppModels()) }
+    var downloadModels by remember { mutableStateOf(offlineManager.scanDownloads()) }
+    var copying by remember { mutableStateOf<String?>(null) }  // name of model being copied
+    var showDeleteConfirm by remember { mutableStateOf<OfflineModelManager.ModelFile?>(null) }
+    var showCopyDialog by remember { mutableStateOf<OfflineModelManager.ModelFile?>(null) }
+
+    fun refreshModels() {
+        appModels = offlineManager.listAppModels()
+        downloadModels = offlineManager.scanDownloads()
+        // Filter out downloads already in app
+        val appNames = appModels.map { it.name }.toSet()
+        downloadModels = downloadModels.filter { it.name !in appNames }
+    }
+
+    LaunchedEffect(Unit) { refreshModels() }
+
+    Surface(shape = RoundedCornerShape(10.dp),
+        color = Color(0xFF795548).copy(alpha = 0.1f)) {
+        Column(modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("📱", fontSize = 18.sp)
+                Column {
+                    Text("On-Device Model", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Select a .bin model file to run locally via MediaPipe",
+                        fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            // ── App Storage Models ────────────────────────────────────────
+            if (appModels.isNotEmpty()) {
+                Text("📦 In App Storage", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = Color(0xFF4CAF50))
+                appModels.forEach { model ->
+                    OfflineModelCard(
+                        model = model,
+                        isSelected = selectedModel == model.name,
+                        isLoaded = offlineManager.getLoadedModelPath() == model.path,
+                        onSelect = { onModelSelected(model.name) },
+                        onDelete = { showDeleteConfirm = model },
+                        onCopy = null // already in app
+                    )
+                }
+            }
+
+            // ── Downloads Models ──────────────────────────────────────────
+            if (downloadModels.isNotEmpty()) {
+                Text("📥 In Downloads", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2196F3))
+                downloadModels.forEach { model ->
+                    OfflineModelCard(
+                        model = model,
+                        isSelected = selectedModel == model.name,
+                        isLoaded = false,
+                        onSelect = { onModelSelected(model.name) },
+                        onDelete = null,
+                        onCopy = { showCopyDialog = model }
+                    )
+                }
+            }
+
+            if (appModels.isEmpty() && downloadModels.isEmpty()) {
+                Surface(shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("⚠️", fontSize = 16.sp)
+                        Text("No .bin model files found.\nPlace a model in your Downloads folder.",
+                            fontSize = 11.sp, lineHeight = 16.sp)
+                    }
+                }
+            }
+
+            // Copying indicator
+            copying?.let { name ->
+                Surface(shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Text("Copying $name…", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Copy confirmation dialog ─────────────────────────────────────────
+    showCopyDialog?.let { model ->
+        var deleteFromDownloads by remember { mutableStateOf(true) }
+        AlertDialog(
+            onDismissRequest = { showCopyDialog = null },
+            icon = { Text("📦", fontSize = 28.sp) },
+            title = { Text("Copy Model to App", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Copy ${model.name} (${model.sizeMB}) to app internal storage?",
+                        fontSize = 13.sp)
+                    Text("This ensures the model works even if Downloads is cleared.",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Checkbox(
+                            checked = deleteFromDownloads,
+                            onCheckedChange = { deleteFromDownloads = it }
+                        )
+                        Text("Delete from Downloads after copy", fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val m = model
+                    val del = deleteFromDownloads
+                    showCopyDialog = null
+                    copying = m.name
+                    scope.launch {
+                        try {
+                            offlineManager.copyToAppStorage(m, deleteSource = del)
+                            refreshModels()
+                            onModelSelected(m.name)
+                            onValidation(ValidationUi(ValidationState.SUCCESS,
+                                "✅ ${m.name} copied to app storage" +
+                                if (del) " (removed from Downloads)" else ""))
+                        } catch (e: Exception) {
+                            onValidation(ValidationUi(ValidationState.ERROR,
+                                "❌ Copy failed: ${e.message}"))
+                        } finally {
+                            copying = null
+                        }
+                    }
+                }) { Text("Copy") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCopyDialog = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // ── Delete confirmation dialog ───────────────────────────────────────
+    showDeleteConfirm?.let { model ->
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = null },
+            icon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Delete Model?", fontWeight = FontWeight.Bold) },
+            text = { Text("Delete ${model.name} (${model.sizeMB}) from app storage? This cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        offlineManager.deleteAppModel(model.name)
+                        showDeleteConfirm = null
+                        refreshModels()
+                        if (selectedModel == model.name) onModelSelected("")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OfflineModelCard(
+    model: OfflineModelManager.ModelFile,
+    isSelected: Boolean,
+    isLoaded: Boolean,
+    onSelect: () -> Unit,
+    onDelete: (() -> Unit)?,
+    onCopy: (() -> Unit)?
+) {
+    val accent = Color(0xFF795548)
+    Card(
+        onClick = onSelect,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) accent.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = if (isSelected) CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(accent), width = 1.5.dp
+        ) else null
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Selection indicator
+            if (isSelected) {
+                Icon(Icons.Default.CheckCircle, null, tint = accent, modifier = Modifier.size(18.dp))
+            } else {
+                Icon(Icons.Default.RadioButtonUnchecked, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(model.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    if (isLoaded) {
+                        Surface(shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.15f)) {
+                            Text("LOADED", modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(model.sizeMB, fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (model.isInAppStorage) "📦 App" else "📥 Downloads",
+                        fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            // Copy to app button (for downloads models)
+            onCopy?.let {
+                IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.SaveAlt, "Copy to app",
+                        modifier = Modifier.size(16.dp), tint = Color(0xFF2196F3))
+                }
+            }
+
+            // Delete button (for app models)
+            onDelete?.let {
+                IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Delete, "Delete",
+                        modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
 }

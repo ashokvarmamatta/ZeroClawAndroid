@@ -10,6 +10,7 @@ import ai.zeroclaw.android.MainActivity
 import ai.zeroclaw.android.data.AppSettings
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmRouter
+import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.whatsapp.TwilioWhatsAppManager
 import ai.zeroclaw.android.tunnel.TunnelManager
@@ -83,6 +84,23 @@ class ZeroClawService : Service() {
         val keyCount = keyManager.loadKeys().count { it.enabled }
         log("LLM: $keyCount key${if (keyCount != 1) "s" else ""} loaded — failover ready")
 
+        // Auto-load offline model if an enabled offline key exists with a preferred model
+        val offlineKey = keyManager.loadKeys().firstOrNull { it.enabled && it.safeProvider == "offline" && it.safePreferredModel.isNotBlank() }
+        if (offlineKey != null) {
+            serviceScope.launch {
+                try {
+                    val mgr = OfflineModelManager.getInstance(this@ZeroClawService)
+                    val match = mgr.allModels().firstOrNull { it.name == offlineKey.safePreferredModel }
+                    if (match != null) {
+                        mgr.loadModel(match.path)
+                        log("Offline: model ${match.name} pre-loaded for background use")
+                    }
+                } catch (e: Exception) {
+                    log("Offline: failed to pre-load model — ${e.message}")
+                }
+            }
+        }
+
         serviceScope.launch {
             val settings = AppSettings(this@ZeroClawService).getAll()
 
@@ -135,6 +153,8 @@ class ZeroClawService : Service() {
         serviceScope.cancel()
         telegramManager.stop()
         tunnelManager.stop()
+        // Release offline model to free memory
+        try { OfflineModelManager.getInstance(this).destroyEngine() } catch (_: Exception) {}
         wakeLock?.release()
         log("Service stopped")
         super.onDestroy()

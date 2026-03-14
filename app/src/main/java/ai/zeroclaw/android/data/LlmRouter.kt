@@ -106,6 +106,7 @@ class LlmRouter(private val context: Context) {
                 "gemini"    -> validateGemini(entry.safeApiKey)
                 "anthropic" -> validateAnthropic(entry.safeApiKey)
                 "ollama"    -> validateOllama()
+                "offline"   -> validateOffline(entry.safePreferredModel)
                 else        -> validateOpenAICompatible(entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, entry.safePreferredModel)
             }
         } catch (e: Exception) {
@@ -440,6 +441,7 @@ class LlmRouter(private val context: Context) {
             "anthropic" -> callAnthropic(message, entry.safeApiKey, entry.safePreferredModel)
             "gemini"    -> callGemini(message, entry.safeApiKey, entry.safePreferredModel)
             "ollama"    -> callOllama(message, entry.safePreferredModel)
+            "offline"   -> callOffline(message, entry.safePreferredModel)
             else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, entry.safePreferredModel)
         }
     }
@@ -551,6 +553,61 @@ class LlmRouter(private val context: Context) {
                 json.getJSONObject("message").getString("content").trim()
             }
         }
+    }
+
+    // ── Offline model (MediaPipe LlmInference) ──────────────────────────────
+
+    private suspend fun callOffline(message: String, preferredModel: String): String {
+        val manager = OfflineModelManager.getInstance(context)
+        // If a preferred model path is set and differs from loaded, load it
+        if (preferredModel.isNotBlank()) {
+            val allModels = manager.allModels()
+            val match = allModels.firstOrNull { it.name == preferredModel || it.path == preferredModel }
+            if (match != null && manager.getLoadedModelPath() != match.path) {
+                manager.loadModel(match.path).getOrThrow()
+            }
+        }
+        if (!manager.isModelLoaded()) {
+            throw Exception("No offline model loaded — select one in Settings → API Keys")
+        }
+        val fullPrompt = "$SYSTEM_PROMPT\n\nUser: $message\nAssistant:"
+        return manager.generateResponse(fullPrompt)
+    }
+
+    private suspend fun validateOffline(preferredModel: String): ValidationResult {
+        val manager = OfflineModelManager.getInstance(context)
+        val appModels = manager.listAppModels()
+        val downloadModels = manager.scanDownloads()
+        val allModels = manager.allModels()
+
+        if (allModels.isEmpty()) {
+            return ValidationResult(false,
+                "❌ No .bin model files found. Place a model in Downloads or copy one to app storage.")
+        }
+
+        // Try to load the preferred model
+        if (preferredModel.isNotBlank()) {
+            val match = allModels.firstOrNull { it.name == preferredModel || it.path == preferredModel }
+            if (match != null) {
+                val result = manager.loadModel(match.path)
+                return if (result.isSuccess) {
+                    ValidationResult(true,
+                        "✅ Offline model loaded: ${match.name} (${match.sizeMB})",
+                        allModels.map { it.name })
+                } else {
+                    ValidationResult(false,
+                        "❌ Failed to load ${match.name}: ${result.exceptionOrNull()?.message}",
+                        allModels.map { it.name })
+                }
+            }
+        }
+
+        // No preferred model — just list available
+        val modelNames = allModels.map { "${it.name} (${it.sizeMB})" }
+        return ValidationResult(true,
+            "✅ ${allModels.size} model file${if (allModels.size != 1) "s" else ""} available " +
+            "(${appModels.size} in app, ${downloadModels.size} in Downloads)",
+            modelNames)
     }
 
     private fun String.toRequestBody(): RequestBody =
