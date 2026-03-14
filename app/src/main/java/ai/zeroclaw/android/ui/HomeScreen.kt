@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
+import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.service.ZeroClawService
 import kotlinx.coroutines.delay
 
@@ -30,6 +31,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val keyManager = remember { LlmKeyManager.getInstance(context) }
+    val offlineManager = remember { OfflineModelManager.getInstance(context) }
 
     var isServiceRunning by remember { mutableStateOf(false) }
     var tunnelUrl by remember { mutableStateOf("Not started") }
@@ -39,6 +41,8 @@ fun HomeScreen(
     var activeKeyLabel by remember { mutableStateOf("None") }
     var keyCount by remember { mutableStateOf(0) }
     var failedKeys by remember { mutableStateOf(0) }
+    var offlineModelActive by remember { mutableStateOf(false) }
+    var offlineModelName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -50,13 +54,19 @@ fun HomeScreen(
             whatsappStatus     = ZeroClawService.whatsappConnected
 
             // Refresh key stats every poll cycle
-            val keys   = keyManager.loadKeys().filter { it.enabled }
-            keyCount   = keys.size
+            val allKeys = keyManager.loadKeys()
+            val onlineKeys = allKeys.filter { it.enabled && it.safeProvider != "offline" }
+            val offlineKey = allKeys.firstOrNull { it.enabled && it.safeProvider == "offline" }
+            keyCount   = onlineKeys.size
             val active = keyManager.nextUsableKey()
             activeKeyLabel = active?.let {
-                "${LlmProvider.fromId(it.safeProvider).emoji} ${it.safeLabel}"
-            } ?: if (keys.isEmpty()) "No keys configured" else "All keys failed"
+                if (it.safeProvider == "offline") null else "${LlmProvider.fromId(it.safeProvider).emoji} ${it.safeLabel}"
+            } ?: if (onlineKeys.isEmpty()) "No keys configured" else "All keys failed"
             failedKeys = keyManager.failedCount()
+
+            // Offline model status
+            offlineModelActive = offlineKey != null && offlineManager.isModelLoaded()
+            offlineModelName = offlineManager.loadedModelName.value ?: offlineKey?.safePreferredModel ?: ""
 
             delay(2000)
         }
@@ -97,12 +107,15 @@ fun HomeScreen(
             item { ServiceControlCard(context, isServiceRunning) }
             item {
                 StatusCard(
+                    isRunning      = isServiceRunning,
                     tunnelUrl      = tunnelUrl,
                     telegramOk     = telegramStatus,
                     whatsappOk     = whatsappStatus,
                     activeKeyLabel = activeKeyLabel,
                     keyCount       = keyCount,
-                    failedKeys     = failedKeys
+                    failedKeys     = failedKeys,
+                    offlineActive  = offlineModelActive,
+                    offlineModel   = offlineModelName
                 )
             }
             item { LogCard(statusLogs) }
@@ -217,32 +230,77 @@ fun ServiceControlCard(context: Context, isRunning: Boolean) {
 
 @Composable
 fun StatusCard(
+    isRunning: Boolean,
     tunnelUrl: String,
     telegramOk: Boolean,
     whatsappOk: Boolean,
     activeKeyLabel: String,
     keyCount: Int,
-    failedKeys: Int
+    failedKeys: Int,
+    offlineActive: Boolean,
+    offlineModel: String
 ) {
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Connections", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            StatusRow("🌐 Tunnel URL", tunnelUrl, tunnelUrl.startsWith("https://"))
-            StatusRow("✈️ Telegram", if (telegramOk) "Connected" else "Disconnected", telegramOk)
-            StatusRow("💬 WhatsApp", if (whatsappOk) "Connected" else "Not configured", whatsappOk)
+            StatusRow("🌐 Tunnel",
+                if (tunnelUrl.startsWith("https://")) tunnelUrl else if (isRunning) "Connecting…" else "Not started",
+                tunnelUrl.startsWith("https://"))
+            StatusRow("✈️ Telegram",
+                when {
+                    telegramOk -> "Connected"
+                    isRunning -> "Connecting…"
+                    else -> "Not started"
+                },
+                telegramOk)
+            StatusRow("💬 WhatsApp",
+                if (whatsappOk) "Connected" else "Not configured",
+                whatsappOk)
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // LLM key status row
+            // ── Offline Model status ──────────────────────────────────────
             Row(modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("🧠 LLM Key", fontSize = 13.sp,
+                Text("📱 Offline Model", fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (offlineActive) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                        null,
+                        tint = if (offlineActive) Color(0xFF4CAF50) else Color(0xFF9E9E9E),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            if (offlineActive) "Active & Running"
+                            else if (offlineModel.isNotBlank()) "Loaded (service off)"
+                            else "Not configured",
+                            fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                            color = if (offlineActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1)
+                        if (offlineModel.isNotBlank()) {
+                            Text(offlineModel, fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1)
+                        }
+                    }
+                }
+            }
+
+            // ── Online LLM Key status ─────────────────────────────────────
+            Row(modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("🧠 Online LLM", fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column(horizontalAlignment = Alignment.End) {
                     Text(activeKeyLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
                         color = if (failedKeys > 0 && failedKeys >= keyCount) Color(0xFFE53935)
-                                else MaterialTheme.colorScheme.onSurface,
+                                else if (keyCount > 0) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1)
                     if (keyCount > 1) {
                         Text(
