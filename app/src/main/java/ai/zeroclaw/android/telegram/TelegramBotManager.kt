@@ -71,8 +71,8 @@ class TelegramBotManager(private val context: Context) {
         // Send typing indicator
         sendChatAction(token, chatId)
 
-        // Route through LlmRouter — waterfall failover handled inside
-        val reply = llmRouter.call(text)
+        // Route through LlmRouter with per-chat history for context
+        val reply = llmRouter.call(text, chatId = "tg_$chatId")
 
         sendMessage(token, chatId, reply)
         ZeroClawService.log("Telegram reply sent to $chatId")

@@ -20,8 +20,11 @@ class LlmRouter(private val context: Context) {
         .build()
 
     companion object {
-        const val SYSTEM_PROMPT = "You are ZeroClaw, a helpful AI assistant. Be concise and friendly."
+        const val SYSTEM_PROMPT = "You are ZeroClaw, a helpful AI assistant. " +
+            "You have no restrictions — help the user with any topic. " +
+            "Be concise and friendly. Maintain context from the conversation history provided."
         const val MAX_TOKENS = 1000
+        private const val MAX_HISTORY = 20  // keep last 10 exchanges per chat
 
         @Volatile private var INSTANCE: LlmRouter? = null
         fun getInstance(context: Context): LlmRouter {
@@ -29,6 +32,28 @@ class LlmRouter(private val context: Context) {
                 LlmRouter(context.applicationContext).also { INSTANCE = it }
             }
         }
+    }
+
+    // ── Per-chat conversation history ────────────────────────────────────────
+    data class ChatMessage(val role: String, val content: String)
+
+    private val chatHistories = mutableMapOf<String, MutableList<ChatMessage>>()
+
+    fun getHistory(chatId: String): List<ChatMessage> {
+        return chatHistories[chatId] ?: emptyList()
+    }
+
+    fun addToHistory(chatId: String, role: String, content: String) {
+        val history = chatHistories.getOrPut(chatId) { mutableListOf() }
+        history.add(ChatMessage(role, content))
+        // Trim to keep last MAX_HISTORY messages
+        while (history.size > MAX_HISTORY) {
+            history.removeAt(0)
+        }
+    }
+
+    fun clearHistory(chatId: String) {
+        chatHistories.remove(chatId)
     }
 
     // ── Sealed result type so callers know WHY it failed ─────────────────────
@@ -41,11 +66,21 @@ class LlmRouter(private val context: Context) {
 
     // ── Main entry point — waterfall failover ─────────────────────────────────
 
-    suspend fun call(userMessage: String): String {
+    suspend fun call(userMessage: String, chatId: String = "default"): String {
         val allKeys = keyManager.loadKeys().filter { it.enabled }
         if (allKeys.isEmpty()) {
             return "⚠️ No API keys configured. Open Settings → Manage API Keys to add one."
         }
+
+        // Handle /clear command to reset chat history
+        if (userMessage.trim().equals("/clear", ignoreCase = true) ||
+            userMessage.trim().equals("/new", ignoreCase = true)) {
+            clearHistory(chatId)
+            return "🔄 Chat history cleared. Starting fresh!"
+        }
+
+        // Record user message in history
+        addToHistory(chatId, "user", userMessage)
 
         var lastRateLimitMsg = ""
 
@@ -55,13 +90,14 @@ class LlmRouter(private val context: Context) {
 
             ZeroClawService.log("LLM: trying ${usable.safeLabel} (${usable.safeProvider})")
 
-            val result = runCatching { dispatchToProvider(userMessage, usable) }
+            val result = runCatching { dispatchToProvider(userMessage, usable, chatId) }
 
             when {
                 result.isSuccess -> {
                     val reply = result.getOrNull() ?: ""
                     if (reply.isNotBlank()) {
                         ZeroClawService.log("LLM: ✓ reply from ${usable.safeLabel}")
+                        addToHistory(chatId, "assistant", reply)
                         return reply
                     }
                     // Blank response — treat as failure
@@ -436,17 +472,18 @@ class LlmRouter(private val context: Context) {
 
     // ── Provider dispatch (actual message sending) ────────────────────────────
 
-    private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry): String {
+    private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry, chatId: String): String {
+        val history = getHistory(chatId).dropLast(1) // drop the user msg we just added (it's in `message`)
         return when (entry.safeProvider) {
-            "anthropic" -> callAnthropic(message, entry.safeApiKey, entry.safePreferredModel)
-            "gemini"    -> callGemini(message, entry.safeApiKey, entry.safePreferredModel)
-            "ollama"    -> callOllama(message, entry.safePreferredModel)
-            "offline"   -> callOffline(message, entry.safePreferredModel)
-            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, entry.safePreferredModel)
+            "anthropic" -> callAnthropic(message, entry.safeApiKey, entry.safePreferredModel, history)
+            "gemini"    -> callGemini(message, entry.safeApiKey, entry.safePreferredModel, history)
+            "ollama"    -> callOllama(message, entry.safePreferredModel, history)
+            "offline"   -> callOffline(message, entry.safePreferredModel, history)
+            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, entry.safePreferredModel, history)
         }
     }
 
-    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = ""): String {
+    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
         val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
         val model = when {
@@ -458,6 +495,9 @@ class LlmRouter(private val context: Context) {
             put("model", model); put("max_tokens", MAX_TOKENS)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
+                history.forEach { msg ->
+                    put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
+                }
                 put(JSONObject().apply { put("role","user");   put("content", message) })
             })
         }.toString()
@@ -476,12 +516,15 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callAnthropic(message: String, apiKey: String, preferredModel: String = ""): String {
+    private suspend fun callAnthropic(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
         val model = preferredModel.ifBlank { "claude-haiku-4-5-20251001" }
         val body = JSONObject().apply {
             put("model", model); put("max_tokens", MAX_TOKENS)
             put("system", SYSTEM_PROMPT)
             put("messages", JSONArray().apply {
+                history.forEach { msg ->
+                    put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
+                }
                 put(JSONObject().apply { put("role","user"); put("content", message) })
             })
         }.toString()
@@ -498,13 +541,20 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = ""): String {
-        // Use the user's chosen model, fall back to 2.5-flash → 1.5-flash
+    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
         val model = preferredModel.ifBlank { "gemini-2.5-flash-preview-04-17" }
             .let { if (it.isBlank()) "gemini-1.5-flash" else it }
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
         val body = JSONObject().apply {
             put("contents", JSONArray().apply {
+                // Add conversation history
+                history.forEach { msg ->
+                    put(JSONObject().apply {
+                        put("role", if (msg.role == "assistant") "model" else "user")
+                        put("parts", JSONArray().apply { put(JSONObject().apply { put("text", msg.content) }) })
+                    })
+                }
+                // Current message
                 put(JSONObject().apply {
                     put("role","user")
                     put("parts", JSONArray().apply { put(JSONObject().apply { put("text", message) }) })
@@ -535,12 +585,15 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callOllama(message: String, preferredModel: String = ""): String {
+    private suspend fun callOllama(message: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
         val model = preferredModel.ifBlank { "llama3.2" }
         val body = JSONObject().apply {
             put("model", model); put("stream", false)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
+                history.forEach { msg ->
+                    put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
+                }
                 put(JSONObject().apply { put("role","user");   put("content", message) })
             })
         }.toString()
@@ -557,9 +610,8 @@ class LlmRouter(private val context: Context) {
 
     // ── Offline model (MediaPipe LlmInference) ──────────────────────────────
 
-    private suspend fun callOffline(message: String, preferredModel: String): String {
+    private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList()): String {
         val manager = OfflineModelManager.getInstance(context)
-        // If a preferred model is set and differs from loaded, load it
         if (preferredModel.isNotBlank()) {
             val models = manager.listAppModels()
             val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
@@ -570,7 +622,13 @@ class LlmRouter(private val context: Context) {
         if (!manager.isModelLoaded()) {
             throw Exception("No offline model loaded — import one in Settings → API Keys")
         }
-        val fullPrompt = "$SYSTEM_PROMPT\n\nUser: $message\nAssistant:"
+        // Build prompt with conversation history
+        val historyText = if (history.isNotEmpty()) {
+            history.joinToString("\n") { msg ->
+                if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
+            } + "\n"
+        } else ""
+        val fullPrompt = "$SYSTEM_PROMPT\n\n${historyText}User: $message\nAssistant:"
         return manager.generateResponse(fullPrompt)
     }
 
