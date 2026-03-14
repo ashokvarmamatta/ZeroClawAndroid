@@ -15,7 +15,10 @@ data class ApiKeyEntry(
     val apiKey: String,
     val enabled: Boolean = true,
     val preferredModel: String? = null,  // nullable — old Gson entries won't have this field
-    val baseUrl: String? = null          // optional custom base URL (e.g. Modal, local proxy)
+    val baseUrl: String? = null,         // optional custom base URL (e.g. Modal, local proxy)
+    val availableModels: List<String>? = null,       // all models fetched from provider
+    val checkedModels: Map<String, String?>? = null, // modelId → null=pass, "error"=fail
+    val selectedModels: List<String>? = null          // user-chosen subset of working models
 ) {
     // Safe accessors — Gson may deserialize missing fields as null even on non-null Kotlin types
     val safeLabel: String get() = label ?: ""
@@ -23,6 +26,10 @@ data class ApiKeyEntry(
     val safeApiKey: String get() = apiKey ?: ""
     val safePreferredModel: String get() = preferredModel ?: ""
     val safeBaseUrl: String get() = baseUrl ?: ""
+    val safeAvailableModels: List<String> get() = availableModels ?: emptyList()
+    val safeCheckedModels: Map<String, String?> get() = checkedModels ?: emptyMap()
+    val safeSelectedModels: List<String> get() = selectedModels ?: emptyList()
+    val workingModels: List<String> get() = safeCheckedModels.filter { it.value == null }.keys.toList()
 }
 
 /** All providers the app supports, with display metadata. */

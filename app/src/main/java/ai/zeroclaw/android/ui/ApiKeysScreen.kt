@@ -1,7 +1,9 @@
 package ai.zeroclaw.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,7 +47,16 @@ enum class ValidationState { IDLE, LOADING, SUCCESS, RATE_LIMITED, ERROR }
 data class ValidationUi(
     val state: ValidationState = ValidationState.IDLE,
     val message: String = "",
-    val models: List<String> = emptyList()
+    val models: List<String> = emptyList(),
+    val responseText: String = ""   // AI reply from test prompt
+)
+
+data class ModelCheckState(
+    val isChecking: Boolean = false,
+    val totalModels: Int = 0,
+    val checkedCount: Int = 0,
+    val currentModel: String = "",
+    val results: Map<String, String?> = emptyMap()  // modelId → null=pass, string=error
 )
 
 private const val GEMINI_DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
@@ -62,6 +73,12 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     var keys by remember { mutableStateOf(keyManager.loadKeys()) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingKey by remember { mutableStateOf<ApiKeyEntry?>(null) }
+
+    // Model checking state (per-key)
+    var modelCheckStates by remember { mutableStateOf<Map<String, ModelCheckState>>(emptyMap()) }
+    var expandedModelLists by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var retestingModel by remember { mutableStateOf("") }  // "keyId:modelId"
+    val router = remember { LlmRouter.getInstance(context) }
 
     // Offline model state
     var offlineModelsApp by remember { mutableStateOf(offlineManager.listAppModels()) }
@@ -98,6 +115,84 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     fun refresh() {
         keys = keyManager.loadKeys()
         offlineModelsApp = offlineManager.listAppModels()
+    }
+
+    // ── Check All Models handler ──────────────────────────────────────────
+    fun checkAllModels(entry: ApiKeyEntry) {
+        val models = entry.safeAvailableModels
+            .map { it.substringBefore(" (") }  // clean "model-id (Display Name)" format
+            .filter { it.isNotBlank() }
+            .let { if (entry.safeProvider == "openrouter") it.take(20) else it }
+        if (models.isEmpty()) return
+
+        modelCheckStates = modelCheckStates + (entry.id to ModelCheckState(
+            isChecking = true, totalModels = models.size
+        ))
+
+        scope.launch {
+            val results = mutableMapOf<String, String?>()
+            for ((index, model) in models.withIndex()) {
+                modelCheckStates = modelCheckStates + (entry.id to ModelCheckState(
+                    isChecking = true,
+                    totalModels = models.size,
+                    checkedCount = index,
+                    currentModel = model,
+                    results = results.toMap()
+                ))
+
+                val result = router.testSingleModel(entry, model)
+                results[model] = if (result.isSuccess) null else
+                    (result.exceptionOrNull()?.message?.take(80) ?: "Unknown error")
+
+                kotlinx.coroutines.delay(1500) // 1.5s between tests to avoid rate limits
+            }
+
+            // Save results — auto-select all passing models
+            val workingModels = results.filter { it.value == null }.keys.toList()
+            keyManager.updateKey(entry.copy(
+                checkedModels = results,
+                selectedModels = workingModels
+            ))
+
+            modelCheckStates = modelCheckStates + (entry.id to ModelCheckState(
+                isChecking = false,
+                totalModels = models.size,
+                checkedCount = models.size,
+                results = results
+            ))
+
+            refresh()
+        }
+    }
+
+    // ── Toggle model selection handler ─────────────────────────────────────
+    fun toggleModel(entry: ApiKeyEntry, modelId: String) {
+        val current = entry.safeSelectedModels.toMutableList()
+        if (modelId in current) current.remove(modelId) else current.add(modelId)
+        keyManager.updateKey(entry.copy(selectedModels = current))
+        refresh()
+    }
+
+    // ── Retest single model handler ────────────────────────────────────────
+    fun retestModel(entry: ApiKeyEntry, modelId: String) {
+        retestingModel = "${entry.id}:$modelId"
+        scope.launch {
+            val result = router.testSingleModel(entry, modelId)
+            val currentChecked = entry.safeCheckedModels.toMutableMap()
+            currentChecked[modelId] = if (result.isSuccess) null else
+                (result.exceptionOrNull()?.message?.take(80) ?: "Unknown error")
+
+            val currentSelected = entry.safeSelectedModels.toMutableList()
+            if (result.isSuccess && modelId !in currentSelected) currentSelected.add(modelId)
+            if (result.isFailure) currentSelected.remove(modelId)
+
+            keyManager.updateKey(entry.copy(
+                checkedModels = currentChecked,
+                selectedModels = currentSelected
+            ))
+            retestingModel = ""
+            refresh()
+        }
     }
 
     LaunchedEffect(Unit) { refresh() }
@@ -229,7 +324,18 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                         onDelete = { keyManager.deleteKey(entry.id); refresh() },
                         onMoveUp = { keyManager.moveKey(entry.id, -1); refresh() },
                         onMoveDown = { keyManager.moveKey(entry.id, +1); refresh() },
-                        onSetActive = { keyManager.setActiveKey(entry.id); refresh() }
+                        onSetActive = { keyManager.setActiveKey(entry.id); refresh() },
+                        checkState = modelCheckStates[entry.id],
+                        isModelListExpanded = entry.id in expandedModelLists,
+                        retestingModel = retestingModel,
+                        onCheckAllModels = { checkAllModels(entry) },
+                        onToggleModelList = {
+                            expandedModelLists = if (entry.id in expandedModelLists)
+                                expandedModelLists - entry.id
+                            else expandedModelLists + entry.id
+                        },
+                        onToggleModel = { modelId -> toggleModel(entry, modelId) },
+                        onRetestModel = { modelId -> retestModel(entry, modelId) }
                     )
                 }
             } else {
@@ -658,7 +764,14 @@ fun ApiKeyCard(
     onDelete: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
-    onSetActive: () -> Unit
+    onSetActive: () -> Unit,
+    checkState: ModelCheckState? = null,
+    isModelListExpanded: Boolean = false,
+    retestingModel: String = "",
+    onCheckAllModels: () -> Unit = {},
+    onToggleModelList: () -> Unit = {},
+    onToggleModel: (String) -> Unit = {},
+    onRetestModel: (String) -> Unit = {}
 ) {
     val provider = LlmProvider.fromId(entry.safeProvider)
     val accentColor = providerColor(entry.safeProvider)
@@ -796,6 +909,255 @@ fun ApiKeyCard(
                         tint = MaterialTheme.colorScheme.error)
                 }
             }
+
+            // ── Check All Models section ────────────────────────────────────
+            if (entry.safeAvailableModels.isNotEmpty() && entry.safeProvider != "offline") {
+                val isChecking = checkState?.isChecking == true
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Check All Models button
+                    Surface(
+                        onClick = { if (!isChecking) onCheckAllModels() },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF00BCD4).copy(alpha = 0.12f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isChecking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color(0xFF00BCD4)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                val done = checkState?.checkedCount ?: 0
+                                val total = checkState?.totalModels ?: 0
+                                Text(
+                                    "Checking… $done/$total",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00BCD4)
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = Color(0xFF00BCD4))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    if (entry.safeCheckedModels.isNotEmpty()) "Re-check All" else "Check All Models",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00BCD4)
+                                )
+                            }
+                        }
+                    }
+
+                    // Show/Hide models toggle
+                    if (entry.safeCheckedModels.isNotEmpty() && !isChecking) {
+                        Surface(
+                            onClick = onToggleModelList,
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                if (isModelListExpanded) "Hide"
+                                else "${entry.workingModels.size}/${entry.safeCheckedModels.size} OK",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+
+                // ── Live progress during checking ───────────────────────────
+                if (isChecking && checkState != null && checkState.results.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Column(modifier = Modifier.padding(start = 4.dp)) {
+                        checkState.results.forEach { (modelId, result) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                when {
+                                    result == null -> // pass
+                                        Icon(Icons.Default.Check, null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFF4CAF50))
+                                    else -> // fail
+                                        Icon(Icons.Default.Close, null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFFEF5350))
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    modelId,
+                                    fontSize = 10.sp,
+                                    color = if (result == null) Color(0xFF4CAF50)
+                                    else Color(0xFFEF5350).copy(alpha = 0.7f),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (result != null) {
+                                    Text(
+                                        result.take(30),
+                                        fontSize = 9.sp,
+                                        color = Color(0xFFEF5350).copy(alpha = 0.5f),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                        // Show pending model with spinner
+                        if (checkState.checkedCount < checkState.totalModels) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    checkState.currentModel,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ── Model selection list (after checking) ───────────────────
+                if (isModelListExpanded && entry.safeCheckedModels.isNotEmpty() && !isChecking) {
+                    Spacer(Modifier.height(6.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                "Select models for this key:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            entry.safeCheckedModels.toSortedMap().forEach { (modelId, errorMsg) ->
+                                val works = errorMsg == null
+                                val isSelected = modelId in entry.safeSelectedModels
+                                val isRetesting = retestingModel == "${entry.id}:$modelId"
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = works) { onToggleModel(modelId) }
+                                        .padding(vertical = 3.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { if (works) onToggleModel(modelId) },
+                                        enabled = works,
+                                        modifier = Modifier.size(20.dp),
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = Color(0xFF00BCD4),
+                                            uncheckedColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            modelId,
+                                            fontSize = 11.sp,
+                                            color = if (works) MaterialTheme.colorScheme.onSurface
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (errorMsg != null) {
+                                            Text(
+                                                errorMsg.take(60),
+                                                fontSize = 9.sp,
+                                                color = Color(0xFFEF5350).copy(alpha = 0.6f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    // Status badge
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (works) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                        else Color(0xFFEF5350).copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            if (works) "OK" else "FAIL",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (works) Color(0xFF4CAF50) else Color(0xFFEF5350)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    // Retest button
+                                    Surface(
+                                        onClick = { onRetestModel(modelId) },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFFF8F00).copy(alpha = 0.12f)
+                                    ) {
+                                        Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                                            if (isRetesting) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(10.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                    color = Color(0xFFFF8F00)
+                                                )
+                                            } else {
+                                                Text(
+                                                    "Test",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFFF8F00)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Selected models summary ─────────────────────────────────────
+            if (entry.safeSelectedModels.isNotEmpty() && entry.safeCheckedModels.isNotEmpty()
+                && !isModelListExpanded && checkState?.isChecking != true) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Using: ${entry.safeSelectedModels.joinToString(", ")}",
+                    fontSize = 10.sp,
+                    color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -821,8 +1183,8 @@ fun KeyEditDialog(
 
     var validation      by remember { mutableStateOf(ValidationUi()) }
 
-    // Model picker state — used for ALL providers after successful Test Key
-    var availableModels       by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Model picker state — pre-fill from existing entry if available
+    var availableModels       by remember { mutableStateOf(existing?.safeAvailableModels ?: emptyList()) }
     // selectedModel: always pre-fill from existing; LaunchedEffect below resets it if provider changes
     var selectedModel         by remember { mutableStateOf(existing?.safePreferredModel ?: "") }
     var modelPickerExpanded   by remember { mutableStateOf(false) }
@@ -832,6 +1194,18 @@ fun KeyEditDialog(
     var browseLoading            by remember { mutableStateOf(false) }
     var openRouterCatalog        by remember { mutableStateOf<List<LlmRouter.OpenRouterModel>>(emptyList()) }
     var browseSearch             by remember { mutableStateOf("") }
+
+    // Dialog model testing state
+    var dialogCheckedModels by remember { mutableStateOf(
+        existing?.safeSelectedModels?.toSet() ?: emptySet()
+    ) }
+    var dialogTestResults by remember { mutableStateOf(
+        existing?.safeCheckedModels ?: emptyMap<String, String?>()
+    ) }
+    var isTestingAll by remember { mutableStateOf(false) }
+    var testingAllProgress by remember { mutableStateOf(0) }
+    var testingAllTotal by remember { mutableStateOf(0) }
+    var singleTestingModel by remember { mutableStateOf("") }
 
     // cURL mode
     var curlMode        by remember { mutableStateOf(false) }
@@ -846,7 +1220,8 @@ fun KeyEditDialog(
     LaunchedEffect(provider) {
         validation = ValidationUi()
         availableModels = emptyList()
-        // Only keep existing model if we're editing and provider hasn't changed
+        dialogCheckedModels = emptySet()
+        dialogTestResults = emptyMap()
         if (existing?.safeProvider != provider) {
             selectedModel = ""
         }
@@ -855,6 +1230,8 @@ fun KeyEditDialog(
         if (apiKey.isNotBlank() || baseUrl.isNotBlank()) {
             validation = ValidationUi()
             availableModels = emptyList()
+            dialogCheckedModels = emptySet()
+            dialogTestResults = emptyMap()
         }
     }
 
@@ -1136,56 +1513,308 @@ fun KeyEditDialog(
                         }
                     }
 
-                    // ── Universal model picker — shown for ALL providers after successful Test Key ──
-                    AnimatedVisibility(visible = availableModels.isNotEmpty() && provider != "ollama" || (provider == "ollama" && availableModels.isNotEmpty())) {
-                        val pickerLabel = when (provider) {
-                            "gemini"    -> "Gemini Model"
-                            "anthropic" -> "Claude Model"
-                            "ollama"    -> "Ollama Model"
-                            "openrouter"-> "OpenRouter Model"
-                            else        -> "Model"
+                    // ── Load Models button — fetch models without testing ────────
+                    var isLoadingModels by remember { mutableStateOf(false) }
+
+                    AnimatedVisibility(visible = provider != "offline" &&
+                        (provider == "ollama" || apiKey.isNotBlank()) &&
+                        availableModels.isEmpty() && !isLoadingModels) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    isLoadingModels = true
+                                    validation = ValidationUi(ValidationState.LOADING, "Fetching models…")
+                                    val router = LlmRouter.getInstance(context)
+                                    val entry = ApiKeyEntry(
+                                        label = "fetch",
+                                        provider = provider,
+                                        apiKey = if (provider == "ollama") "local" else apiKey.trim(),
+                                        baseUrl = baseUrl.trim()
+                                    )
+                                    try {
+                                        val models = router.fetchModelsOnly(entry)
+                                        if (models.isNotEmpty()) {
+                                            availableModels = models
+                                            dialogCheckedModels = emptySet()
+                                            dialogTestResults = emptyMap()
+                                            validation = ValidationUi(ValidationState.SUCCESS,
+                                                "✅ Found ${models.size} models. Test them or select and save.")
+                                        } else {
+                                            validation = ValidationUi(ValidationState.ERROR,
+                                                "❌ No models found. Check your API key.")
+                                        }
+                                    } catch (e: Exception) {
+                                        validation = ValidationUi(ValidationState.ERROR,
+                                            "❌ ${e.message}")
+                                    }
+                                    isLoadingModels = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Load Models", fontSize = 12.sp)
                         }
+                    }
+
+                    // Loading indicator
+                    AnimatedVisibility(visible = isLoadingModels) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Fetching models…", fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    // ── Model list with checkboxes + testing ──────────────────
+                    AnimatedVisibility(visible = availableModels.isNotEmpty()) {
                         val accentCol = providerColor(provider)
-                        ExposedDropdownMenuBox(expanded = modelPickerExpanded,
-                            onExpandedChange = { modelPickerExpanded = it }) {
-                            OutlinedTextField(
-                                value = selectedModel.ifBlank { "Select model…" },
-                                onValueChange = {}, readOnly = true,
-                                label = { Text(pickerLabel) },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(modelPickerExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = accentCol,
-                                    unfocusedBorderColor = accentCol.copy(alpha = 0.5f)))
-                            ExposedDropdownMenu(expanded = modelPickerExpanded,
-                                onDismissRequest = { modelPickerExpanded = false }) {
-                                availableModels.forEach { model ->
-                                    val clean = model.substringBefore(" (")
-                                    val isBest = isBestModel(clean, provider)
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                if (isBest) {
-                                                    Surface(shape = RoundedCornerShape(4.dp),
-                                                        color = accentCol.copy(alpha = 0.15f)) {
-                                                        Text("★ BEST",
-                                                            modifier = Modifier.padding(
-                                                                horizontal = 4.dp, vertical = 2.dp),
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = accentCol)
-                                                    }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Header row: model count + Test All Models button
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${availableModels.size} models",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                if (!isTestingAll) {
+                                    Surface(
+                                        onClick = {
+                                            val models = availableModels.map { it.substringBefore(" (") }
+                                                .filter { it.isNotBlank() }
+                                            if (models.isEmpty()) return@Surface
+                                            isTestingAll = true
+                                            testingAllTotal = models.size
+                                            testingAllProgress = 0
+                                            scope.launch {
+                                                val results = mutableMapOf<String, String?>()
+                                                val router = LlmRouter.getInstance(context)
+                                                val testEntry = ApiKeyEntry(
+                                                    label = "test", provider = provider,
+                                                    apiKey = if (provider == "ollama") "local" else apiKey.trim(),
+                                                    baseUrl = baseUrl.trim()
+                                                )
+                                                for ((idx, model) in models.withIndex()) {
+                                                    testingAllProgress = idx
+                                                    val result = router.testSingleModel(testEntry, model)
+                                                    results[model] = if (result.isSuccess) null
+                                                        else (result.exceptionOrNull()?.message?.take(80) ?: "Error")
+                                                    dialogTestResults = results.toMap()
+                                                    kotlinx.coroutines.delay(1500) // 1.5s between tests to avoid rate limits
                                                 }
-                                                Text(clean, fontSize = 12.sp,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontWeight = if (clean == selectedModel) FontWeight.Bold else FontWeight.Normal)
+                                                testingAllProgress = models.size
+                                                // Auto-check all passing models
+                                                dialogCheckedModels = results.filter { it.value == null }.keys
+                                                isTestingAll = false
+                                                validation = ValidationUi(
+                                                    ValidationState.SUCCESS,
+                                                    "✅ ${dialogCheckedModels.size}/${models.size} models passed"
+                                                )
                                             }
                                         },
-                                        onClick = { selectedModel = clean; modelPickerExpanded = false }
-                                    )
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFF00BCD4).copy(alpha = 0.12f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = Color(0xFF00BCD4))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (dialogTestResults.isNotEmpty()) "Re-test All" else "Test All Models",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF00BCD4)
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF00BCD4)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "Testing $testingAllProgress/$testingAllTotal…",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF00BCD4)
+                                        )
+                                    }
                                 }
+                            }
+
+                            // Scrollable model list with checkboxes
+                            Card(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(8.dp)
+                                ) {
+                                    availableModels.forEach { model ->
+                                        val clean = model.substringBefore(" (")
+                                        val isChecked = clean in dialogCheckedModels
+                                        val isTested = clean in dialogTestResults
+                                        val testResult = dialogTestResults[clean]
+                                        val isSingleTesting = singleTestingModel == clean
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    dialogCheckedModels = if (isChecked)
+                                                        dialogCheckedModels - clean
+                                                    else dialogCheckedModels + clean
+                                                }
+                                                .padding(vertical = 3.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = {
+                                                    dialogCheckedModels = if (isChecked)
+                                                        dialogCheckedModels - clean
+                                                    else dialogCheckedModels + clean
+                                                },
+                                                modifier = Modifier.size(20.dp),
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = accentCol,
+                                                    uncheckedColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                                )
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    clean, fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    color = if (isTested && testResult != null)
+                                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                                    else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                // Show error message for failed models
+                                                if (isTested && testResult != null) {
+                                                    Text(
+                                                        testResult.take(60),
+                                                        fontSize = 9.sp,
+                                                        color = Color(0xFFEF5350).copy(alpha = 0.7f),
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        lineHeight = 12.sp
+                                                    )
+                                                }
+                                            }
+
+                                            // Status: spinner during test, OK/FAIL badge after
+                                            if (isTestingAll && !isTested && clean == availableModels
+                                                .map { it.substringBefore(" (") }
+                                                .getOrNull(testingAllProgress)) {
+                                                // Currently being tested
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(12.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                    color = Color(0xFF00BCD4)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                            } else if (isTested) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = if (testResult == null)
+                                                        Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                                    else Color(0xFFEF5350).copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        if (testResult == null) "OK" else "FAIL",
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (testResult == null) Color(0xFF4CAF50)
+                                                                else Color(0xFFEF5350)
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(4.dp))
+                                            }
+
+                                            // Per-model Test button — shown when model is checked
+                                            if (isChecked && !isTestingAll) {
+                                                Surface(
+                                                    onClick = {
+                                                        singleTestingModel = clean
+                                                        scope.launch {
+                                                            val router = LlmRouter.getInstance(context)
+                                                            val testEntry = ApiKeyEntry(
+                                                                label = "test", provider = provider,
+                                                                apiKey = if (provider == "ollama") "local" else apiKey.trim(),
+                                                                baseUrl = baseUrl.trim()
+                                                            )
+                                                            val result = router.testSingleModel(testEntry, clean)
+                                                            val newResults = dialogTestResults.toMutableMap()
+                                                            newResults[clean] = if (result.isSuccess) null
+                                                                else (result.exceptionOrNull()?.message?.take(80) ?: "Error")
+                                                            dialogTestResults = newResults
+                                                            // Single model test: select only this one, unselect all others
+                                                            if (result.isSuccess) {
+                                                                dialogCheckedModels = setOf(clean)
+                                                            } else {
+                                                                dialogCheckedModels = dialogCheckedModels - clean
+                                                            }
+                                                            singleTestingModel = ""
+                                                        }
+                                                    },
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFFF8F00).copy(alpha = 0.12f)
+                                                ) {
+                                                    Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                                                        if (isSingleTesting) {
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(10.dp),
+                                                                strokeWidth = 1.5.dp,
+                                                                color = Color(0xFFFF8F00)
+                                                            )
+                                                        } else {
+                                                            Text("Test", fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFFFF8F00))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Selected count summary
+                            if (dialogCheckedModels.isNotEmpty()) {
+                                Text(
+                                    "${dialogCheckedModels.size} model${if (dialogCheckedModels.size != 1) "s" else ""} selected",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -1198,62 +1827,6 @@ fun KeyEditDialog(
                     // Buttons row
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 
-                        // TEST KEY — now passes selectedModel so it tests what user picked
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    validation = ValidationUi(ValidationState.LOADING, "Checking key…")
-                                    val router = LlmRouter.getInstance(context)
-                                    val testEntry = ApiKeyEntry(
-                                        label          = label.ifBlank { "test" },
-                                        provider       = provider,
-                                        apiKey         = if (provider == "ollama") "local" else apiKey.trim(),
-                                        baseUrl        = baseUrl.trim(),
-                                        preferredModel = selectedModel.ifBlank { null }
-                                    )
-                                    val result = router.validateKey(testEntry)
-                                    when {
-                                        result.isValid -> {
-                                            validation = ValidationUi(ValidationState.SUCCESS, result.message)
-                                            if (result.availableModels.isNotEmpty()) {
-                                                availableModels = result.availableModels
-                                                val currentClean = selectedModel.substringBefore(" (")
-                                                val stillValid = result.availableModels
-                                                    .any { it.substringBefore(" (") == currentClean }
-                                                if (!stillValid) {
-                                                    selectedModel = pickBestModel(result.availableModels, provider)
-                                                }
-                                            }
-                                        }
-                                        result.message.contains("429") ||
-                                        result.message.lowercase().contains("quota") ||
-                                        result.message.lowercase().contains("rate") ->
-                                            validation = ValidationUi(
-                                                ValidationState.RATE_LIMITED,
-                                                "⚠️ Key valid but quota exceeded — save anyway.")
-                                        else ->
-                                            validation = ValidationUi(ValidationState.ERROR, result.message)
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = (provider == "ollama" || apiKey.isNotBlank()) &&
-                                      validation.state != ValidationState.LOADING
-                        ) {
-                            if (validation.state == ValidationState.LOADING) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                            } else {
-                                Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(14.dp))
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Text(when (validation.state) {
-                                ValidationState.LOADING -> "Checking…"
-                                ValidationState.SUCCESS -> "✓ Valid"
-                                else                    -> "Test Key"
-                            }, fontSize = 12.sp)
-                        }
-
                         // SAVE
                         Button(
                             onClick = {
@@ -1263,18 +1836,22 @@ fun KeyEditDialog(
                                     else -> apiKey
                                 }
                                 val base = existing ?: ApiKeyEntry(label = "", provider = "", apiKey = "")
+                                val checkedList = dialogCheckedModels.toList()
                                 onSave(base.copy(
                                     label          = label.trim(),
                                     provider       = provider,
                                     apiKey         = key.trim(),
                                     baseUrl        = baseUrl.trim().ifBlank { null },
-                                    preferredModel = selectedModel.ifBlank { null }
+                                    preferredModel = checkedList.firstOrNull()
+                                        ?: selectedModel.ifBlank { null },
+                                    availableModels = availableModels.ifEmpty { null },
+                                    checkedModels  = dialogTestResults.ifEmpty { null },
+                                    selectedModels = checkedList.ifEmpty { null }
                                 ))
                             },
                             modifier = Modifier.weight(1f),
                             enabled = label.isNotBlank() &&
-                                      (provider == "ollama" || apiKey.isNotBlank()) &&
-                                      validation.state != ValidationState.LOADING
+                                      (provider == "ollama" || apiKey.isNotBlank())
                         ) {
                             Icon(Icons.Default.Save, null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
@@ -1304,25 +1881,12 @@ fun KeyEditDialog(
                 selectedModel = modelId
                 showBrowseModels = false
                 browseSearch = ""
-                // Auto-test the picked model
-                scope.launch {
-                    validation = ValidationUi(ValidationState.LOADING, "Testing $modelId…")
-                    val router = LlmRouter.getInstance(context)
-                    val result = router.validateKey(ApiKeyEntry(
-                        label    = "test",
-                        provider = "openrouter",
-                        apiKey   = apiKey.trim(),
-                        preferredModel = modelId
-                    ))
-                    validation = when {
-                        result.isValid -> ValidationUi(ValidationState.SUCCESS,
-                            "✅ $modelId works — ready to save!")
-                        result.message.contains("429") || result.message.lowercase().contains("quota") ->
-                            ValidationUi(ValidationState.RATE_LIMITED,
-                                "⚠️ Rate limited — key valid, quota hit. Save anyway?")
-                        else -> ValidationUi(ValidationState.ERROR, result.message)
-                    }
+                // Add browsed model to available list if not already there
+                if (!availableModels.any { it.substringBefore(" (") == modelId }) {
+                    availableModels = availableModels + modelId
                 }
+                // Check this model in the list
+                dialogCheckedModels = dialogCheckedModels + modelId
             },
             onDismiss = { showBrowseModels = false; browseSearch = "" }
         )
@@ -1556,17 +2120,37 @@ fun ValidationCard(v: ValidationUi) {
         else                         -> Icons.Default.HourglassTop
     }
     Surface(shape = RoundedCornerShape(10.dp), color = bg) {
-        Row(modifier = Modifier.padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top) {
-            if (v.state == ValidationState.LOADING) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp, color = tint)
-            } else {
-                Icon(icon, null, modifier = Modifier.size(16.dp), tint = tint)
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                if (v.state == ValidationState.LOADING) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp, color = tint)
+                } else {
+                    Icon(icon, null, modifier = Modifier.size(16.dp), tint = tint)
+                }
+                Text(v.message, fontSize = 12.sp, lineHeight = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface)
             }
-            Text(v.message, fontSize = 12.sp, lineHeight = 17.sp,
-                color = MaterialTheme.colorScheme.onSurface)
+            // Show AI response from test prompt
+            if (v.responseText.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("AI Response:", fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(3.dp))
+                        Text(v.responseText, fontSize = 12.sp, lineHeight = 17.sp,
+                            color = tint, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
         }
     }
 }

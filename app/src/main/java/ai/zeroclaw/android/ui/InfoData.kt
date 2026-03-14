@@ -23,6 +23,66 @@ data class GuideSection(
     val steps: List<GuideStep>
 )
 
+// ─── App Info ─────────────────────────────────────────────────────────────────
+
+data class AppInfoItem(
+    val icon: String,
+    val label: String,
+    val value: String
+)
+
+data class FeatureItem(
+    val icon: String,
+    val title: String,
+    val description: String
+)
+
+data class ProviderInfo(
+    val emoji: String,
+    val name: String,
+    val models: String
+)
+
+const val APP_VERSION_NAME = "1.0.0"
+const val APP_VERSION_CODE = 1
+
+val APP_INFO_ITEMS = listOf(
+    AppInfoItem("📦", "Version", "$APP_VERSION_NAME (build $APP_VERSION_CODE)"),
+    AppInfoItem("🤖", "Min Android", "8.0 (API 26)"),
+    AppInfoItem("🎯", "Target Android", "14 (API 34)"),
+    AppInfoItem("🏠", "Package", "ai.zeroclaw.android"),
+    AppInfoItem("🛠️", "Built With", "Kotlin + Jetpack Compose"),
+    AppInfoItem("📄", "License", "Open Source")
+)
+
+val APP_FEATURES = listOf(
+    FeatureItem("🦀", "24/7 AI Agent Daemon",
+        "Runs as a persistent foreground service on your phone — always on, always listening. No PC or cloud server required."),
+    FeatureItem("🔄", "Multi-Provider Failover",
+        "Configure multiple API keys across providers. If one fails or hits rate limits, ZeroClaw automatically falls through to the next — zero downtime."),
+    FeatureItem("✈️", "Telegram Bot",
+        "Built-in Telegram bot integration with long-polling. Per-chat conversation history keeps context across messages."),
+    FeatureItem("💬", "WhatsApp via Twilio",
+        "Receive and reply to WhatsApp messages using Twilio's official API. Works with both sandbox and production numbers."),
+    FeatureItem("🌐", "Cloudflare / ngrok Tunnel",
+        "Expose your phone to the internet with one tap. Supports Cloudflare Tunnel (free, no account) and ngrok."),
+    FeatureItem("📱", "Offline AI Models",
+        "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
+    FeatureItem("🔑", "API Key Manager",
+        "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
+    FeatureItem("🔋", "Battery Optimized",
+        "Smart persistence with boot auto-restart, wake locks, and foreground service — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
+)
+
+val SUPPORTED_PROVIDERS = listOf(
+    ProviderInfo("🟢", "OpenAI", "GPT-4o, GPT-4o-mini, o1, o3"),
+    ProviderInfo("🟠", "Anthropic", "Claude Haiku, Sonnet, Opus"),
+    ProviderInfo("🔵", "Google Gemini", "Gemini Pro, Flash, Ultra"),
+    ProviderInfo("🟣", "OpenRouter", "400+ models from all providers"),
+    ProviderInfo("⚫", "Ollama", "Local models, no API key needed"),
+    ProviderInfo("📱", "Offline (MediaPipe)", "On-device .bin models, no internet")
+)
+
 // ─── How It Works ─────────────────────────────────────────────────────────────
 
 val HOW_IT_WORKS = GuideSection(
@@ -38,18 +98,18 @@ val HOW_IT_WORKS = GuideSection(
             badgeColor = Color(0xFFE53935)
         ),
         GuideStep(2, "🧠", "AI Brain (LLM Provider)",
-            "Every message your bot receives is sent to an LLM (OpenAI, Anthropic Claude, Ollama, or OpenRouter) to generate a smart reply.",
-            "You supply your own API key — ZeroClaw never stores or proxies your key anywhere outside your device. Supported providers:\n• OpenAI (GPT-4o, GPT-4o-mini)\n• Anthropic (Claude Haiku, Sonnet)\n• Ollama (local, no API key needed)\n• OpenRouter (400+ models)",
+            "Every message your bot receives is sent to an LLM to generate a smart reply. Supports waterfall failover across multiple keys and providers.",
+            "You supply your own API keys — ZeroClaw never stores or proxies your keys anywhere outside your device. Supported providers:\n• OpenAI (GPT-4o, GPT-4o-mini)\n• Anthropic (Claude Haiku, Sonnet, Opus)\n• Google Gemini (Pro, Flash)\n• OpenRouter (400+ models)\n• Ollama (local, no API key needed)\n• Offline MediaPipe (on-device, no internet)",
             badgeColor = Color(0xFFE53935)
         ),
         GuideStep(3, "🌐", "Public Tunnel",
-            "Your phone sits behind a home network. ZeroClaw uses a tunnel (ngrok or Cloudflare) to give your phone a public HTTPS URL.",
-            "Without a tunnel, platforms like Telegram and Twilio can't send webhooks to your phone. The tunnel creates a bridge:\n  Internet → Tunnel Server → Your Phone\n\nYou can optionally place an ngrok or cloudflared ARM64 binary in the app's files directory for a persistent tunnel.",
+            "Your phone sits behind a home network. ZeroClaw uses a tunnel (Cloudflare or ngrok) to give your phone a public HTTPS URL.",
+            "Without a tunnel, platforms like Telegram and Twilio can't send webhooks to your phone. The tunnel creates a bridge:\n  Internet → Tunnel Server → Your Phone\n\nCloudflare Tunnel is built-in and free — no account needed. For a stable permanent URL, use ngrok or Cloudflare with your own domain.",
             badgeColor = Color(0xFFE53935)
         ),
         GuideStep(4, "✈️", "Telegram Channel",
-            "The app polls Telegram's API every 30 seconds for new messages. When a message arrives, it gets an AI reply and is sent back instantly.",
-            "Polling works without any tunnel or webhook — it's the simplest mode. The bot appears online to users immediately after you tap Start.",
+            "The app polls Telegram's API every ~30 seconds for new messages. Each chat gets its own conversation history for context-aware replies.",
+            "Polling works without any tunnel or webhook — it's the simplest mode. The bot appears online to users immediately after you tap Start. Per-chat history keeps conversations coherent.",
             badgeColor = Color(0xFFE53935)
         ),
         GuideStep(5, "💬", "WhatsApp Channel",
@@ -57,7 +117,12 @@ val HOW_IT_WORKS = GuideSection(
             "Your phone runs a tiny HTTP server on port 8080. Twilio calls that endpoint, your phone processes the message, calls the LLM, and replies back via Twilio's REST API — all in under 3 seconds.",
             badgeColor = Color(0xFFE53935)
         ),
-        GuideStep(6, "🔋", "Battery & Persistence",
+        GuideStep(6, "🔄", "Waterfall Failover",
+            "Configure multiple API keys in priority order. If a key fails, hits rate limits, or runs out of credits, ZeroClaw automatically tries the next one.",
+            "The failover system tracks each key's health in real-time. You can see success/failure counts on the home screen. Reorder keys via drag-and-drop in the API Keys screen to set your preferred priority.",
+            badgeColor = Color(0xFFE53935)
+        ),
+        GuideStep(7, "🔋", "Battery & Persistence",
             "To keep the agent alive 24/7, disable battery optimization for ZeroClaw and keep the phone plugged in or on a wireless charger.",
             "Go to: Android Settings → Apps → ZeroClaw → Battery → Unrestricted\n\nThe Boot Receiver auto-restarts the service after a reboot if 'Auto-start on Boot' is enabled in Settings.",
             badgeColor = Color(0xFFE53935)
@@ -93,13 +158,13 @@ val TELEGRAM_GUIDE = GuideSection(
             badgeColor = Color(0xFF229ED9)
         ),
         GuideStep(4, "⚙️", "Enter Token in App Settings",
-            "Open ZeroClaw Settings (⚙️ icon), scroll to 'Telegram Bot', and paste your token.",
-            "Also enter your LLM API key and choose your AI provider (OpenAI, Anthropic, etc.) in the settings above Telegram.\n\nTap Save (💾) when done.",
+            "Open ZeroClaw Settings (gear icon), scroll to 'Telegram Bot', and paste your token.",
+            "Also add your LLM API keys in the API Keys screen (key icon on home). You can add multiple keys for failover.\n\nTap Save when done.",
             badgeColor = Color(0xFF229ED9)
         ),
         GuideStep(5, "▶️", "Start the Service",
             "Go back to the home screen and tap Start. The service will begin polling Telegram for messages.",
-            "You'll see 'Telegram connected' appear in the Live Logs section within a few seconds.\n\nThe green ✓ next to Telegram in the Connections card confirms it's live.",
+            "You'll see 'Telegram connected' appear in the Live Logs section within a few seconds.\n\nThe green status indicator next to Telegram in the Connections card confirms it's live.",
             badgeColor = Color(0xFF229ED9)
         ),
         GuideStep(6, "💬", "Test Your Bot",
