@@ -27,16 +27,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import ai.zeroclaw.android.data.ApiKeyEntry
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
@@ -71,10 +65,8 @@ fun ApiKeysScreen(onBack: () -> Unit) {
 
     // Offline model state
     var offlineModelsApp by remember { mutableStateOf(offlineManager.listAppModels()) }
-    var offlineModelsDownload by remember { mutableStateOf<List<OfflineModelManager.ModelFile>>(emptyList()) }
     var offlineLoading by remember { mutableStateOf(false) }
-    var offlineCopying by remember { mutableStateOf<String?>(null) }
-    var showCopyDialog by remember { mutableStateOf<OfflineModelManager.ModelFile?>(null) }
+    var offlineImporting by remember { mutableStateOf(false) }
     var showDeleteModel by remember { mutableStateOf<OfflineModelManager.ModelFile?>(null) }
     var offlineValidation by remember { mutableStateOf(ValidationUi()) }
 
@@ -82,60 +74,40 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     val offlineKey = keys.firstOrNull { it.safeProvider == "offline" }
     val onlineKeys = keys.filter { it.safeProvider != "offline" }
 
-    // ── Storage permission state ─────────────────────────────────────────
-    var storagePermissionGranted by remember {
-        mutableStateOf(hasStoragePermission(context))
-    }
-    var showPermissionRationale by remember { mutableStateOf(false) }
+    // ── SAF file picker — no storage permission needed ───────────────────
+    val modelPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // Get file name from URI
+        val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            cursor.moveToFirst()
+            if (nameIndex >= 0) cursor.getString(nameIndex) else null
+        } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "model.bin"
 
-    // Permission launcher for API < 30
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        storagePermissionGranted = granted || hasStoragePermission(context)
-    }
-
-    // For API 30+ (MANAGE_EXTERNAL_STORAGE), we need to open Settings
-    val manageStorageLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        storagePermissionGranted = hasStoragePermission(context)
-    }
-
-    fun requestStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ — need MANAGE_EXTERNAL_STORAGE via Settings
+        offlineImporting = true
+        offlineValidation = ValidationUi(ValidationState.LOADING, "Importing $fileName…")
+        scope.launch {
             try {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                }
-                manageStorageLauncher.launch(intent)
+                val imported = offlineManager.importModel(uri, fileName)
+                offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                    "✅ Saved: ${imported.name} (${imported.sizeMB})")
+                offlineModelsApp = offlineManager.listAppModels()
             } catch (e: Exception) {
-                // Fallback for devices that don't support the specific intent
-                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                manageStorageLauncher.launch(intent)
+                offlineValidation = ValidationUi(ValidationState.ERROR,
+                    "❌ Import failed: ${e.message}")
             }
-        } else {
-            // Android 10 and below — standard runtime permission
-            permissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+            offlineImporting = false
         }
     }
 
     fun refresh() {
         keys = keyManager.loadKeys()
         offlineModelsApp = offlineManager.listAppModels()
-        storagePermissionGranted = hasStoragePermission(context)
-        if (storagePermissionGranted) {
-            val appNames = offlineModelsApp.map { it.name }.toSet()
-            offlineModelsDownload = offlineManager.scanDownloads().filter { it.name !in appNames }
-        } else {
-            offlineModelsDownload = emptyList()
-        }
     }
 
     LaunchedEffect(Unit) { refresh() }
-    // Re-scan when permission changes
-    LaunchedEffect(storagePermissionGranted) { if (storagePermissionGranted) refresh() }
 
     Scaffold(
         topBar = {
@@ -180,17 +152,15 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                 OfflineModeSection(
                     offlineKey = offlineKey,
                     appModels = offlineModelsApp,
-                    downloadModels = offlineModelsDownload,
                     offlineManager = offlineManager,
                     isLoading = offlineLoading,
-                    copying = offlineCopying,
+                    isImporting = offlineImporting,
                     validation = offlineValidation,
                     onLoadModel = { model ->
                         offlineLoading = true
                         scope.launch {
                             val result = offlineManager.loadModel(model.path)
                             if (result.isSuccess) {
-                                // Create or update the offline key entry
                                 if (offlineKey != null) {
                                     keyManager.updateKey(offlineKey.copy(
                                         preferredModel = model.name,
@@ -215,7 +185,9 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                             refresh()
                         }
                     },
-                    onCopyModel = { showCopyDialog = it },
+                    onPickModel = {
+                        modelPickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                    },
                     onDeleteModel = { showDeleteModel = it },
                     onDisableOffline = {
                         if (offlineKey != null) {
@@ -230,9 +202,7 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                             keyManager.updateKey(offlineKey.copy(enabled = true))
                             refresh()
                         }
-                    },
-                    hasStoragePermission = storagePermissionGranted,
-                    onRequestPermission = { requestStoragePermission() }
+                    }
                 )
             }
 
@@ -314,57 +284,6 @@ fun ApiKeysScreen(onBack: () -> Unit) {
         )
     }
 
-    // ── Copy confirmation dialog ─────────────────────────────────────────
-    showCopyDialog?.let { model ->
-        var deleteFromDownloads by remember { mutableStateOf(true) }
-        AlertDialog(
-            onDismissRequest = { showCopyDialog = null },
-            icon = { Text("📦", fontSize = 28.sp) },
-            title = { Text("Copy Model to App", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Copy ${model.name} (${model.sizeMB}) to app internal storage?",
-                        fontSize = 13.sp)
-                    Text("This ensures the model works even if Downloads is cleared.",
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Checkbox(
-                            checked = deleteFromDownloads,
-                            onCheckedChange = { deleteFromDownloads = it }
-                        )
-                        Text("Delete from Downloads after copy", fontSize = 12.sp)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val m = model
-                    val del = deleteFromDownloads
-                    showCopyDialog = null
-                    offlineCopying = m.name
-                    scope.launch {
-                        try {
-                            offlineManager.copyToAppStorage(m, deleteSource = del)
-                            offlineValidation = ValidationUi(ValidationState.SUCCESS,
-                                "✅ ${m.name} copied to app storage" +
-                                if (del) " (removed from Downloads)" else "")
-                        } catch (e: Exception) {
-                            offlineValidation = ValidationUi(ValidationState.ERROR,
-                                "❌ Copy failed: ${e.message}")
-                        } finally {
-                            offlineCopying = null
-                            refresh()
-                        }
-                    }
-                }) { Text("Copy") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCopyDialog = null }) { Text("Cancel") }
-            }
-        )
-    }
-
     // ── Delete confirmation dialog ───────────────────────────────────────
     showDeleteModel?.let { model ->
         AlertDialog(
@@ -399,18 +318,15 @@ fun ApiKeysScreen(onBack: () -> Unit) {
 fun OfflineModeSection(
     offlineKey: ApiKeyEntry?,
     appModels: List<OfflineModelManager.ModelFile>,
-    downloadModels: List<OfflineModelManager.ModelFile>,
     offlineManager: OfflineModelManager,
     isLoading: Boolean,
-    copying: String?,
+    isImporting: Boolean,
     validation: ValidationUi,
     onLoadModel: (OfflineModelManager.ModelFile) -> Unit,
-    onCopyModel: (OfflineModelManager.ModelFile) -> Unit,
+    onPickModel: () -> Unit,
     onDeleteModel: (OfflineModelManager.ModelFile) -> Unit,
     onDisableOffline: () -> Unit,
-    onEnableOffline: () -> Unit,
-    hasStoragePermission: Boolean = true,
-    onRequestPermission: () -> Unit = {}
+    onEnableOffline: () -> Unit
 ) {
     val isActive = offlineKey?.enabled == true
     val loadedModel = offlineManager.loadedModelName.collectAsState().value
@@ -479,15 +395,15 @@ fun OfflineModeSection(
                 }
             }
 
-            // ── Copying indicator ────────────────────────────────────────
-            copying?.let { name ->
+            // ── Importing indicator ──────────────────────────────────────
+            if (isImporting) {
                 Surface(shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primaryContainer) {
                     Row(modifier = Modifier.fillMaxWidth().padding(10.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Text("Copying $name…", fontSize = 11.sp)
+                        Text("Importing model to app storage…", fontSize = 11.sp)
                     }
                 }
             }
@@ -507,76 +423,33 @@ fun OfflineModeSection(
                         isLoaded = offlineManager.getLoadedModelPath() == model.path,
                         isSelected = offlineKey?.safePreferredModel == model.name,
                         onLoad = { onLoadModel(model) },
-                        onCopy = null,
                         onDelete = { onDeleteModel(model) },
                         loadingThis = isLoading && offlineKey?.safePreferredModel != model.name
                     )
                 }
             }
 
-            // ── Download Models ──────────────────────────────────────────
-            if (downloadModels.isNotEmpty()) {
-                Text("📥 Models in Downloads", fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold, color = Color(0xFF2196F3))
-                Text("Tap a model to load it directly, or copy to app storage first.",
-                    fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                downloadModels.forEach { model ->
-                    OfflineModelRow(
-                        model = model,
-                        isLoaded = false,
-                        isSelected = offlineKey?.safePreferredModel == model.name,
-                        onLoad = { onLoadModel(model) },
-                        onCopy = { onCopyModel(model) },
-                        onDelete = null,
-                        loadingThis = false
-                    )
-                }
+            // ── Import Model button ──────────────────────────────────────
+            Button(
+                onClick = onPickModel,
+                enabled = !isImporting,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF795548)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (appModels.isEmpty()) "Import Model File (.bin)" else "Import Another Model",
+                    fontSize = 13.sp)
             }
 
-            // ── Storage permission needed ─────────────────────────────────
-            if (!hasStoragePermission) {
-                Surface(shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFE65100).copy(alpha = 0.1f)) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("🔒", fontSize = 24.sp)
-                        Text("Storage Permission Required", fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp)
-                        Text("ZeroClaw needs storage access to scan your Downloads folder for .bin model files.",
-                            fontSize = 11.sp, lineHeight = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp))
-                        Button(
-                            onClick = onRequestPermission,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF795548)
-                            )
-                        ) {
-                            Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Grant Storage Access", fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-
-            // ── No models found (permission granted but no files) ────────
-            if (hasStoragePermission && appModels.isEmpty() && downloadModels.isEmpty()) {
-                Surface(shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("⚠️", fontSize = 24.sp)
-                        Text("No .bin model files found", fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp)
-                        Text("Download a MediaPipe-compatible .bin model and place it in your Downloads folder.",
-                            fontSize = 11.sp, lineHeight = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 8.dp))
-                    }
-                }
+            if (appModels.isEmpty()) {
+                Text("Download a .bin model file, then tap above to import it into the app.",
+                    fontSize = 11.sp, lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp))
             }
         }
     }
@@ -611,7 +484,6 @@ fun OfflineModelRow(
     isLoaded: Boolean,
     isSelected: Boolean,
     onLoad: () -> Unit,
-    onCopy: (() -> Unit)?,
     onDelete: (() -> Unit)?,
     loadingThis: Boolean
 ) {
@@ -660,23 +532,11 @@ fun OfflineModelRow(
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(model.sizeMB, fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(if (model.isInAppStorage) "📦 App" else "📥 Downloads",
-                        fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(model.sizeMB, fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            // Copy to app button (for downloads models)
-            onCopy?.let {
-                IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.SaveAlt, "Copy to app",
-                        modifier = Modifier.size(16.dp), tint = Color(0xFF2196F3))
-                }
-            }
-
-            // Delete button (for app models)
+            // Delete button
             onDelete?.let {
                 IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Delete, "Delete",
@@ -1671,17 +1531,6 @@ fun pickBestModel(models: List<String>, provider: String): String {
             ?: models.firstOrNull { it.contains("gpt-4o") }
             ?: models.first()
     }.let { clean(it) }
-}
-
-/** Check if we have storage permission to scan Downloads */
-fun hasStoragePermission(context: android.content.Context): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        Environment.isExternalStorageManager()
-    } else {
-        ContextCompat.checkSelfPermission(
-            context, Manifest.permission.READ_EXTERNAL_STORAGE
-        ) == PackageManager.PERMISSION_GRANTED
-    }
 }
 
 fun providerColor(provider: String): Color = when (provider) {

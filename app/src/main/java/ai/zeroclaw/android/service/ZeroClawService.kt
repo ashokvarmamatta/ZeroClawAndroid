@@ -90,7 +90,7 @@ class ZeroClawService : Service() {
             serviceScope.launch {
                 try {
                     val mgr = OfflineModelManager.getInstance(this@ZeroClawService)
-                    val match = mgr.allModels().firstOrNull { it.name == offlineKey.safePreferredModel }
+                    val match = mgr.listAppModels().firstOrNull { m -> m.name == offlineKey.safePreferredModel }
                     if (match != null) {
                         mgr.loadModel(match.path)
                         log("Offline: model ${match.name} pre-loaded for background use")

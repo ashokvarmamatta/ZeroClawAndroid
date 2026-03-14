@@ -21,12 +21,6 @@
     <!-- Battery optimization exemption request -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- Storage access for offline model files -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <!-- Android 11+ (API 30+): broad file access for scanning Downloads for .bin models -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
-
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_zeroclaw"
@@ -34,7 +28,6 @@
         android:roundIcon="@drawable/ic_zeroclaw"
         android:supportsRtl="true"
         android:theme="@style/Theme.ZeroClawAndroid"
-        android:requestLegacyExternalStorage="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
         <!-- Main Activity -->

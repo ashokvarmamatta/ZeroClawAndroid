@@ -1,7 +1,7 @@
 package ai.zeroclaw.android.data
 
 import android.content.Context
-import android.os.Environment
+import android.net.Uri
 import ai.zeroclaw.android.service.ZeroClawService
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 
 /**
@@ -60,18 +59,7 @@ class OfflineModelManager private constructor(private val context: Context) {
         return dir
     }
 
-    /** Scan Downloads folder for .bin model files */
-    fun scanDownloads(): List<ModelFile> {
-        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!downloads.exists() || !downloads.canRead()) return emptyList()
-        return downloads.listFiles()
-            ?.filter { it.isFile && it.extension.equals("bin", ignoreCase = true) && it.length() > 0 }
-            ?.map { ModelFile(it.name, it.absolutePath, it.length(), isInAppStorage = false) }
-            ?.sortedBy { it.name.lowercase() }
-            ?: emptyList()
-    }
-
-    /** List models already copied to app internal storage */
+    /** List models already saved in app internal storage */
     fun listAppModels(): List<ModelFile> {
         val dir = modelsDir()
         return dir.listFiles()
@@ -81,27 +69,17 @@ class OfflineModelManager private constructor(private val context: Context) {
             ?: emptyList()
     }
 
-    /** All available models (app storage + Downloads) */
-    fun allModels(): List<ModelFile> {
-        val appModels = listAppModels()
-        val downloadModels = scanDownloads()
-        // Don't show download models that are already copied
-        val appNames = appModels.map { it.name }.toSet()
-        val uniqueDownloads = downloadModels.filter { it.name !in appNames }
-        return appModels + uniqueDownloads
-    }
-
     /**
-     * Copy a model file from Downloads to app internal storage.
-     * @param deleteSource if true, delete the original file from Downloads after successful copy.
-     * @return the new ModelFile in app storage
+     * Import a model file from a SAF content URI into app storage.
+     * No storage permission needed — the user picks the file via system file picker.
+     * @return the imported ModelFile in app storage
      */
-    suspend fun copyToAppStorage(source: ModelFile, deleteSource: Boolean = false): ModelFile =
+    suspend fun importModel(uri: Uri, fileName: String): ModelFile =
         withContext(Dispatchers.IO) {
-            val destFile = File(modelsDir(), source.name)
-            ZeroClawService.log("Offline: copying ${source.name} (${source.sizeMB}) to app storage…")
+            val destFile = File(modelsDir(), fileName)
+            ZeroClawService.log("Offline: importing $fileName to app storage…")
 
-            FileInputStream(File(source.path)).use { input ->
+            context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(destFile).use { output ->
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
@@ -109,14 +87,9 @@ class OfflineModelManager private constructor(private val context: Context) {
                         output.write(buffer, 0, bytesRead)
                     }
                 }
-            }
+            } ?: throw Exception("Cannot read file: $fileName")
 
-            if (deleteSource) {
-                val deleted = File(source.path).delete()
-                ZeroClawService.log("Offline: source ${if (deleted) "deleted" else "NOT deleted"} from Downloads")
-            }
-
-            ZeroClawService.log("Offline: ${source.name} copied to app storage")
+            ZeroClawService.log("Offline: $fileName imported (${destFile.length() / (1024 * 1024)} MB)")
             ModelFile(destFile.name, destFile.absolutePath, destFile.length(), isInAppStorage = true)
         }
 

@@ -559,16 +559,16 @@ class LlmRouter(private val context: Context) {
 
     private suspend fun callOffline(message: String, preferredModel: String): String {
         val manager = OfflineModelManager.getInstance(context)
-        // If a preferred model path is set and differs from loaded, load it
+        // If a preferred model is set and differs from loaded, load it
         if (preferredModel.isNotBlank()) {
-            val allModels = manager.allModels()
-            val match = allModels.firstOrNull { it.name == preferredModel || it.path == preferredModel }
+            val models = manager.listAppModels()
+            val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
             if (match != null && manager.getLoadedModelPath() != match.path) {
                 manager.loadModel(match.path).getOrThrow()
             }
         }
         if (!manager.isModelLoaded()) {
-            throw Exception("No offline model loaded — select one in Settings → API Keys")
+            throw Exception("No offline model loaded — import one in Settings → API Keys")
         }
         val fullPrompt = "$SYSTEM_PROMPT\n\nUser: $message\nAssistant:"
         return manager.generateResponse(fullPrompt)
@@ -576,37 +576,34 @@ class LlmRouter(private val context: Context) {
 
     private suspend fun validateOffline(preferredModel: String): ValidationResult {
         val manager = OfflineModelManager.getInstance(context)
-        val appModels = manager.listAppModels()
-        val downloadModels = manager.scanDownloads()
-        val allModels = manager.allModels()
+        val models = manager.listAppModels()
 
-        if (allModels.isEmpty()) {
+        if (models.isEmpty()) {
             return ValidationResult(false,
-                "❌ No .bin model files found. Place a model in Downloads or copy one to app storage.")
+                "❌ No models imported. Use the file picker in Settings → API Keys to import a .bin model.")
         }
 
         // Try to load the preferred model
         if (preferredModel.isNotBlank()) {
-            val match = allModels.firstOrNull { it.name == preferredModel || it.path == preferredModel }
+            val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
             if (match != null) {
                 val result = manager.loadModel(match.path)
                 return if (result.isSuccess) {
                     ValidationResult(true,
                         "✅ Offline model loaded: ${match.name} (${match.sizeMB})",
-                        allModels.map { it.name })
+                        models.map { m -> m.name })
                 } else {
                     ValidationResult(false,
                         "❌ Failed to load ${match.name}: ${result.exceptionOrNull()?.message}",
-                        allModels.map { it.name })
+                        models.map { m -> m.name })
                 }
             }
         }
 
         // No preferred model — just list available
-        val modelNames = allModels.map { "${it.name} (${it.sizeMB})" }
+        val modelNames = models.map { m -> "${m.name} (${m.sizeMB})" }
         return ValidationResult(true,
-            "✅ ${allModels.size} model file${if (allModels.size != 1) "s" else ""} available " +
-            "(${appModels.size} in app, ${downloadModels.size} in Downloads)",
+            "✅ ${models.size} model file${if (models.size != 1) "s" else ""} imported",
             modelNames)
     }
 
