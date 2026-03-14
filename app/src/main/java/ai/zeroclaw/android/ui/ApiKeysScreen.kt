@@ -27,6 +27,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import ai.zeroclaw.android.data.ApiKeyEntry
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
@@ -72,14 +82,60 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     val offlineKey = keys.firstOrNull { it.safeProvider == "offline" }
     val onlineKeys = keys.filter { it.safeProvider != "offline" }
 
+    // ── Storage permission state ─────────────────────────────────────────
+    var storagePermissionGranted by remember {
+        mutableStateOf(hasStoragePermission(context))
+    }
+    var showPermissionRationale by remember { mutableStateOf(false) }
+
+    // Permission launcher for API < 30
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        storagePermissionGranted = granted || hasStoragePermission(context)
+    }
+
+    // For API 30+ (MANAGE_EXTERNAL_STORAGE), we need to open Settings
+    val manageStorageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        storagePermissionGranted = hasStoragePermission(context)
+    }
+
+    fun requestStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ — need MANAGE_EXTERNAL_STORAGE via Settings
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                manageStorageLauncher.launch(intent)
+            } catch (e: Exception) {
+                // Fallback for devices that don't support the specific intent
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                manageStorageLauncher.launch(intent)
+            }
+        } else {
+            // Android 10 and below — standard runtime permission
+            permissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+    }
+
     fun refresh() {
         keys = keyManager.loadKeys()
         offlineModelsApp = offlineManager.listAppModels()
-        val appNames = offlineModelsApp.map { it.name }.toSet()
-        offlineModelsDownload = offlineManager.scanDownloads().filter { it.name !in appNames }
+        storagePermissionGranted = hasStoragePermission(context)
+        if (storagePermissionGranted) {
+            val appNames = offlineModelsApp.map { it.name }.toSet()
+            offlineModelsDownload = offlineManager.scanDownloads().filter { it.name !in appNames }
+        } else {
+            offlineModelsDownload = emptyList()
+        }
     }
 
     LaunchedEffect(Unit) { refresh() }
+    // Re-scan when permission changes
+    LaunchedEffect(storagePermissionGranted) { if (storagePermissionGranted) refresh() }
 
     Scaffold(
         topBar = {
@@ -174,7 +230,9 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                             keyManager.updateKey(offlineKey.copy(enabled = true))
                             refresh()
                         }
-                    }
+                    },
+                    hasStoragePermission = storagePermissionGranted,
+                    onRequestPermission = { requestStoragePermission() }
                 )
             }
 
@@ -350,7 +408,9 @@ fun OfflineModeSection(
     onCopyModel: (OfflineModelManager.ModelFile) -> Unit,
     onDeleteModel: (OfflineModelManager.ModelFile) -> Unit,
     onDisableOffline: () -> Unit,
-    onEnableOffline: () -> Unit
+    onEnableOffline: () -> Unit,
+    hasStoragePermission: Boolean = true,
+    onRequestPermission: () -> Unit = {}
 ) {
     val isActive = offlineKey?.enabled == true
     val loadedModel = offlineManager.loadedModelName.collectAsState().value
@@ -473,8 +533,36 @@ fun OfflineModeSection(
                 }
             }
 
-            // ── No models found ──────────────────────────────────────────
-            if (appModels.isEmpty() && downloadModels.isEmpty()) {
+            // ── Storage permission needed ─────────────────────────────────
+            if (!hasStoragePermission) {
+                Surface(shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFE65100).copy(alpha = 0.1f)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("🔒", fontSize = 24.sp)
+                        Text("Storage Permission Required", fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp)
+                        Text("ZeroClaw needs storage access to scan your Downloads folder for .bin model files.",
+                            fontSize = 11.sp, lineHeight = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp))
+                        Button(
+                            onClick = onRequestPermission,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF795548)
+                            )
+                        ) {
+                            Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Grant Storage Access", fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+
+            // ── No models found (permission granted but no files) ────────
+            if (hasStoragePermission && appModels.isEmpty() && downloadModels.isEmpty()) {
                 Surface(shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant) {
                     Column(modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -1583,6 +1671,17 @@ fun pickBestModel(models: List<String>, provider: String): String {
             ?: models.firstOrNull { it.contains("gpt-4o") }
             ?: models.first()
     }.let { clean(it) }
+}
+
+/** Check if we have storage permission to scan Downloads */
+fun hasStoragePermission(context: android.content.Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        Environment.isExternalStorageManager()
+    } else {
+        ContextCompat.checkSelfPermission(
+            context, Manifest.permission.READ_EXTERNAL_STORAGE
+        ) == PackageManager.PERMISSION_GRANTED
+    }
 }
 
 fun providerColor(provider: String): Color = when (provider) {
