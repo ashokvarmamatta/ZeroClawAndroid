@@ -44,6 +44,7 @@ fun SettingsScreen(
     var twilioToken by remember { mutableStateOf("") }
     var twilioFrom by remember { mutableStateOf("whatsapp:+14155238886") }
     var discordToken by remember { mutableStateOf("") }
+    var signalApiUrl by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(true) }
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
@@ -66,6 +67,7 @@ fun SettingsScreen(
             twilioToken = s.twilioToken
             twilioFrom = s.twilioFrom
             discordToken = s.discordToken
+            signalApiUrl = s.signalApiUrl
             autoStart = s.autoStart
         }
         val keys = keyManager.loadKeys()
@@ -88,7 +90,7 @@ fun SettingsScreen(
                         scope.launch {
                             settings.save(
                                 zeroClawUrl, telegramToken, twilioSid,
-                                twilioToken, twilioFrom, "", "", autoStart, discordToken
+                                twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -196,6 +198,10 @@ fun SettingsScreen(
             item { SectionHeader("🎮 Discord Bot") }
             item {
                 SettingsTextField("Bot Token (from Discord Developer Portal)", discordToken, true) { discordToken = it }
+            }
+            item { SectionHeader("📡 Signal (via signal-cli)") }
+            item {
+                SettingsTextField("signal-cli REST API URL (e.g. http://192.168.1.100:8080)", signalApiUrl, false) { signalApiUrl = it }
             }
             item { SectionHeader("💬 WhatsApp (Twilio)") }
             item { SettingsTextField("Twilio Account SID", twilioSid, false) { twilioSid = it } }
