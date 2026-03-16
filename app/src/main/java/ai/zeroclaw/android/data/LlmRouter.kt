@@ -386,7 +386,39 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 5. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 5. Speech-to-Text ────────────────────────────────────────────────
+        if (toolCalls.isEmpty() && (msg.contains("transcribe") || msg.contains("transcription") ||
+                    msg.contains("speech to text") || msg.contains("voice to text") ||
+                    msg.contains("what does this audio say") || msg.contains("convert audio"))) {
+            val audioMatch = Regex("((?:https?://)?\\S+\\.(?:mp3|wav|m4a|ogg|webm|flac|mp4))", RegexOption.IGNORE_CASE).find(userMessage)
+            if (audioMatch != null) {
+                toolCalls.add(ToolCall("auto_stt", "speech_to_text", mapOf("source" to audioMatch.groupValues[1])))
+            }
+        }
+
+        // ── 6. Text-to-Speech ────────────────────────────────────────────────
+        if (toolCalls.isEmpty() && (msg.contains("read aloud") || msg.contains("speak this") ||
+                    msg.contains("say this") || msg.contains("read this out") ||
+                    msg.contains("text to speech") || msg.contains("tts"))) {
+            val textMatch = Regex("(?:read aloud|speak this|say this|read this out|tts|text to speech)\\s*:?\\s*(.{3,})", RegexOption.IGNORE_CASE).find(userMessage)
+            if (textMatch != null) {
+                val ttsText = textMatch.groupValues[1].trim()
+                val lang = when {
+                    msg.contains("in spanish") || msg.contains("in es") -> "es"
+                    msg.contains("in french") || msg.contains("in fr") -> "fr"
+                    msg.contains("in hindi") || msg.contains("in hi") -> "hi"
+                    msg.contains("in japanese") || msg.contains("in ja") -> "ja"
+                    msg.contains("in german") || msg.contains("in de") -> "de"
+                    msg.contains("in telugu") || msg.contains("in te") -> "te"
+                    else -> "en"
+                }
+                toolCalls.add(ToolCall("auto_tts", "text_to_speech", mapOf("text" to ttsText, "language" to lang)))
+            } else if (msg == "tts" || msg == "text to speech" || msg.contains("available voices") || msg.contains("what voices")) {
+                toolCalls.add(ToolCall("auto_tts", "text_to_speech", mapOf("text" to "", "action" to "voices")))
+            }
+        }
+
+        // ── 7. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
