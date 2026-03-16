@@ -6,7 +6,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "zeroclaw_settings")
+val Context.appDataStore: DataStore<Preferences> by preferencesDataStore(name = "zeroclaw_settings")
 
 data class SettingsData(
     val zeroClawUrl: String = "http://127.0.0.1:3000",
@@ -22,6 +22,9 @@ data class SettingsData(
 class AppSettings(private val context: Context) {
 
     companion object {
+        /** Expose DataStore for use by other components (e.g. ToolSystem). */
+        fun dataStore(context: Context): DataStore<Preferences> = context.appDataStore
+
         val KEY_ZEROCLAW_URL = stringPreferencesKey("zeroclaw_url")
         val KEY_TELEGRAM_TOKEN = stringPreferencesKey("telegram_token")
         val KEY_TWILIO_SID = stringPreferencesKey("twilio_sid")
@@ -33,7 +36,7 @@ class AppSettings(private val context: Context) {
     }
 
     suspend fun getAll(): SettingsData {
-        val prefs = context.dataStore.data.first()
+        val prefs = context.appDataStore.data.first()
         return SettingsData(
             zeroClawUrl = prefs[KEY_ZEROCLAW_URL] ?: "http://127.0.0.1:3000",
             telegramToken = prefs[KEY_TELEGRAM_TOKEN] ?: "",
@@ -51,7 +54,7 @@ class AppSettings(private val context: Context) {
         twilioToken: String, twilioFrom: String, llmApiKey: String,
         llmProvider: String, autoStart: Boolean
     ) {
-        context.dataStore.edit { prefs ->
+        context.appDataStore.edit { prefs ->
             prefs[KEY_ZEROCLAW_URL] = zeroClawUrl
             prefs[KEY_TELEGRAM_TOKEN] = telegramToken
             prefs[KEY_TWILIO_SID] = twilioSid

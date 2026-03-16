@@ -2,6 +2,7 @@ package ai.zeroclaw.android.data
 
 import android.content.Context
 import ai.zeroclaw.android.service.ZeroClawService
+import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -79,8 +80,20 @@ class LlmRouter(private val context: Context) {
             return "🔄 Chat history cleared. Starting fresh!"
         }
 
+        // Handle /tools command — list available tools
+        if (userMessage.trim().equals("/tools", ignoreCase = true)) {
+            val toolSystem = ToolSystem.getInstance(context)
+            val enabled = toolSystem.enabledTools()
+            return if (enabled.isEmpty()) "No tools enabled."
+            else "🔧 Enabled tools:\n" + enabled.joinToString("\n") { "• ${it.name} — ${it.description.take(60)}" }
+        }
+
         // Record user message in history
         addToHistory(chatId, "user", userMessage)
+
+        // Build system prompt with tools
+        val toolSystem = ToolSystem.getInstance(context)
+        val toolsPrompt = toolSystem.buildToolsPrompt()
 
         var lastRateLimitMsg = ""
 
@@ -88,16 +101,10 @@ class LlmRouter(private val context: Context) {
             if (keyManager.allExhausted()) break
             val usable = keyManager.nextUsableKey() ?: break
 
-            // Build list of models to try for this key:
-            // 1) selectedModels from "Check All Models" if available
-            // 2) else fall back to the single preferredModel
-            // 3) if both empty, use "" so dispatchToProvider falls back to provider default
-            // If user has checked models but deselected ALL → skip this key entirely
             val hasCheckedModels = usable.safeCheckedModels.isNotEmpty()
             val modelsToTry = if (usable.safeSelectedModels.isNotEmpty()) {
                 usable.safeSelectedModels
             } else if (hasCheckedModels) {
-                // User checked models and deliberately deselected all — skip this key
                 val skipProvider = LlmProvider.fromId(usable.safeProvider).displayName
                 ZeroClawService.log("LLM: [ONLINE] skipping key=\"${usable.safeLabel}\" ($skipProvider) — all models deselected")
                 keyManager.markFailed(usable.id)
@@ -116,12 +123,18 @@ class LlmRouter(private val context: Context) {
             for (model in modelsToTry) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${usable.safeLabel}\" ($provider)")
 
-                val result = runCatching { dispatchToProvider(userMessage, usable, chatId, model) }
+                // Build the effective system prompt (base + tools)
+                val effectiveSystemPrompt = SYSTEM_PROMPT + toolsPrompt
+
+                val result = runCatching { dispatchToProvider(userMessage, usable, chatId, model, effectiveSystemPrompt) }
 
                 when {
                     result.isSuccess -> {
-                        val reply = result.getOrNull() ?: ""
+                        var reply = result.getOrNull() ?: ""
                         if (reply.isNotBlank()) {
+                            // ── Tool call loop ──────────────────────────────
+                            reply = handleToolCalls(reply, usable, chatId, model, effectiveSystemPrompt, toolSystem)
+
                             ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${usable.safeLabel}\" model=\"$model\" ($provider)")
                             addToHistory(chatId, "assistant", reply)
                             return reply
@@ -142,7 +155,6 @@ class LlmRouter(private val context: Context) {
                     }
                 }
             }
-            // All models for this key failed — mark it so failover moves to next key
             if (!keyWorked) {
                 keyManager.markFailed(usable.id)
             }
@@ -158,6 +170,63 @@ class LlmRouter(private val context: Context) {
             "⚠️ All $failedCount/$totalCount API keys failed. " +
             "Check your keys in Settings → Manage API Keys, then restart the service."
         }
+    }
+
+    /**
+     * Handle tool calls in LLM response — execute tools and feed results back.
+     * Loops up to MAX_TOOL_ROUNDS times for multi-step tool usage.
+     */
+    private suspend fun handleToolCalls(
+        initialReply: String,
+        entry: ApiKeyEntry,
+        chatId: String,
+        model: String,
+        systemPrompt: String,
+        toolSystem: ToolSystem
+    ): String {
+        var reply = initialReply
+        var round = 0
+
+        while (round < ToolSystem.MAX_TOOL_ROUNDS) {
+            val toolCalls = toolSystem.parseToolCalls(reply)
+            if (toolCalls.isEmpty()) break
+
+            round++
+            ZeroClawService.log("TOOL: round $round — ${toolCalls.size} tool call(s) detected")
+
+            // Execute each tool call and collect results
+            val results = StringBuilder()
+            for (call in toolCalls) {
+                val result = toolSystem.executeTool(call)
+                results.appendLine("Tool result for ${call.name}:")
+                results.appendLine(if (result.success) result.content else "Error: ${result.error}")
+                results.appendLine()
+            }
+
+            // Strip tool_call blocks from the reply to get the text parts
+            val textParts = reply.replace(
+                Regex("```tool_call\\s*\\n\\{[^`]+\\}\\s*\\n?```", RegexOption.DOT_MATCHES_ALL),
+                ""
+            ).trim()
+
+            // Build a follow-up message with the tool results
+            val toolResultMessage = buildString {
+                if (textParts.isNotBlank()) appendLine(textParts)
+                appendLine("\n[Tool Results]")
+                append(results.toString().take(6000))
+                appendLine("\nUse the above tool results to provide your final answer to the user. Do not call any more tools unless absolutely necessary.")
+            }
+
+            // Add tool result as context and call LLM again
+            addToHistory(chatId, "assistant", textParts.ifBlank { "(used tools)" })
+            addToHistory(chatId, "user", toolResultMessage)
+
+            val nextResult = runCatching { dispatchToProvider(toolResultMessage, entry, chatId, model, systemPrompt) }
+            reply = nextResult.getOrNull() ?: break
+            if (reply.isBlank()) break
+        }
+
+        return reply
     }
 
     // ── Validate a single key (used when user saves in dialog) ───────────────
@@ -688,22 +757,22 @@ class LlmRouter(private val context: Context) {
 
     // ── Provider dispatch (actual message sending) ────────────────────────────
 
-    private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry, chatId: String, model: String = ""): String {
+    private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry, chatId: String, model: String = "", systemPrompt: String = SYSTEM_PROMPT): String {
         val history = getHistory(chatId).dropLast(1) // drop the user msg we just added (it's in `message`)
         val useModel = model.ifBlank { entry.safePreferredModel }
         if (useModel != model) {
             ZeroClawService.log("LLM: model resolved: \"$model\" → \"$useModel\" (fallback to preferredModel)")
         }
         return when (entry.safeProvider) {
-            "anthropic" -> callAnthropic(message, entry.safeApiKey, useModel, history)
-            "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history, entry.safeGoogleSearch)
-            "ollama"    -> callOllama(message, useModel, history)
+            "anthropic" -> callAnthropic(message, entry.safeApiKey, useModel, history, systemPrompt)
+            "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history, entry.safeGoogleSearch, systemPrompt)
+            "ollama"    -> callOllama(message, useModel, history, systemPrompt)
             "offline"   -> callOffline(message, useModel, history)
-            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, useModel, history)
+            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, useModel, history, systemPrompt)
         }
     }
 
-    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
+    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = "", history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT): String {
         val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
         val model = when {
@@ -714,7 +783,7 @@ class LlmRouter(private val context: Context) {
         val body = JSONObject().apply {
             put("model", model); put("max_tokens", MAX_TOKENS)
             put("messages", JSONArray().apply {
-                put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
+                put(JSONObject().apply { put("role","system"); put("content", systemPrompt) })
                 history.forEach { msg ->
                     put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
                 }
@@ -736,11 +805,11 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callAnthropic(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
+    private suspend fun callAnthropic(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT): String {
         val model = preferredModel.ifBlank { "claude-haiku-4-5-20251001" }
         val body = JSONObject().apply {
             put("model", model); put("max_tokens", MAX_TOKENS)
-            put("system", SYSTEM_PROMPT)
+            put("system", systemPrompt)
             put("messages", JSONArray().apply {
                 history.forEach { msg ->
                     put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
@@ -761,7 +830,7 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList(), googleSearch: Boolean = false): String {
+    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList(), googleSearch: Boolean = false, systemPrompt: String = SYSTEM_PROMPT): String {
         val model = preferredModel.ifBlank { "gemini-2.5-flash-preview-04-17" }
             .let { if (it.isBlank()) "gemini-1.5-flash" else it }
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
@@ -781,7 +850,7 @@ class LlmRouter(private val context: Context) {
                 })
             })
             put("systemInstruction", JSONObject().apply {
-                put("parts", JSONArray().apply { put(JSONObject().apply { put("text", SYSTEM_PROMPT) }) })
+                put("parts", JSONArray().apply { put(JSONObject().apply { put("text", systemPrompt) }) })
             })
             put("generationConfig", JSONObject().apply {
                 put("maxOutputTokens", MAX_TOKENS); put("temperature", 0.7)
@@ -813,12 +882,12 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callOllama(message: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
+    private suspend fun callOllama(message: String, preferredModel: String = "", history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT): String {
         val model = preferredModel.ifBlank { "llama3.2" }
         val body = JSONObject().apply {
             put("model", model); put("stream", false)
             put("messages", JSONArray().apply {
-                put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
+                put(JSONObject().apply { put("role","system"); put("content", systemPrompt) })
                 history.forEach { msg ->
                     put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
                 }
