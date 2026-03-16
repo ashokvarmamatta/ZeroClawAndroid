@@ -82,10 +82,14 @@ You → Telegram / WhatsApp
 - Rate-limited (429) keys are skipped this session but re-tried on restart
 - Full session failure stats shown in the home screen
 
-### 🔧 AI Tools (Extensible)
+### 🔧 AI Tools (6 Built-in)
 - **Tool system** inspired by [ZeroClaw upstream](https://github.com/zeroclaw-labs/zeroclaw) — LLM can invoke tools during conversations
 - **Web Search** — DuckDuckGo search (no API key needed), returns top results with real-time info
 - **Web Fetch** — fetch any URL, strip HTML, extract readable text for summarization
+- **Memory** — persistent per-user memory store/recall/forget via Room/SQLite (survives app restarts)
+- **PDF Reader** — extract text from local files, content URIs, or remote PDF URLs
+- **Image Analysis** — analyze images using vision-capable models (GPT-4o, Gemini, Claude)
+- **Scheduled Tasks (Cron)** — schedule recurring AI prompts per user (1min–7day intervals), auto-executed by the service daemon
 - Tools work across **all providers** (OpenAI, Anthropic, Gemini, OpenRouter, Ollama)
 - Per-tool **enable/disable toggles** in Settings
 - Multi-round tool calling — LLM can chain multiple tool calls per message (max 3 rounds)
@@ -138,12 +142,17 @@ app/src/main/java/ai/zeroclaw/android/
 │   ├── LlmRouter.kt                 # Waterfall failover, per-provider dispatch, tool integration
 │   ├── OfflineModelManager.kt        # Offline .bin model management via MediaPipe
 │   ├── AppSettings.kt               # DataStore preferences
-│   └── MessageDatabase.kt           # Room DB — message history
+│   ├── MessageDatabase.kt           # Room DB — message history
+│   └── MemoryDatabase.kt            # Room DB — persistent per-user memory
 │
 ├── tools/
 │   ├── ToolSystem.kt                # Tool registry, dispatcher, prompt injection, call parsing
 │   ├── WebSearchTool.kt             # DuckDuckGo web search (no API key needed)
-│   └── WebFetchTool.kt              # URL content fetching & HTML text extraction
+│   ├── WebFetchTool.kt              # URL content fetching & HTML text extraction
+│   ├── MemoryTool.kt                # Persistent per-user memory store/recall/forget
+│   ├── PdfReadTool.kt               # PDF text extraction (local, URI, URL)
+│   ├── ImageAnalysisTool.kt         # Vision model image analysis
+│   └── CronTool.kt                  # Scheduled recurring AI tasks
 │
 ├── service/
 │   ├── ZeroClawService.kt           # Foreground service — main daemon loop, live logging
@@ -263,14 +272,17 @@ These are the planned features and improvements for future development:
 - [ ] **Auto-restart on crash** — WorkManager periodic check to restart the service if it dies
 
 ### 🔵 Advanced / Future
-- [x] **Tool system** — extensible tool framework with Web Search (DuckDuckGo) and Web Fetch, per-tool toggles in Settings ✅
-- [ ] **More tools** — Memory (persistent), PDF reading, image analysis, Notion, email, scheduled tasks
+- [x] **Tool system** — extensible tool framework with 6 built-in tools, per-tool toggles in Settings ✅
+- [x] **Memory tool** — persistent per-user memory store/recall/forget via Room/SQLite ✅
+- [x] **PDF reader tool** — extract text from local files, content URIs, or remote URLs ✅
+- [x] **Image analysis tool** — analyze images using vision-capable models (GPT-4o, Gemini, Claude) ✅
+- [x] **Scheduled tasks (Cron)** — recurring AI prompts per user, auto-executed by the service daemon ✅
+- [ ] **More tools** — Notion, email integration
 - [ ] **RAG / document Q&A** — index local files and answer questions about them
 - [ ] **Plugin system** — user-installable plugins that add new skills to the agent
 - [ ] **Multi-device sync** — sync key list and config across multiple Android devices
 - [ ] **iOS companion app** — SwiftUI port of the Android app
 - [ ] **Web dashboard** — browser UI accessible over the tunnel URL to manage the agent remotely
-- [ ] **Scheduled tasks** — let the AI run recurring tasks on a cron-like schedule (daily summaries, reminders, etc.)
 
 ---
 
