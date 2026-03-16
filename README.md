@@ -51,7 +51,8 @@ You → Telegram / WhatsApp
 - **Telegram Bot** integration via polling — responds to any message sent to your bot
 - **WhatsApp** integration via Twilio API
 - **Discord Bot** — native Gateway WebSocket integration with real-time messaging
-- **Per-chat conversation history** — maintains separate context per Telegram/WhatsApp/Discord user across messages
+- **Signal** — integration via signal-cli REST API bridge
+- **Per-chat conversation history** — maintains separate context per Telegram/WhatsApp/Discord/Signal user across messages
 - Automatic AI replies powered by any LLM you configure
 - `/clear` or `/new` commands to reset chat history per user
 
@@ -175,6 +176,9 @@ app/src/main/java/ai/zeroclaw/android/
 │
 ├── discord/
 │   └── DiscordBotManager.kt         # Discord Gateway WebSocket + REST
+│
+├── signal/
+│   └── SignalBridgeManager.kt       # Signal via signal-cli REST API
 │
 └── tunnel/
     └── TunnelManager.kt             # Cloudflare Tunnel / ngrok integration

@@ -14,6 +14,7 @@ import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.whatsapp.TwilioWhatsAppManager
 import ai.zeroclaw.android.discord.DiscordBotManager
+import ai.zeroclaw.android.signal.SignalBridgeManager
 import ai.zeroclaw.android.tunnel.TunnelManager
 import ai.zeroclaw.android.tools.CronTool
 import ai.zeroclaw.android.tools.ToolSystem
@@ -26,6 +27,7 @@ class ZeroClawService : Service() {
     private lateinit var telegramManager: TelegramBotManager
     private lateinit var whatsappManager: TwilioWhatsAppManager
     private lateinit var discordManager: DiscordBotManager
+    private lateinit var signalManager: SignalBridgeManager
     private lateinit var tunnelManager: TunnelManager
 
     companion object {
@@ -39,6 +41,7 @@ class ZeroClawService : Service() {
         @Volatile var telegramConnected = false
         @Volatile var whatsappConnected = false
         @Volatile var discordConnected  = false
+        @Volatile var signalConnected   = false
         val recentLogs = ArrayDeque<String>(50)
 
         fun log(msg: String) {
@@ -65,6 +68,7 @@ class ZeroClawService : Service() {
         telegramManager = TelegramBotManager(this)
         whatsappManager = TwilioWhatsAppManager(this)
         discordManager  = DiscordBotManager(this)
+        signalManager   = SignalBridgeManager(this)
         tunnelManager   = TunnelManager(this)
     }
 
@@ -164,6 +168,21 @@ class ZeroClawService : Service() {
                 log("Discord: no token set — go to Settings")
             }
 
+            // Signal
+            if (settings.signalApiUrl.isNotBlank()) {
+                launch {
+                    try {
+                        signalManager.start(settings.signalApiUrl)
+                        signalConnected = true
+                        log("Signal bridge connected")
+                    } catch (e: Exception) {
+                        log("Signal error: ${e.message}")
+                    }
+                }
+            } else {
+                log("Signal: no API URL set — go to Settings")
+            }
+
             // Cron task checker — runs every 60 seconds
             launch {
                 val cronTool = ToolSystem.getInstance(this@ZeroClawService)
@@ -194,10 +213,12 @@ class ZeroClawService : Service() {
         telegramConnected = false
         whatsappConnected = false
         discordConnected  = false
+        signalConnected   = false
         tunnelUrl         = null
         serviceScope.cancel()
         telegramManager.stop()
         discordManager.stop()
+        signalManager.stop()
         tunnelManager.stop()
         // Release offline model to free memory
         try { OfflineModelManager.getInstance(this).destroyEngine() } catch (_: Exception) {}

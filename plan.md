@@ -101,10 +101,10 @@
 | 76 | StatusTool.kt — service diagnostics & health reporting | ✅ DONE |
 | 77 | GitHubTool.kt — GitHub repo search, issues, READMEs | ✅ DONE |
 | 78 | InfoData.kt — AI Tools guide tab with all 8 tools documented | ✅ DONE |
-| **79** | **NotionTool.kt — query/create/update Notion pages via API** | 🔲 TODO |
-| **80** | **EmailTool.kt — send emails via SMTP or SendGrid** | 🔲 TODO |
-| **81** | **DiscordChannel.kt — Discord bot integration as messaging channel** | 🔲 TODO |
-| **82** | **SignalChannel.kt — Signal messaging integration** | 🔲 TODO |
+| 79 | NotionTool.kt — Notion workspace integration | ✅ DONE |
+| 80 | EmailTool.kt — send emails via SendGrid/Mailgun | ✅ DONE |
+| 81 | DiscordBotManager.kt — Discord Gateway WebSocket + REST | ✅ DONE |
+| 82 | SignalBridgeManager.kt — Signal via signal-cli REST API | ✅ DONE |
 
 ---
 

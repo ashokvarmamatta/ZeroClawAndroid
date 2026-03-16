@@ -17,7 +17,8 @@ data class SettingsData(
     val llmApiKey: String = "",
     val llmProvider: String = "openai",
     val autoStart: Boolean = true,
-    val discordToken: String = ""
+    val discordToken: String = "",
+    val signalApiUrl: String = ""
 )
 
 class AppSettings(private val context: Context) {
@@ -35,6 +36,7 @@ class AppSettings(private val context: Context) {
         val KEY_LLM_PROVIDER = stringPreferencesKey("llm_provider")
         val KEY_AUTO_START = booleanPreferencesKey("auto_start")
         val KEY_DISCORD_TOKEN = stringPreferencesKey("discord_token")
+        val KEY_SIGNAL_API_URL = stringPreferencesKey("signal_api_url")
     }
 
     suspend fun getAll(): SettingsData {
@@ -48,14 +50,16 @@ class AppSettings(private val context: Context) {
             llmApiKey = prefs[KEY_LLM_API_KEY] ?: "",
             llmProvider = prefs[KEY_LLM_PROVIDER] ?: "openai",
             autoStart = prefs[KEY_AUTO_START] ?: true,
-            discordToken = prefs[KEY_DISCORD_TOKEN] ?: ""
+            discordToken = prefs[KEY_DISCORD_TOKEN] ?: "",
+            signalApiUrl = prefs[KEY_SIGNAL_API_URL] ?: ""
         )
     }
 
     suspend fun save(
         zeroClawUrl: String, telegramToken: String, twilioSid: String,
         twilioToken: String, twilioFrom: String, llmApiKey: String,
-        llmProvider: String, autoStart: Boolean, discordToken: String = ""
+        llmProvider: String, autoStart: Boolean, discordToken: String = "",
+        signalApiUrl: String = ""
     ) {
         context.appDataStore.edit { prefs ->
             prefs[KEY_ZEROCLAW_URL] = zeroClawUrl
@@ -67,6 +71,7 @@ class AppSettings(private val context: Context) {
             prefs[KEY_LLM_PROVIDER] = llmProvider
             prefs[KEY_AUTO_START] = autoStart
             prefs[KEY_DISCORD_TOKEN] = discordToken
+            prefs[KEY_SIGNAL_API_URL] = signalApiUrl
         }
         // Also save auto_start to legacy SharedPreferences for BootReceiver
         context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)

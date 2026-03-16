@@ -39,6 +39,7 @@ fun HomeScreen(
     var telegramStatus by remember { mutableStateOf(false) }
     var whatsappStatus by remember { mutableStateOf(false) }
     var discordStatus by remember { mutableStateOf(false) }
+    var signalStatus by remember { mutableStateOf(false) }
     var activeKeyLabel by remember { mutableStateOf("None") }
     var keyCount by remember { mutableStateOf(0) }
     var failedKeys by remember { mutableStateOf(0) }
@@ -54,6 +55,7 @@ fun HomeScreen(
             telegramStatus     = ZeroClawService.telegramConnected
             whatsappStatus     = ZeroClawService.whatsappConnected
             discordStatus      = ZeroClawService.discordConnected
+            signalStatus       = ZeroClawService.signalConnected
 
             // Refresh key stats every poll cycle
             val allKeys = keyManager.loadKeys()
@@ -114,6 +116,7 @@ fun HomeScreen(
                     telegramOk     = telegramStatus,
                     whatsappOk     = whatsappStatus,
                     discordOk      = discordStatus,
+                    signalOk       = signalStatus,
                     activeKeyLabel = activeKeyLabel,
                     keyCount       = keyCount,
                     failedKeys     = failedKeys,
@@ -238,6 +241,7 @@ fun StatusCard(
     telegramOk: Boolean,
     whatsappOk: Boolean,
     discordOk: Boolean,
+    signalOk: Boolean,
     activeKeyLabel: String,
     keyCount: Int,
     failedKeys: Int,
@@ -267,6 +271,13 @@ fun StatusCard(
                     else -> "Not started"
                 },
                 discordOk)
+            StatusRow("📡 Signal",
+                when {
+                    signalOk -> "Connected"
+                    isRunning -> "Not configured"
+                    else -> "Not started"
+                },
+                signalOk)
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
