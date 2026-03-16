@@ -62,6 +62,7 @@ class ToolSystem private constructor(private val context: Context) {
         // Auto-register all built-in tools
         registerTool(WebSearchTool())
         registerTool(WebFetchTool())
+        registerTool(MemoryTool(context))
     }
 
     fun registerTool(tool: Tool) {

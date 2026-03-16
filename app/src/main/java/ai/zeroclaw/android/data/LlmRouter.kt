@@ -197,7 +197,11 @@ class LlmRouter(private val context: Context) {
             // Execute each tool call and collect results
             val results = StringBuilder()
             for (call in toolCalls) {
-                val result = toolSystem.executeTool(call)
+                // Auto-inject user_id for memory tool if not provided by LLM
+                val enrichedCall = if (call.name == "memory" && call.args["user_id"].isNullOrBlank()) {
+                    call.copy(args = call.args + ("user_id" to chatId))
+                } else call
+                val result = toolSystem.executeTool(enrichedCall)
                 results.appendLine("Tool result for ${call.name}:")
                 results.appendLine(if (result.success) result.content else "Error: ${result.error}")
                 results.appendLine()
