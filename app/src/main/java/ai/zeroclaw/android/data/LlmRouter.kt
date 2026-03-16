@@ -312,20 +312,35 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 2. Web Fetch (URL in message) ───────────────────────────────────
+        // ── 2. Summarize (text or URL) ──────────────────────────────────────
+        val wantsSummary = msg.contains("summarize") || msg.contains("summary") || msg.contains("summarise") ||
+                msg.contains("key points") || msg.contains("tldr") || msg.contains("tl;dr") ||
+                msg.contains("condense") || msg.contains("shorten") || msg.contains("brief")
+        if (toolCalls.isEmpty() && wantsSummary) {
+            val urlInMsg = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE).find(userMessage)
+            if (urlInMsg != null) {
+                val url = urlInMsg.groupValues[1].removeSuffix(",").removeSuffix(")").removeSuffix(".")
+                toolCalls.add(ToolCall("auto_summarize", "summarize", mapOf("text" to url)))
+            } else {
+                // Summarize the raw text after the keyword
+                val textMatch = Regex("(?:summarize|summarise|summary of|key points of|tldr|tl;dr|condense|shorten)\\s*:?\\s*(.{20,})", RegexOption.IGNORE_CASE).find(userMessage)
+                if (textMatch != null) {
+                    toolCalls.add(ToolCall("auto_summarize", "summarize", mapOf("text" to textMatch.groupValues[1].trim())))
+                }
+            }
+        }
+
+        // ── 3. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
             if (urlMatch != null) {
                 val url = urlMatch.groupValues[1].removeSuffix(",").removeSuffix(")").removeSuffix(".")
                 if (url.lowercase().endsWith(".pdf")) {
-                    // PDF URL → use pdf_read tool
                     toolCalls.add(ToolCall("auto_pdf", "pdf_read", mapOf("source" to url)))
                 } else if (url.matches(Regex(".*\\.(png|jpg|jpeg|gif|webp|bmp)(\\?.*)?$", RegexOption.IGNORE_CASE))) {
                     // Image URL → skip for offline (needs vision model)
-                    // But still fetch web page context if there's text around it
                 } else {
-                    // Regular URL → web_fetch
                     toolCalls.add(ToolCall("auto_fetch", "web_fetch", mapOf("url" to url)))
                 }
             }
