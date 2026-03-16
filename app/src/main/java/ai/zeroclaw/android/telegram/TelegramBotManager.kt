@@ -68,14 +68,22 @@ class TelegramBotManager(private val context: Context) {
         val username = message.optJSONObject("from")?.optString("username", "user") ?: "user"
         ZeroClawService.log("Telegram @$username: $text")
 
-        // Send typing indicator
-        sendChatAction(token, chatId)
+        try {
+            // Send typing indicator
+            sendChatAction(token, chatId)
 
-        // Route through LlmRouter — waterfall failover handled inside
-        val reply = llmRouter.call(text)
+            // Route through LlmRouter with per-chat history for context
+            val reply = llmRouter.call(text, chatId = "tg_$chatId")
 
-        sendMessage(token, chatId, reply)
-        ZeroClawService.log("Telegram reply sent to $chatId")
+            sendMessage(token, chatId, reply)
+            ZeroClawService.log("Telegram reply sent to $chatId")
+        } catch (e: Exception) {
+            ZeroClawService.log("Telegram: failed to handle message — ${e.message}")
+            // Try to notify user of the error
+            runCatching {
+                sendMessage(token, chatId, "⚠️ Error: ${e.message?.take(200) ?: "Unknown error"}")
+            }
+        }
     }
 
     private suspend fun sendChatAction(token: String, chatId: Long) {
@@ -93,15 +101,36 @@ class TelegramBotManager(private val context: Context) {
 
     private suspend fun sendMessage(token: String, chatId: Long, text: String) {
         val url = "https://api.telegram.org/bot$token/sendMessage"
-        val body = FormBody.Builder()
-            .add("chat_id", chatId.toString())
-            .add("text", text)
-            .add("parse_mode", "Markdown")
-            .build()
         withContext(Dispatchers.IO) {
-            runCatching {
-                client.newCall(Request.Builder().url(url).post(body).build()).execute().close()
+            // Try Markdown first — if AI response has unescaped chars, Telegram rejects it
+            val mdBody = FormBody.Builder()
+                .add("chat_id", chatId.toString())
+                .add("text", text)
+                .add("parse_mode", "Markdown")
+                .build()
+            val mdResp = runCatching {
+                client.newCall(Request.Builder().url(url).post(mdBody).build()).execute()
             }
+            val resp = mdResp.getOrNull()
+            if (resp != null && resp.isSuccessful) {
+                resp.close()
+                return@withContext
+            }
+            resp?.close()
+            // Markdown failed — retry as plain text
+            ZeroClawService.log("Telegram: Markdown send failed, retrying as plain text")
+            val plainBody = FormBody.Builder()
+                .add("chat_id", chatId.toString())
+                .add("text", text)
+                .build()
+            val plainResp = runCatching {
+                client.newCall(Request.Builder().url(url).post(plainBody).build()).execute()
+            }
+            val pr = plainResp.getOrNull()
+            if (pr != null && !pr.isSuccessful) {
+                ZeroClawService.log("Telegram: plain text send also failed — HTTP ${pr.code}")
+            }
+            pr?.close()
         }
     }
 

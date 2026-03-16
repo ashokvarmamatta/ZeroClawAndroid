@@ -15,7 +15,11 @@ data class ApiKeyEntry(
     val apiKey: String,
     val enabled: Boolean = true,
     val preferredModel: String? = null,  // nullable — old Gson entries won't have this field
-    val baseUrl: String? = null          // optional custom base URL (e.g. Modal, local proxy)
+    val baseUrl: String? = null,         // optional custom base URL (e.g. Modal, local proxy)
+    val availableModels: List<String>? = null,       // all models fetched from provider
+    val checkedModels: Map<String, String?>? = null, // modelId → null=pass, "error"=fail
+    val selectedModels: List<String>? = null,         // user-chosen subset of working models
+    val googleSearch: Boolean? = null                  // Gemini: enable Google Search grounding
 ) {
     // Safe accessors — Gson may deserialize missing fields as null even on non-null Kotlin types
     val safeLabel: String get() = label ?: ""
@@ -23,6 +27,11 @@ data class ApiKeyEntry(
     val safeApiKey: String get() = apiKey ?: ""
     val safePreferredModel: String get() = preferredModel ?: ""
     val safeBaseUrl: String get() = baseUrl ?: ""
+    val safeAvailableModels: List<String> get() = availableModels ?: emptyList()
+    val safeCheckedModels: Map<String, String?> get() = checkedModels ?: emptyMap()
+    val safeSelectedModels: List<String> get() = selectedModels ?: emptyList()
+    val workingModels: List<String> get() = safeCheckedModels.filter { it.value == null }.keys.toList()
+    val safeGoogleSearch: Boolean get() = googleSearch ?: false
 }
 
 /** All providers the app supports, with display metadata. */
@@ -57,6 +66,11 @@ enum class LlmProvider(
         "ollama", "Ollama (local, no key)", "⚫",
         "no-key-needed",
         "Runs locally — enter any value or 'local'"
+    ),
+    OFFLINE(
+        "offline", "Offline Model (on-device)", "📱",
+        "no-key-needed",
+        "Runs a .bin model locally via MediaPipe — no internet needed"
     );
 
     companion object {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,10 +21,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,16 +36,21 @@ import androidx.compose.ui.unit.sp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoScreen(onBack: () -> Unit) {
+    // Tab 0 = About, tabs 1+ = guide sections
     var selectedTabIndex by remember { mutableStateOf(0) }
-    val sections = ALL_GUIDE_SECTIONS
+    val guideSections = ALL_GUIDE_SECTIONS
+
+    data class TabDef(val emoji: String, val label: String)
+    val tabs = listOf(TabDef("🦀", "About")) +
+        guideSections.map { TabDef(it.emoji, it.label) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Setup Guide", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Everything you need to get started", fontSize = 11.sp,
+                        Text("ZeroClaw", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Info & Setup Guide", fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
@@ -66,7 +74,7 @@ fun InfoScreen(onBack: () -> Unit) {
                 contentColor = MaterialTheme.colorScheme.primary,
                 edgePadding = 12.dp
             ) {
-                sections.forEachIndexed { index, section ->
+                tabs.forEachIndexed { index, tab ->
                     Tab(
                         selected = selectedTabIndex == index,
                         onClick = { selectedTabIndex = index },
@@ -77,9 +85,9 @@ fun InfoScreen(onBack: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(section.emoji, fontSize = 16.sp)
+                            Text(tab.emoji, fontSize = 16.sp)
                             Text(
-                                section.label,
+                                tab.label,
                                 fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal,
                                 fontSize = 13.sp
                             )
@@ -96,9 +104,270 @@ fun InfoScreen(onBack: () -> Unit) {
                 },
                 label = "tab_content"
             ) { tabIndex ->
-                GuideSectionContent(section = sections[tabIndex])
+                if (tabIndex == 0) {
+                    AboutTabContent()
+                } else {
+                    GuideSectionContent(section = guideSections[tabIndex - 1])
+                }
             }
         }
+    }
+}
+
+// ─── About tab ───────────────────────────────────────────────────────────────
+
+@Composable
+fun AboutTabContent() {
+    val brandRed = Color(0xFFE53935)
+    val brandOrange = Color(0xFFFF6D00)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Hero header
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.Transparent
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    brandRed.copy(alpha = 0.15f),
+                                    brandOrange.copy(alpha = 0.10f)
+                                )
+                            ),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                        .padding(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("🦀", fontSize = 52.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "ZeroClaw",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 28.sp,
+                            color = brandRed
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "v$APP_VERSION_NAME",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Turn your Android phone into a 24/7 AI agent daemon.\nNo PC. No cloud. Just your phone.",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 21.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // App details
+        item {
+            SectionHeader("App Details")
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(4.dp)) {
+                    APP_INFO_ITEMS.forEachIndexed { index, item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(item.icon, fontSize = 20.sp)
+                            Spacer(Modifier.width(14.dp))
+                            Text(
+                                item.label,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(100.dp)
+                            )
+                            Text(
+                                item.value,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        if (index < APP_INFO_ITEMS.size - 1) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Features
+        item {
+            SectionHeader("Features")
+        }
+        items(APP_FEATURES) { feature ->
+            FeatureCard(feature)
+        }
+
+        // Supported providers
+        item {
+            SectionHeader("Supported LLM Providers")
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(4.dp)) {
+                    SUPPORTED_PROVIDERS.forEachIndexed { index, provider ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(provider.emoji, fontSize = 22.sp)
+                            Spacer(Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    provider.name,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    provider.models,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (index < SUPPORTED_PROVIDERS.size - 1) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Architecture
+        item {
+            SectionHeader("Architecture")
+        }
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    ArchRow("Language", "Kotlin")
+                    ArchRow("UI", "Jetpack Compose + Material 3")
+                    ArchRow("Navigation", "Jetpack Navigation Compose")
+                    ArchRow("Background", "Foreground Service + Boot Receiver")
+                    ArchRow("Networking", "OkHttp + Retrofit")
+                    ArchRow("Storage", "Room DB + DataStore Preferences")
+                    ArchRow("Offline AI", "MediaPipe GenAI")
+                    ArchRow("Tunneling", "Cloudflare Tunnel / ngrok")
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(32.dp)) }
+    }
+}
+
+@Composable
+private fun FeatureCard(feature: FeatureItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(feature.icon, fontSize = 26.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    feature.title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    feature.description,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArchRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            label,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            value,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

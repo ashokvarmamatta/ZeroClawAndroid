@@ -1,9 +1,12 @@
 package ai.zeroclaw.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,10 +29,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import ai.zeroclaw.android.data.ApiKeyEntry
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
 import ai.zeroclaw.android.data.LlmRouter
+import ai.zeroclaw.android.data.OfflineModelManager
 import kotlinx.coroutines.launch
 
 // ── Validation state ──────────────────────────────────────────────────────────
@@ -39,7 +47,16 @@ enum class ValidationState { IDLE, LOADING, SUCCESS, RATE_LIMITED, ERROR }
 data class ValidationUi(
     val state: ValidationState = ValidationState.IDLE,
     val message: String = "",
-    val models: List<String> = emptyList()
+    val models: List<String> = emptyList(),
+    val responseText: String = ""   // AI reply from test prompt
+)
+
+data class ModelCheckState(
+    val isChecking: Boolean = false,
+    val totalModels: Int = 0,
+    val checkedCount: Int = 0,
+    val currentModel: String = "",
+    val results: Map<String, String?> = emptyMap()  // modelId → null=pass, string=error
 )
 
 private const val GEMINI_DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
@@ -50,20 +67,157 @@ private const val GEMINI_DEFAULT_MODEL = "gemini-2.5-flash-preview-04-17"
 @Composable
 fun ApiKeysScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val keyManager = remember { LlmKeyManager.getInstance(context) }
+    val offlineManager = remember { OfflineModelManager.getInstance(context) }
     var keys by remember { mutableStateOf(keyManager.loadKeys()) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingKey by remember { mutableStateOf<ApiKeyEntry?>(null) }
 
-    fun refresh() { keys = keyManager.loadKeys() }
+    // Model checking state (per-key)
+    var modelCheckStates by remember { mutableStateOf<Map<String, ModelCheckState>>(emptyMap()) }
+    var expandedModelLists by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var retestingModel by remember { mutableStateOf("") }  // "keyId:modelId"
+    val router = remember { LlmRouter.getInstance(context) }
+
+    // Offline model state
+    var offlineModelsApp by remember { mutableStateOf(offlineManager.listAppModels()) }
+    var offlineLoading by remember { mutableStateOf(false) }
+    var offlineImporting by remember { mutableStateOf(false) }
+    var showDeleteModel by remember { mutableStateOf<OfflineModelManager.ModelFile?>(null) }
+    var offlineValidation by remember { mutableStateOf(ValidationUi()) }
+
+    // Pending picked file — shown in import dialog
+    var pendingPickedUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingPickedName by remember { mutableStateOf("") }
+
+    // Check which offline key exists
+    val offlineKey = keys.firstOrNull { it.safeProvider == "offline" }
+    val onlineKeys = keys.filter { it.safeProvider != "offline" }
+
+    // ── SAF file picker — no storage permission needed ───────────────────
+    val modelPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // Get file name from URI
+        val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            cursor.moveToFirst()
+            if (nameIndex >= 0) cursor.getString(nameIndex) else null
+        } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "model.bin"
+
+        // Show dialog asking whether to import or use from current location
+        pendingPickedUri = uri
+        pendingPickedName = fileName
+    }
+
+    fun refresh() {
+        keys = keyManager.loadKeys()
+        offlineModelsApp = offlineManager.listAppModels()
+    }
+
+    // ── Check All Models handler ──────────────────────────────────────────
+    fun checkAllModels(entry: ApiKeyEntry) {
+        val models = entry.safeAvailableModels
+            .map { it.substringBefore(" (") }  // clean "model-id (Display Name)" format
+            .filter { it.isNotBlank() }
+            .let { if (entry.safeProvider == "openrouter") it.take(20) else it }
+        if (models.isEmpty()) return
+
+        modelCheckStates = modelCheckStates + (entry.id to ModelCheckState(
+            isChecking = true, totalModels = models.size
+        ))
+
+        scope.launch {
+            val results = mutableMapOf<String, String?>()
+            for ((index, model) in models.withIndex()) {
+                modelCheckStates = modelCheckStates + (entry.id to ModelCheckState(
+                    isChecking = true,
+                    totalModels = models.size,
+                    checkedCount = index,
+                    currentModel = model,
+                    results = results.toMap()
+                ))
+
+                val result = router.testSingleModel(entry, model)
+                results[model] = if (result.isSuccess) null else
+                    (result.exceptionOrNull()?.message?.take(80) ?: "Unknown error")
+
+                kotlinx.coroutines.delay(1500) // 1.5s between tests to avoid rate limits
+            }
+
+            // Save results — auto-select all passing models
+            val workingModels = results.filter { it.value == null }.keys.toList()
+            keyManager.updateKey(entry.copy(
+                checkedModels = results,
+                selectedModels = workingModels
+            ))
+
+            modelCheckStates = modelCheckStates + (entry.id to ModelCheckState(
+                isChecking = false,
+                totalModels = models.size,
+                checkedCount = models.size,
+                results = results
+            ))
+
+            // Auto-expand model list so user sees results immediately
+            expandedModelLists = expandedModelLists + entry.id
+
+            refresh()
+        }
+    }
+
+    // ── Toggle model selection handler ─────────────────────────────────────
+    fun toggleModel(entry: ApiKeyEntry, modelId: String) {
+        val current = entry.safeSelectedModels.toMutableList()
+        if (modelId in current) current.remove(modelId) else current.add(modelId)
+        // Ensure model stays in checkedModels so it remains visible in the list
+        val checked = entry.safeCheckedModels.toMutableMap()
+        if (modelId !in checked) checked[modelId] = null // treat as OK
+        keyManager.updateKey(entry.copy(selectedModels = current, checkedModels = checked))
+        // If user selected a model, clear any "failed" mark so the key is usable again
+        if (current.isNotEmpty()) keyManager.unmarkFailed(entry.id)
+        refresh()
+    }
+
+    // ── Retest single model handler ────────────────────────────────────────
+    fun retestModel(entry: ApiKeyEntry, modelId: String) {
+        retestingModel = "${entry.id}:$modelId"
+        scope.launch {
+            val result = router.testSingleModel(entry, modelId)
+            val currentChecked = entry.safeCheckedModels.toMutableMap()
+            currentChecked[modelId] = if (result.isSuccess) null else
+                (result.exceptionOrNull()?.message?.take(80) ?: "Unknown error")
+
+            val currentSelected = entry.safeSelectedModels.toMutableList()
+            if (result.isSuccess && modelId !in currentSelected) currentSelected.add(modelId)
+            if (result.isFailure) currentSelected.remove(modelId)
+
+            keyManager.updateKey(entry.copy(
+                checkedModels = currentChecked,
+                selectedModels = currentSelected
+            ))
+            retestingModel = ""
+            refresh()
+        }
+    }
+
+    LaunchedEffect(Unit) { refresh() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("API Keys", fontWeight = FontWeight.Bold)
-                        Text("${keys.count { it.enabled }} active · failover enabled",
+                        Text("AI Configuration", fontWeight = FontWeight.Bold)
+                        val onlineCount = onlineKeys.count { it.enabled }
+                        val hasOffline = offlineKey?.enabled == true
+                        val parts = mutableListOf<String>()
+                        if (onlineCount > 0) parts.add("$onlineCount online key${if (onlineCount != 1) "s" else ""}")
+                        if (hasOffline) parts.add("offline active")
+                        if (parts.isEmpty()) parts.add("not configured")
+                        Text(parts.joinToString(" · "),
                             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
@@ -79,42 +233,97 @@ fun ApiKeysScreen(onBack: () -> Unit) {
             ExtendedFloatingActionButton(
                 onClick = { showAddDialog = true },
                 icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Add Key") },
+                text = { Text("Add Online Key") },
                 containerColor = MaterialTheme.colorScheme.primary
             )
         }
     ) { padding ->
-        if (keys.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("🔑", fontSize = 52.sp)
-                    Text("No API keys yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Tap + to configure your first LLM provider.",
-                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Add First Key")
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // ── OFFLINE MODE SECTION ─────────────────────────────────────
+            item {
+                OfflineModeSection(
+                    offlineKey = offlineKey,
+                    appModels = offlineModelsApp,
+                    offlineManager = offlineManager,
+                    isLoading = offlineLoading,
+                    isImporting = offlineImporting,
+                    validation = offlineValidation,
+                    onLoadModel = { model ->
+                        offlineLoading = true
+                        scope.launch {
+                            val result = offlineManager.loadModel(model.path)
+                            if (result.isSuccess) {
+                                if (offlineKey != null) {
+                                    keyManager.updateKey(offlineKey.copy(
+                                        preferredModel = model.name,
+                                        enabled = true
+                                    ))
+                                } else {
+                                    keyManager.addKey(ApiKeyEntry(
+                                        label = "Offline: ${model.name}",
+                                        provider = "offline",
+                                        apiKey = "offline",
+                                        preferredModel = model.name,
+                                        enabled = true
+                                    ))
+                                }
+                                offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                                    "✅ Model loaded: ${model.name} (${model.sizeMB})")
+                            } else {
+                                offlineValidation = ValidationUi(ValidationState.ERROR,
+                                    "❌ Failed: ${result.exceptionOrNull()?.message}")
+                            }
+                            offlineLoading = false
+                            refresh()
+                        }
+                    },
+                    onPickModel = {
+                        modelPickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                    },
+                    onDeleteModel = { showDeleteModel = it },
+                    onDisableOffline = {
+                        if (offlineKey != null) {
+                            keyManager.updateKey(offlineKey.copy(enabled = false))
+                            offlineManager.destroyEngine()
+                            offlineValidation = ValidationUi()
+                            refresh()
+                        }
+                    },
+                    onEnableOffline = {
+                        if (offlineKey != null) {
+                            keyManager.updateKey(offlineKey.copy(enabled = true))
+                            refresh()
+                        }
                     }
-                }
+                )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+
+            // ── ONLINE MODE SECTION ──────────────────────────────────────
+            item {
+                Spacer(Modifier.height(4.dp))
+                OnlineModeHeader(
+                    keyCount = onlineKeys.size,
+                    activeCount = onlineKeys.count { it.enabled },
+                    onAddKey = { showAddDialog = true }
+                )
+            }
+
+            if (onlineKeys.isNotEmpty()) {
                 item { FailoverBanner() }
-                itemsIndexed(keys) { index, entry ->
+                val allKeys = keys // need full list for index
+                itemsIndexed(onlineKeys) { _, entry ->
+                    val globalIndex = allKeys.indexOf(entry)
+                    val onlineIndex = onlineKeys.indexOf(entry)
                     ApiKeyCard(
                         entry = entry,
-                        index = index,
-                        isActive = index == 0 && entry.enabled,
-                        isFirst = index == 0,
-                        isLast = index == keys.lastIndex,
+                        index = onlineIndex,
+                        isActive = onlineIndex == 0 && entry.enabled,
+                        isFirst = onlineIndex == 0,
+                        isLast = onlineIndex == onlineKeys.lastIndex,
                         onToggle = {
                             keyManager.updateKey(entry.copy(enabled = !entry.enabled))
                             refresh()
@@ -123,11 +332,50 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                         onDelete = { keyManager.deleteKey(entry.id); refresh() },
                         onMoveUp = { keyManager.moveKey(entry.id, -1); refresh() },
                         onMoveDown = { keyManager.moveKey(entry.id, +1); refresh() },
-                        onSetActive = { keyManager.setActiveKey(entry.id); refresh() }
+                        onSetActive = { keyManager.setActiveKey(entry.id); refresh() },
+                        checkState = modelCheckStates[entry.id],
+                        isModelListExpanded = entry.id in expandedModelLists,
+                        retestingModel = retestingModel,
+                        onCheckAllModels = { checkAllModels(entry) },
+                        onToggleModelList = {
+                            expandedModelLists = if (entry.id in expandedModelLists)
+                                expandedModelLists - entry.id
+                            else expandedModelLists + entry.id
+                        },
+                        onToggleModel = { modelId -> toggleModel(entry, modelId) },
+                        onRetestModel = { modelId -> retestModel(entry, modelId) },
+                        onToggleGoogleSearch = {
+                            keyManager.updateKey(entry.copy(googleSearch = !entry.safeGoogleSearch))
+                            refresh()
+                        }
                     )
                 }
-                item { Spacer(Modifier.height(80.dp)) }
+            } else {
+                item {
+                    Surface(shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("🌐", fontSize = 36.sp)
+                            Text("No online API keys", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text("Add an API key to use cloud AI models (OpenAI, Claude, Gemini, etc.)",
+                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 17.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp))
+                            Button(onClick = { showAddDialog = true }) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Add API Key", fontSize = 13.sp)
+                            }
+                        }
+                    }
+                }
             }
+
+            item { Spacer(Modifier.height(80.dp)) }
         }
     }
 
@@ -145,6 +393,350 @@ fun ApiKeysScreen(onBack: () -> Unit) {
             onDismiss = { editingKey = null },
             onSave = { updated -> keyManager.updateKey(updated); refresh(); editingKey = null }
         )
+    }
+
+    // ── Import or use-in-place dialog ──────────────────────────────────
+    if (pendingPickedUri != null) {
+        val pickedUri = pendingPickedUri!!
+        val pickedName = pendingPickedName
+        val resolvedPath = remember(pickedUri) { offlineManager.resolveFilePath(pickedUri) }
+        val canUseInPlace = resolvedPath != null && java.io.File(resolvedPath).exists()
+
+        AlertDialog(
+            onDismissRequest = { pendingPickedUri = null },
+            icon = { Text("📁", fontSize = 28.sp) },
+            title = { Text("Import Model?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(pickedName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(
+                        "Save to app storage? This is recommended for reliable background use — " +
+                        "the model stays available even if the original file is deleted.",
+                        fontSize = 12.sp, lineHeight = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    pendingPickedUri = null
+                    offlineImporting = true
+                    offlineValidation = ValidationUi(ValidationState.LOADING, "Importing $pickedName…")
+                    scope.launch {
+                        try {
+                            val imported = offlineManager.importModel(pickedUri, pickedName)
+                            offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                                "✅ Saved: ${imported.name} (${imported.sizeMB})")
+                            offlineModelsApp = offlineManager.listAppModels()
+                        } catch (e: Exception) {
+                            offlineValidation = ValidationUi(ValidationState.ERROR,
+                                "❌ Import failed: ${e.message}")
+                        }
+                        offlineImporting = false
+                    }
+                }) { Text("Save to App") }
+            },
+            dismissButton = {
+                if (canUseInPlace) {
+                    TextButton(onClick = {
+                        pendingPickedUri = null
+                        // Use from current location — load directly
+                        offlineLoading = true
+                        scope.launch {
+                            val result = offlineManager.loadModel(resolvedPath!!)
+                            if (result.isSuccess) {
+                                val file = java.io.File(resolvedPath)
+                                val model = OfflineModelManager.ModelFile(
+                                    file.name, file.absolutePath, file.length(), isInAppStorage = false
+                                )
+                                if (offlineKey != null) {
+                                    keyManager.updateKey(offlineKey.copy(
+                                        preferredModel = file.name, enabled = true
+                                    ))
+                                } else {
+                                    keyManager.addKey(ApiKeyEntry(
+                                        label = "Offline: ${file.name}",
+                                        provider = "offline", apiKey = "offline",
+                                        preferredModel = file.name, enabled = true
+                                    ))
+                                }
+                                offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                                    "✅ Loaded from: ${file.name} (${model.sizeMB})")
+                            } else {
+                                offlineValidation = ValidationUi(ValidationState.ERROR,
+                                    "❌ Failed: ${result.exceptionOrNull()?.message}")
+                            }
+                            offlineLoading = false
+                            refresh()
+                        }
+                    }) { Text("Use from Current Location") }
+                } else {
+                    TextButton(onClick = { pendingPickedUri = null }) { Text("Cancel") }
+                }
+            }
+        )
+    }
+
+    // ── Delete confirmation dialog ───────────────────────────────────────
+    showDeleteModel?.let { model ->
+        AlertDialog(
+            onDismissRequest = { showDeleteModel = null },
+            icon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Delete Model?", fontWeight = FontWeight.Bold) },
+            text = { Text("Delete ${model.name} (${model.sizeMB}) from app storage? This cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        offlineManager.deleteAppModel(model.name)
+                        // If this was the active offline model, clear it
+                        if (offlineKey?.safePreferredModel == model.name) {
+                            keyManager.updateKey(offlineKey.copy(preferredModel = null, enabled = false))
+                        }
+                        showDeleteModel = null
+                        refresh()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteModel = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+// ── Offline Mode Section ─────────────────────────────────────────────────────
+
+@Composable
+fun OfflineModeSection(
+    offlineKey: ApiKeyEntry?,
+    appModels: List<OfflineModelManager.ModelFile>,
+    offlineManager: OfflineModelManager,
+    isLoading: Boolean,
+    isImporting: Boolean,
+    validation: ValidationUi,
+    onLoadModel: (OfflineModelManager.ModelFile) -> Unit,
+    onPickModel: () -> Unit,
+    onDeleteModel: (OfflineModelManager.ModelFile) -> Unit,
+    onDisableOffline: () -> Unit,
+    onEnableOffline: () -> Unit
+) {
+    val isActive = offlineKey?.enabled == true
+    val loadedModel = offlineManager.loadedModelName.collectAsState().value
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) Color(0xFF795548).copy(alpha = 0.08f)
+            else MaterialTheme.colorScheme.surface
+        ),
+        border = if (isActive) CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(Color(0xFF795548)),
+            width = 1.5.dp
+        ) else null,
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+
+            // ── Header ───────────────────────────────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("📱", fontSize = 24.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Offline Mode", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Run AI models locally on your device — no internet needed",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 15.sp)
+                }
+                if (offlineKey != null) {
+                    Switch(
+                        checked = isActive,
+                        onCheckedChange = { if (it) onEnableOffline() else onDisableOffline() },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = Color(0xFF795548)
+                        )
+                    )
+                }
+            }
+
+            // ── Currently loaded model badge ─────────────────────────────
+            if (isActive && loadedModel != null) {
+                Surface(shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4CAF50).copy(alpha = 0.12f)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("🟢", fontSize = 12.sp)
+                        Text("Active: $loadedModel", fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold, color = Color(0xFF2E7D32))
+                    }
+                }
+            }
+
+            // ── Loading indicator ────────────────────────────────────────
+            if (isLoading) {
+                Surface(shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Text("Loading model… this may take a moment", fontSize = 12.sp)
+                    }
+                }
+            }
+
+            // ── Importing indicator ──────────────────────────────────────
+            if (isImporting) {
+                Surface(shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Text("Importing model to app storage…", fontSize = 11.sp)
+                    }
+                }
+            }
+
+            // ── Validation result ────────────────────────────────────────
+            AnimatedVisibility(visible = validation.state != ValidationState.IDLE) {
+                ValidationCard(validation)
+            }
+
+            // ── App Storage Models ───────────────────────────────────────
+            if (appModels.isNotEmpty()) {
+                Text("📦 Models in App Storage", fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                appModels.forEach { model ->
+                    OfflineModelRow(
+                        model = model,
+                        isLoaded = offlineManager.getLoadedModelPath() == model.path,
+                        isSelected = offlineKey?.safePreferredModel == model.name,
+                        onLoad = { onLoadModel(model) },
+                        onDelete = { onDeleteModel(model) },
+                        loadingThis = isLoading && offlineKey?.safePreferredModel != model.name
+                    )
+                }
+            }
+
+            // ── Import Model button ──────────────────────────────────────
+            Button(
+                onClick = onPickModel,
+                enabled = !isImporting,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF795548)
+                ),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (appModels.isEmpty()) "Import Model File (.bin)" else "Import Another Model",
+                    fontSize = 13.sp)
+            }
+
+            if (appModels.isEmpty()) {
+                Text("Download a .bin model file, then tap above to import it into the app.",
+                    fontSize = 11.sp, lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp))
+            }
+        }
+    }
+}
+
+// ── Online Mode Header ───────────────────────────────────────────────────────
+
+@Composable
+fun OnlineModeHeader(keyCount: Int, activeCount: Int, onAddKey: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("🌐", fontSize = 22.sp)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Online Mode", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            if (keyCount > 0) {
+                Text("$activeCount active key${if (activeCount != 1) "s" else ""} · failover enabled",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("Add API keys for cloud AI providers",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+// ── Offline Model Row ────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OfflineModelRow(
+    model: OfflineModelManager.ModelFile,
+    isLoaded: Boolean,
+    isSelected: Boolean,
+    onLoad: () -> Unit,
+    onDelete: (() -> Unit)?,
+    loadingThis: Boolean
+) {
+    val accent = Color(0xFF795548)
+    Card(
+        onClick = onLoad,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isLoaded -> Color(0xFF4CAF50).copy(alpha = 0.08f)
+                isSelected -> accent.copy(alpha = 0.1f)
+                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            }
+        ),
+        border = if (isLoaded) CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(Color(0xFF4CAF50)), width = 1.5.dp
+        ) else null
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Status icon
+            when {
+                isLoaded -> Icon(Icons.Default.CheckCircle, null,
+                    tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                loadingThis -> CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                else -> Icon(Icons.Default.PlayCircleOutline, "Load model",
+                    tint = accent, modifier = Modifier.size(20.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(model.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    if (isLoaded) {
+                        Surface(shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.15f)) {
+                            Text("LOADED", modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                        }
+                    }
+                }
+                Text(model.sizeMB, fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            // Delete button
+            onDelete?.let {
+                IconButton(onClick = it, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Delete, "Delete",
+                        modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
     }
 }
 
@@ -184,7 +776,15 @@ fun ApiKeyCard(
     onDelete: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
-    onSetActive: () -> Unit
+    onSetActive: () -> Unit,
+    checkState: ModelCheckState? = null,
+    isModelListExpanded: Boolean = false,
+    retestingModel: String = "",
+    onCheckAllModels: () -> Unit = {},
+    onToggleModelList: () -> Unit = {},
+    onToggleModel: (String) -> Unit = {},
+    onRetestModel: (String) -> Unit = {},
+    onToggleGoogleSearch: () -> Unit = {}
 ) {
     val provider = LlmProvider.fromId(entry.safeProvider)
     val accentColor = providerColor(entry.safeProvider)
@@ -223,7 +823,7 @@ fun ApiKeyCard(
                     Text(entry.safeLabel, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                         color = if (entry.enabled) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant)
-                    val modelSuffix = if (entry.safeProvider == "gemini" && entry.safePreferredModel.isNotBlank())
+                    val modelSuffix = if (entry.safePreferredModel.isNotBlank())
                         " · ${entry.safePreferredModel}" else ""
                     Text(provider.displayName + modelSuffix, fontSize = 11.sp,
                         color = accentColor.copy(alpha = if (entry.enabled) 1f else 0.5f),
@@ -322,6 +922,334 @@ fun ApiKeyCard(
                         tint = MaterialTheme.colorScheme.error)
                 }
             }
+
+            // ── Check All Models section ────────────────────────────────────
+            if (entry.safeAvailableModels.isNotEmpty() && entry.safeProvider != "offline") {
+                val isChecking = checkState?.isChecking == true
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Check All Models button
+                    Surface(
+                        onClick = { if (!isChecking) onCheckAllModels() },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF00BCD4).copy(alpha = 0.12f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isChecking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color(0xFF00BCD4)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                val done = checkState?.checkedCount ?: 0
+                                val total = checkState?.totalModels ?: 0
+                                Text(
+                                    "Checking… $done/$total",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00BCD4)
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = Color(0xFF00BCD4))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    if (entry.safeCheckedModels.isNotEmpty()) "Re-check All" else "Check All Models",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00BCD4)
+                                )
+                            }
+                        }
+                    }
+
+                    // Show/Hide models toggle
+                    if (entry.safeCheckedModels.isNotEmpty() && !isChecking) {
+                        Surface(
+                            onClick = onToggleModelList,
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                if (isModelListExpanded) "Hide"
+                                else "${entry.workingModels.size}/${entry.safeCheckedModels.size} OK",
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+
+                // ── Live progress during checking ───────────────────────────
+                if (isChecking && checkState != null && checkState.results.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Column(modifier = Modifier.padding(start = 4.dp)) {
+                        checkState.results.forEach { (modelId, result) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                when {
+                                    result == null -> // pass
+                                        Icon(Icons.Default.Check, null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFF4CAF50))
+                                    else -> // fail
+                                        Icon(Icons.Default.Close, null,
+                                            modifier = Modifier.size(12.dp),
+                                            tint = Color(0xFFEF5350))
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    modelId,
+                                    fontSize = 10.sp,
+                                    color = if (result == null) Color(0xFF4CAF50)
+                                    else Color(0xFFEF5350).copy(alpha = 0.7f),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (result != null) {
+                                    Text(
+                                        result.take(30),
+                                        fontSize = 9.sp,
+                                        color = Color(0xFFEF5350).copy(alpha = 0.5f),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                        // Show pending model with spinner
+                        if (checkState.checkedCount < checkState.totalModels) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 1.5.dp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    checkState.currentModel,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ── Model selection list (after checking) ───────────────────
+                if (isModelListExpanded && entry.safeCheckedModels.isNotEmpty() && !isChecking) {
+                    Spacer(Modifier.height(6.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                "Select models for this key:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            // Merge checkedModels with selectedModels that may be missing
+                            // (recovery for data saved before serializeNulls fix)
+                            val mergedModels = buildMap {
+                                putAll(entry.safeCheckedModels)
+                                for (m in entry.safeSelectedModels) {
+                                    if (m !in this) put(m, null) // selected but missing → treat as OK
+                                }
+                            }
+                            mergedModels.toSortedMap().forEach { (modelId, errorMsg) ->
+                                val works = errorMsg == null
+                                val isSelected = modelId in entry.safeSelectedModels
+                                val isRetesting = retestingModel == "${entry.id}:$modelId"
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = works) { onToggleModel(modelId) }
+                                        .padding(vertical = 3.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { if (works) onToggleModel(modelId) },
+                                        enabled = works,
+                                        modifier = Modifier.size(20.dp),
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = Color(0xFF00BCD4),
+                                            uncheckedColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            modelId,
+                                            fontSize = 11.sp,
+                                            color = if (works) MaterialTheme.colorScheme.onSurface
+                                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (errorMsg != null) {
+                                            Text(
+                                                errorMsg.take(60),
+                                                fontSize = 9.sp,
+                                                color = Color(0xFFEF5350).copy(alpha = 0.6f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    // Status badge
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (works) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                        else Color(0xFFEF5350).copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            if (works) "OK" else "FAIL",
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (works) Color(0xFF4CAF50) else Color(0xFFEF5350)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    // Retest button
+                                    Surface(
+                                        onClick = { onRetestModel(modelId) },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFFF8F00).copy(alpha = 0.12f)
+                                    ) {
+                                        Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                                            if (isRetesting) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(10.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                    color = Color(0xFFFF8F00)
+                                                )
+                                            } else {
+                                                Text(
+                                                    "Test",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFFF8F00)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Google Search grounding toggle (Gemini only) ────────────────
+            if (entry.safeProvider == "gemini") {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4285F4).copy(alpha = 0.08f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleGoogleSearch() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🔍", fontSize = 16.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Google Search Grounding",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                if (entry.safeGoogleSearch) "Replies include real-time web info"
+                                else "Replies use training data only",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = entry.safeGoogleSearch,
+                            onCheckedChange = { onToggleGoogleSearch() },
+                            modifier = Modifier.height(20.dp),
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = Color(0xFF4285F4),
+                                checkedThumbColor = Color.White
+                            )
+                        )
+                    }
+                }
+            }
+
+            // ── Selected models summary with Edit Selection button ──────────
+            if (entry.safeSelectedModels.isNotEmpty() && entry.safeCheckedModels.isNotEmpty()
+                && !isModelListExpanded && checkState?.isChecking != true) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Using: ${entry.safeSelectedModels.joinToString(", ")}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        onClick = onToggleModelList,
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF00BCD4).copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Edit, null,
+                                modifier = Modifier.size(12.dp),
+                                tint = Color(0xFF00BCD4))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Edit Selection",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF00BCD4)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -347,10 +1275,29 @@ fun KeyEditDialog(
 
     var validation      by remember { mutableStateOf(ValidationUi()) }
 
-    // Gemini model picker state
-    var geminiModels          by remember { mutableStateOf<List<String>>(emptyList()) }
-    var selectedModel         by remember { mutableStateOf(existing?.safePreferredModel?.ifBlank { GEMINI_DEFAULT_MODEL } ?: GEMINI_DEFAULT_MODEL) }
+    // Model picker state — pre-fill from existing entry if available
+    var availableModels       by remember { mutableStateOf(existing?.safeAvailableModels ?: emptyList()) }
+    // selectedModel: always pre-fill from existing; LaunchedEffect below resets it if provider changes
+    var selectedModel         by remember { mutableStateOf(existing?.safePreferredModel ?: "") }
     var modelPickerExpanded   by remember { mutableStateOf(false) }
+
+    // OpenRouter browse-models sheet
+    var showBrowseModels         by remember { mutableStateOf(false) }
+    var browseLoading            by remember { mutableStateOf(false) }
+    var openRouterCatalog        by remember { mutableStateOf<List<LlmRouter.OpenRouterModel>>(emptyList()) }
+    var browseSearch             by remember { mutableStateOf("") }
+
+    // Dialog model testing state
+    var dialogCheckedModels by remember { mutableStateOf(
+        existing?.safeSelectedModels?.toSet() ?: emptySet()
+    ) }
+    var dialogTestResults by remember { mutableStateOf(
+        existing?.safeCheckedModels ?: emptyMap<String, String?>()
+    ) }
+    var isTestingAll by remember { mutableStateOf(false) }
+    var testingAllProgress by remember { mutableStateOf(0) }
+    var testingAllTotal by remember { mutableStateOf(0) }
+    var singleTestingModel by remember { mutableStateOf("") }
 
     // cURL mode
     var curlMode        by remember { mutableStateOf(false) }
@@ -361,9 +1308,23 @@ fun KeyEditDialog(
 
     val selProvider = LlmProvider.fromId(provider)
 
-    LaunchedEffect(apiKey, provider, baseUrl) {
+    // Reset state when provider changes so stale model IDs from another provider don't carry over
+    LaunchedEffect(provider) {
         validation = ValidationUi()
-        if (provider != "gemini") geminiModels = emptyList()
+        availableModels = emptyList()
+        dialogCheckedModels = emptySet()
+        dialogTestResults = emptyMap()
+        if (existing?.safeProvider != provider) {
+            selectedModel = ""
+        }
+    }
+    LaunchedEffect(apiKey, baseUrl) {
+        if (apiKey.isNotBlank() || baseUrl.isNotBlank()) {
+            validation = ValidationUi()
+            availableModels = emptyList()
+            dialogCheckedModels = emptySet()
+            dialogTestResults = emptyMap()
+        }
     }
 
     /** Parse a cURL command and populate fields */
@@ -551,7 +1512,7 @@ fun KeyEditDialog(
                             shape = RoundedCornerShape(12.dp))
                         ExposedDropdownMenu(expanded = provExpanded,
                             onDismissRequest = { provExpanded = false }) {
-                            LlmProvider.entries.forEach { p ->
+                            LlmProvider.entries.filter { it.id != "offline" }.forEach { p ->
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically,
@@ -616,46 +1577,336 @@ fun KeyEditDialog(
                                 fontSize = 10.sp)
                         })
 
-                    // Gemini model picker — after successful validation
-                    AnimatedVisibility(visible = provider == "gemini" && geminiModels.isNotEmpty()) {
-                        ExposedDropdownMenuBox(expanded = modelPickerExpanded,
-                            onExpandedChange = { modelPickerExpanded = it }) {
-                            OutlinedTextField(
-                                value = selectedModel,
-                                onValueChange = {}, readOnly = true,
-                                label = { Text("Gemini Model") },
-                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(modelPickerExpanded) },
-                                modifier = Modifier.fillMaxWidth().menuAnchor(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFF4285F4),
-                                    unfocusedBorderColor = Color(0xFF4285F4).copy(alpha = 0.5f)))
-                            ExposedDropdownMenu(expanded = modelPickerExpanded,
-                                onDismissRequest = { modelPickerExpanded = false }) {
-                                geminiModels.forEach { model ->
-                                    val clean = model.substringBefore(" (")
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                if (clean.contains("2.5-flash")) {
-                                                    Surface(shape = RoundedCornerShape(4.dp),
-                                                        color = Color(0xFF4285F4).copy(alpha = 0.15f)) {
-                                                        Text("★ BEST",
-                                                            modifier = Modifier.padding(
-                                                                horizontal = 4.dp, vertical = 2.dp),
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color(0xFF4285F4))
-                                                    }
+                    // ── OpenRouter: Browse Models button ─────────────────────
+                    AnimatedVisibility(visible = provider == "openrouter" && apiKey.isNotBlank()) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    showBrowseModels = true
+                                    if (openRouterCatalog.isEmpty()) {
+                                        browseLoading = true
+                                        val router = LlmRouter.getInstance(context)
+                                        openRouterCatalog = router.listOpenRouterModels(apiKey.trim())
+                                        browseLoading = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF7C4DFF)
+                            )
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (selectedModel.isNotBlank()) "Model: $selectedModel" else "Browse 400+ Models",
+                                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // ── Load Models button — fetch models without testing ────────
+                    var isLoadingModels by remember { mutableStateOf(false) }
+
+                    AnimatedVisibility(visible = provider != "offline" &&
+                        (provider == "ollama" || apiKey.isNotBlank()) &&
+                        availableModels.isEmpty() && !isLoadingModels) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    isLoadingModels = true
+                                    validation = ValidationUi(ValidationState.LOADING, "Fetching models…")
+                                    val router = LlmRouter.getInstance(context)
+                                    val entry = ApiKeyEntry(
+                                        label = "fetch",
+                                        provider = provider,
+                                        apiKey = if (provider == "ollama") "local" else apiKey.trim(),
+                                        baseUrl = baseUrl.trim()
+                                    )
+                                    try {
+                                        val models = router.fetchModelsOnly(entry)
+                                        if (models.isNotEmpty()) {
+                                            availableModels = models
+                                            dialogCheckedModels = emptySet()
+                                            dialogTestResults = emptyMap()
+                                            validation = ValidationUi(ValidationState.SUCCESS,
+                                                "✅ Found ${models.size} models. Test them or select and save.")
+                                        } else {
+                                            validation = ValidationUi(ValidationState.ERROR,
+                                                "❌ No models found. Check your API key.")
+                                        }
+                                    } catch (e: Exception) {
+                                        validation = ValidationUi(ValidationState.ERROR,
+                                            "❌ ${e.message}")
+                                    }
+                                    isLoadingModels = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Load Models", fontSize = 12.sp)
+                        }
+                    }
+
+                    // Loading indicator
+                    AnimatedVisibility(visible = isLoadingModels) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Fetching models…", fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    // ── Model list with checkboxes + testing ──────────────────
+                    AnimatedVisibility(visible = availableModels.isNotEmpty()) {
+                        val accentCol = providerColor(provider)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Header row: model count + Test All Models button
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${availableModels.size} models",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+
+                                if (!isTestingAll) {
+                                    Surface(
+                                        onClick = {
+                                            val models = availableModels.map { it.substringBefore(" (") }
+                                                .filter { it.isNotBlank() }
+                                            if (models.isEmpty()) return@Surface
+                                            isTestingAll = true
+                                            testingAllTotal = models.size
+                                            testingAllProgress = 0
+                                            scope.launch {
+                                                val results = mutableMapOf<String, String?>()
+                                                val router = LlmRouter.getInstance(context)
+                                                val testEntry = ApiKeyEntry(
+                                                    label = "test", provider = provider,
+                                                    apiKey = if (provider == "ollama") "local" else apiKey.trim(),
+                                                    baseUrl = baseUrl.trim()
+                                                )
+                                                for ((idx, model) in models.withIndex()) {
+                                                    testingAllProgress = idx
+                                                    val result = router.testSingleModel(testEntry, model)
+                                                    results[model] = if (result.isSuccess) null
+                                                        else (result.exceptionOrNull()?.message?.take(80) ?: "Error")
+                                                    dialogTestResults = results.toMap()
+                                                    kotlinx.coroutines.delay(1500) // 1.5s between tests to avoid rate limits
                                                 }
-                                                Text(clean, fontSize = 12.sp,
-                                                    fontFamily = FontFamily.Monospace)
+                                                testingAllProgress = models.size
+                                                // Auto-check all passing models
+                                                dialogCheckedModels = results.filter { it.value == null }.keys
+                                                isTestingAll = false
+                                                validation = ValidationUi(
+                                                    ValidationState.SUCCESS,
+                                                    "✅ ${dialogCheckedModels.size}/${models.size} models passed"
+                                                )
                                             }
                                         },
-                                        onClick = { selectedModel = clean; modelPickerExpanded = false }
-                                    )
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFF00BCD4).copy(alpha = 0.12f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.PlayArrow, null,
+                                                modifier = Modifier.size(14.dp),
+                                                tint = Color(0xFF00BCD4))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (dialogTestResults.isNotEmpty()) "Re-test All" else "Test All Models",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF00BCD4)
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF00BCD4)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "Testing $testingAllProgress/$testingAllTotal…",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF00BCD4)
+                                        )
+                                    }
                                 }
+                            }
+
+                            // Scrollable model list with checkboxes
+                            Card(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(8.dp)
+                                ) {
+                                    availableModels.forEach { model ->
+                                        val clean = model.substringBefore(" (")
+                                        val isChecked = clean in dialogCheckedModels
+                                        val isTested = clean in dialogTestResults
+                                        val testResult = dialogTestResults[clean]
+                                        val isSingleTesting = singleTestingModel == clean
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    dialogCheckedModels = if (isChecked)
+                                                        dialogCheckedModels - clean
+                                                    else dialogCheckedModels + clean
+                                                }
+                                                .padding(vertical = 3.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Checkbox(
+                                                checked = isChecked,
+                                                onCheckedChange = {
+                                                    dialogCheckedModels = if (isChecked)
+                                                        dialogCheckedModels - clean
+                                                    else dialogCheckedModels + clean
+                                                },
+                                                modifier = Modifier.size(20.dp),
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = accentCol,
+                                                    uncheckedColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                                )
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    clean, fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    color = if (isTested && testResult != null)
+                                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                                    else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                // Show error message for failed models
+                                                if (isTested && testResult != null) {
+                                                    Text(
+                                                        testResult.take(60),
+                                                        fontSize = 9.sp,
+                                                        color = Color(0xFFEF5350).copy(alpha = 0.7f),
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        lineHeight = 12.sp
+                                                    )
+                                                }
+                                            }
+
+                                            // Status: spinner during test, OK/FAIL badge after
+                                            if (isTestingAll && !isTested && clean == availableModels
+                                                .map { it.substringBefore(" (") }
+                                                .getOrNull(testingAllProgress)) {
+                                                // Currently being tested
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(12.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                    color = Color(0xFF00BCD4)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                            } else if (isTested) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = if (testResult == null)
+                                                        Color(0xFF4CAF50).copy(alpha = 0.15f)
+                                                    else Color(0xFFEF5350).copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        if (testResult == null) "OK" else "FAIL",
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (testResult == null) Color(0xFF4CAF50)
+                                                                else Color(0xFFEF5350)
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(4.dp))
+                                            }
+
+                                            // Per-model Test button — shown when model is checked
+                                            if (isChecked && !isTestingAll) {
+                                                Surface(
+                                                    onClick = {
+                                                        singleTestingModel = clean
+                                                        scope.launch {
+                                                            val router = LlmRouter.getInstance(context)
+                                                            val testEntry = ApiKeyEntry(
+                                                                label = "test", provider = provider,
+                                                                apiKey = if (provider == "ollama") "local" else apiKey.trim(),
+                                                                baseUrl = baseUrl.trim()
+                                                            )
+                                                            val result = router.testSingleModel(testEntry, clean)
+                                                            val newResults = dialogTestResults.toMutableMap()
+                                                            newResults[clean] = if (result.isSuccess) null
+                                                                else (result.exceptionOrNull()?.message?.take(80) ?: "Error")
+                                                            dialogTestResults = newResults
+                                                            // Single model test: select only this one, unselect all others
+                                                            if (result.isSuccess) {
+                                                                dialogCheckedModels = setOf(clean)
+                                                            } else {
+                                                                dialogCheckedModels = dialogCheckedModels - clean
+                                                            }
+                                                            singleTestingModel = ""
+                                                        }
+                                                    },
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFFF8F00).copy(alpha = 0.12f)
+                                                ) {
+                                                    Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+                                                        if (isSingleTesting) {
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(10.dp),
+                                                                strokeWidth = 1.5.dp,
+                                                                color = Color(0xFFFF8F00)
+                                                            )
+                                                        } else {
+                                                            Text("Test", fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFFFF8F00))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Selected count summary
+                            if (dialogCheckedModels.isNotEmpty()) {
+                                Text(
+                                    "${dialogCheckedModels.size} model${if (dialogCheckedModels.size != 1) "s" else ""} selected",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF4CAF50),
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -668,89 +1919,31 @@ fun KeyEditDialog(
                     // Buttons row
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 
-                        // TEST KEY — now passes selectedModel so it tests what user picked
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    validation = ValidationUi(ValidationState.LOADING, "Checking key…")
-                                    val router = LlmRouter.getInstance(context)
-                                    val testEntry = ApiKeyEntry(
-                                        label          = label.ifBlank { "test" },
-                                        provider       = provider,
-                                        apiKey         = if (provider == "ollama") "local" else apiKey.trim(),
-                                        baseUrl        = baseUrl.trim(),
-                                        preferredModel = if (provider == "gemini") selectedModel else ""
-                                    )
-                                    val result = router.validateKey(testEntry)
-                                    when {
-                                        result.isValid -> {
-                                            validation = ValidationUi(ValidationState.SUCCESS, result.message)
-                                            if (provider == "gemini" && result.availableModels.isNotEmpty()) {
-                                                geminiModels = result.availableModels
-                                                // Keep the user's currently selected model if it's in the list
-                                                val currentClean = selectedModel.substringBefore(" (")
-                                                val modelInList = result.availableModels
-                                                    .any { it.substringBefore(" (") == currentClean }
-                                                if (!modelInList) {
-                                                    // Fall back to best model
-                                                    val best = result.availableModels
-                                                        .firstOrNull { it.contains("2.5-flash") }
-                                                        ?: result.availableModels
-                                                            .firstOrNull { it.contains("2.0-flash") }
-                                                        ?: result.availableModels
-                                                            .firstOrNull { it.contains("1.5-flash") }
-                                                        ?: result.availableModels.first()
-                                                    selectedModel = best.substringBefore(" (")
-                                                }
-                                            }
-                                        }
-                                        result.message.contains("429") ||
-                                        result.message.lowercase().contains("quota") ||
-                                        result.message.lowercase().contains("rate") ->
-                                            validation = ValidationUi(
-                                                ValidationState.RATE_LIMITED,
-                                                "⚠️ Key valid but quota exceeded — save anyway.")
-                                        else ->
-                                            validation = ValidationUi(ValidationState.ERROR, result.message)
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = (provider == "ollama" || apiKey.isNotBlank()) &&
-                                      validation.state != ValidationState.LOADING
-                        ) {
-                            if (validation.state == ValidationState.LOADING) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                            } else {
-                                Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(14.dp))
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Text(when (validation.state) {
-                                ValidationState.LOADING -> "Checking…"
-                                ValidationState.SUCCESS -> "✓ Valid"
-                                else                    -> "Test Key"
-                            }, fontSize = 12.sp)
-                        }
-
                         // SAVE
                         Button(
                             onClick = {
                                 if (label.isBlank()) return@Button
-                                val key = if (provider == "ollama" && apiKey.isBlank()) "local" else apiKey
+                                val key = when {
+                                    provider == "ollama" && apiKey.isBlank() -> "local"
+                                    else -> apiKey
+                                }
                                 val base = existing ?: ApiKeyEntry(label = "", provider = "", apiKey = "")
+                                val checkedList = dialogCheckedModels.toList()
                                 onSave(base.copy(
                                     label          = label.trim(),
                                     provider       = provider,
                                     apiKey         = key.trim(),
                                     baseUrl        = baseUrl.trim().ifBlank { null },
-                                    preferredModel = if (provider == "gemini") selectedModel else ""
+                                    preferredModel = checkedList.firstOrNull()
+                                        ?: selectedModel.ifBlank { null },
+                                    availableModels = availableModels.ifEmpty { null },
+                                    checkedModels  = dialogTestResults.ifEmpty { null },
+                                    selectedModels = checkedList.ifEmpty { null }
                                 ))
                             },
                             modifier = Modifier.weight(1f),
                             enabled = label.isNotBlank() &&
-                                      (provider == "ollama" || apiKey.isNotBlank()) &&
-                                      validation.state != ValidationState.LOADING
+                                      (provider == "ollama" || apiKey.isNotBlank())
                         ) {
                             Icon(Icons.Default.Save, null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
@@ -763,6 +1956,234 @@ fun KeyEditDialog(
                 TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                     Text("Cancel")
                 }
+            }
+        }
+    }
+
+    // ── OpenRouter Browse Models dialog ───────────────────────────────────────
+    if (showBrowseModels) {
+        OpenRouterBrowseDialog(
+            loading      = browseLoading,
+            models       = openRouterCatalog,
+            search       = browseSearch,
+            onSearchChange = { browseSearch = it },
+            selectedId   = selectedModel,
+            apiKey       = apiKey.trim(),
+            onSelect     = { modelId ->
+                selectedModel = modelId
+                showBrowseModels = false
+                browseSearch = ""
+                // Add browsed model to available list if not already there
+                if (!availableModels.any { it.substringBefore(" (") == modelId }) {
+                    availableModels = availableModels + modelId
+                }
+                // Check this model in the list
+                dialogCheckedModels = dialogCheckedModels + modelId
+            },
+            onDismiss = { showBrowseModels = false; browseSearch = "" }
+        )
+    }
+}
+
+// ── OpenRouter Browse Models dialog ──────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OpenRouterBrowseDialog(
+    loading: Boolean,
+    models: List<LlmRouter.OpenRouterModel>,
+    search: String,
+    onSearchChange: (String) -> Unit,
+    selectedId: String,
+    apiKey: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val filtered = remember(search, models) {
+        if (search.isBlank()) models
+        else models.filter {
+            it.id.contains(search, ignoreCase = true) ||
+            it.name.contains(search, ignoreCase = true)
+        }
+    }
+    val freeModels    = filtered.filter { it.isFree }
+    val paidModels    = filtered.filter { !it.isFree }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+
+                // ── Header ────────────────────────────────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF7C4DFF))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Color.White,
+                        modifier = Modifier.size(22.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("OpenRouter Models", color = Color.White,
+                            fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text(
+                            if (loading) "Loading catalog…"
+                            else "${models.size} models · ${models.count { it.isFree }} free",
+                            color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, null, tint = Color.White)
+                    }
+                }
+
+                // ── Search bar ────────────────────────────────────────────────
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = onSearchChange,
+                    placeholder = { Text("Search models…", fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = {
+                        if (search.isNotBlank())
+                            IconButton(onClick = { onSearchChange("") }) {
+                                Icon(Icons.Default.Clear, null, modifier = Modifier.size(16.dp))
+                            }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                // ── Body ──────────────────────────────────────────────────────
+                if (loading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(color = Color(0xFF7C4DFF))
+                            Text("Fetching model catalog…", fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else if (filtered.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("No models match \"$search\"", fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Free models section
+                        if (freeModels.isNotEmpty()) {
+                            item {
+                                Text("🆓 FREE MODELS (${freeModels.size})",
+                                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4CAF50),
+                                    modifier = Modifier.padding(vertical = 4.dp))
+                            }
+                            items(freeModels) { model ->
+                                OpenRouterModelCard(
+                                    model = model,
+                                    isSelected = model.id == selectedId,
+                                    onClick = { onSelect(model.id) }
+                                )
+                            }
+                        }
+                        // Paid models section
+                        if (paidModels.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(4.dp))
+                                Text("💳 PAID MODELS (${paidModels.size})",
+                                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 4.dp))
+                            }
+                            items(paidModels) { model ->
+                                OpenRouterModelCard(
+                                    model = model,
+                                    isSelected = model.id == selectedId,
+                                    onClick = { onSelect(model.id) }
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(8.dp)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OpenRouterModelCard(
+    model: LlmRouter.OpenRouterModel,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val accentColor = Color(0xFF7C4DFF)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                accentColor.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = if (isSelected) CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(accentColor), width = 1.5.dp
+        ) else null
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Selection indicator
+            if (isSelected) {
+                Icon(Icons.Default.CheckCircle, null,
+                    tint = accentColor, modifier = Modifier.size(18.dp))
+            } else {
+                Spacer(Modifier.size(18.dp))
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(model.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(model.id, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                // Price badge
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (model.isFree) Color(0xFF4CAF50).copy(alpha = 0.15f)
+                            else MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        model.priceLabel,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        color = if (model.isFree) Color(0xFF4CAF50)
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(model.contextLabel, fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -791,17 +2212,37 @@ fun ValidationCard(v: ValidationUi) {
         else                         -> Icons.Default.HourglassTop
     }
     Surface(shape = RoundedCornerShape(10.dp), color = bg) {
-        Row(modifier = Modifier.padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Top) {
-            if (v.state == ValidationState.LOADING) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp, color = tint)
-            } else {
-                Icon(icon, null, modifier = Modifier.size(16.dp), tint = tint)
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                if (v.state == ValidationState.LOADING) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp, color = tint)
+                } else {
+                    Icon(icon, null, modifier = Modifier.size(16.dp), tint = tint)
+                }
+                Text(v.message, fontSize = 12.sp, lineHeight = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurface)
             }
-            Text(v.message, fontSize = 12.sp, lineHeight = 17.sp,
-                color = MaterialTheme.colorScheme.onSurface)
+            // Show AI response from test prompt
+            if (v.responseText.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("AI Response:", fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(3.dp))
+                        Text(v.responseText, fontSize = 12.sp, lineHeight = 17.sp,
+                            color = tint, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
         }
     }
 }
@@ -813,11 +2254,43 @@ fun maskKey(key: String): String {
     return "${key.take(6)}${"•".repeat(minOf(key.length - 10, 20))}${key.takeLast(4)}"
 }
 
+/** Returns true if this model ID should get the ★ BEST badge for a given provider */
+fun isBestModel(modelId: String, provider: String): Boolean = when (provider) {
+    "gemini"     -> modelId.contains("2.5-flash")
+    "anthropic"  -> modelId.contains("claude-sonnet-4") || modelId.contains("claude-3-5-sonnet")
+    "openrouter" -> modelId.contains("gpt-4o") && !modelId.contains("mini")
+    "ollama"     -> false // local — no universal "best"
+    else         -> modelId.contains("gpt-4o") && !modelId.contains("mini")
+}
+
+/** Pick the best default model from a list for a given provider */
+fun pickBestModel(models: List<String>, provider: String): String {
+    val clean = { m: String -> m.substringBefore(" (") }
+    return when (provider) {
+        "gemini" -> models.firstOrNull { it.contains("2.5-flash") }
+            ?: models.firstOrNull { it.contains("2.0-flash") }
+            ?: models.firstOrNull { it.contains("1.5-flash") }
+            ?: models.first()
+        "anthropic" -> models.firstOrNull { it.contains("claude-sonnet-4") }
+            ?: models.firstOrNull { it.contains("claude-3-5-sonnet") }
+            ?: models.firstOrNull { it.contains("haiku") }
+            ?: models.first()
+        "openrouter" -> models.firstOrNull { it.contains("gpt-4o") && !it.contains("mini") }
+            ?: models.firstOrNull { it.contains("gpt-4o-mini") }
+            ?: models.first()
+        else -> models.firstOrNull { it.contains("gpt-4o") && !it.contains("mini") }
+            ?: models.firstOrNull { it.contains("gpt-4o") }
+            ?: models.first()
+    }.let { clean(it) }
+}
+
 fun providerColor(provider: String): Color = when (provider) {
     "openai"     -> Color(0xFF10A37F)
     "anthropic"  -> Color(0xFFD97757)
     "gemini"     -> Color(0xFF4285F4)
     "openrouter" -> Color(0xFF7C4DFF)
     "ollama"     -> Color(0xFF607D8B)
+    "offline"    -> Color(0xFF795548)
     else         -> Color(0xFF9E9E9E)
 }
+

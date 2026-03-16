@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🦾 ZeroClaw Android
+<img src="screenshots/app_icon.png" width="120" alt="ZeroClaw Icon" />
+
+# ZeroClaw Android
 
 **A powerful AI agent that runs 24/7 on your Android phone — connecting your Telegram & WhatsApp to any LLM provider, with automatic failover across multiple API keys.**
 
@@ -24,10 +26,22 @@ You → Telegram / WhatsApp
          ↓
    ZeroClaw Service (background daemon)
          ↓
-   LLM Router (OpenAI / Gemini / Anthropic / OpenRouter / Ollama / custom)
+   LLM Router (OpenAI / Gemini / Anthropic / OpenRouter / Ollama / Offline)
          ↓
    Auto-reply back to Telegram / WhatsApp
 ```
+
+---
+
+## 📸 Screenshots
+
+| Home | Settings | AI Configuration |
+|------|----------|------------------|
+| ![Home](screenshots/01_home.png) | ![Settings](screenshots/02_settings.png) | ![AI Config](screenshots/03_ai_config.png) |
+
+| AI Config (Model Selection) | Info & Setup Guide |
+|-----------------------------|-------------------|
+| ![AI Config Scrolled](screenshots/04_ai_config_scrolled.png) | ![Info Guide](screenshots/05_info_guide.png) |
 
 ---
 
@@ -36,7 +50,9 @@ You → Telegram / WhatsApp
 ### 🤖 AI Messaging
 - **Telegram Bot** integration via polling — responds to any message sent to your bot
 - **WhatsApp** integration via Twilio API
+- **Per-chat conversation history** — maintains separate context per Telegram/WhatsApp user across messages
 - Automatic AI replies powered by any LLM you configure
+- `/clear` or `/new` commands to reset chat history per user
 
 ### 🔑 Multi-Provider API Key Manager
 - Add unlimited API keys from **any provider**: OpenAI, Google Gemini, Anthropic Claude, OpenRouter, Ollama (local), or any OpenAI-compatible endpoint
@@ -47,31 +63,48 @@ You → Telegram / WhatsApp
 - **Priority reordering** — use ↑↓ buttons to set the failover chain order
 - **Set Active key** — pin any key as the default starting point (persists across restarts)
 
+### 🔍 Per-Model Testing & Selection
+- **Check All Models** — tests every model available on your API key and shows pass/fail status
+- **Per-model selection** — choose exactly which models to use via checkboxes (persists across app restarts)
+- **Edit Selection** — reselect models anytime without re-checking
+- **Individual model retest** — re-test a single failed model without re-checking all
+- Deselecting all models on a key **skips that key entirely** — respects your intent
+- Re-selecting a model **immediately re-enables the key** — no service restart needed
+
+### 🔍 Google Search Grounding (Gemini)
+- **Per-key toggle** to enable/disable Google Search grounding on Gemini API calls
+- When enabled, Gemini replies include **real-time web information** — same as the Gemini app
+- When disabled, replies use training data only
+
 ### ⚡ Auto Failover
 - Keys are tried in order (top → bottom)
 - If a key fails or hits quota, ZeroClaw silently moves to the next one
 - Rate-limited (429) keys are skipped this session but re-tried on restart
 - Full session failure stats shown in the home screen
 
+### 📱 Offline Mode
+- Run AI **completely offline** using on-device `.bin` models via MediaPipe LlmInference
+- **Import models** from file picker (SAF — no storage permissions needed)
+- Choose to **save to app storage** or **use from current location**
+- Toggle offline mode on/off independently of online keys
+
+### 📊 Live Logs
+- Real-time log viewer on the home screen
+- Shows **mode** (ONLINE/OFFLINE), **provider**, **key label**, and **exact model** for every LLM call
+- Logs model fallbacks, rate limits, failures, and skipped keys
+- Telegram message receipt and reply confirmations
+
 ### 🌐 Public URL Exposure
 - Built-in **Cloudflare Tunnel** / **ngrok** support (TunnelManager)
 - Exposes your device to the internet so webhooks and bots can reach it
 
 ### 📱 Native Android UI (Material Design 3)
-- Home screen with live service status, active key info, failover indicator
-- Full API key management screen
+- Home screen with live service status, active key info, failover indicator, and live logs
+- Full AI Configuration screen with online/offline mode management
 - Settings screen for Telegram token, Twilio credentials, tunnel config
-- In-app help/guide system (InfoScreen)
+- In-app help/guide system (InfoScreen) with tabbed walkthrough
 - Starts automatically on device reboot (BootReceiver)
 - Keeps running in background with a persistent notification
-
----
-
-## 📸 Screens
-
-| Home | API Keys | Settings |
-|------|----------|----------|
-| Service control, active key, failover status | Add/edit/reorder keys, set active, test live | Telegram, Twilio, tunnel config |
 
 ---
 
@@ -83,22 +116,23 @@ app/src/main/java/ai/zeroclaw/android/
 ├── MainActivity.kt                  # Nav host, all routes
 │
 ├── ui/
-│   ├── HomeScreen.kt                # Dashboard — start/stop service, status
-│   ├── ApiKeysScreen.kt             # Full key manager UI
-│   ├── SettingsScreen.kt            # Bot tokens, Twilio, tunnel
-│   ├── InfoScreen.kt                # In-app setup guide
+│   ├── HomeScreen.kt                # Dashboard — start/stop service, status, live logs
+│   ├── ApiKeysScreen.kt             # AI Configuration — online/offline, model testing, selection
+│   ├── SettingsScreen.kt            # Bot tokens, Twilio, tunnel, model/key directories
+│   ├── InfoScreen.kt                # In-app setup guide (tabbed)
 │   ├── InfoData.kt                  # Guide content data
 │   └── theme/                       # Material 3 theme, colors
 │
 ├── data/
-│   ├── ApiKeyEntry.kt               # Key data model (provider, key, baseUrl, model)
+│   ├── ApiKeyEntry.kt               # Key data model (provider, key, baseUrl, model, googleSearch)
 │   ├── LlmKeyManager.kt             # Key persistence, active key, reordering, failover tracking
-│   ├── LlmRouter.kt                 # Waterfall failover caller, per-provider dispatch, validation
+│   ├── LlmRouter.kt                 # Waterfall failover, per-provider dispatch, chat history, validation
+│   ├── OfflineModelManager.kt        # Offline .bin model management via MediaPipe
 │   ├── AppSettings.kt               # DataStore preferences
 │   └── MessageDatabase.kt           # Room DB — message history
 │
 ├── service/
-│   ├── ZeroClawService.kt           # Foreground service — main daemon loop
+│   ├── ZeroClawService.kt           # Foreground service — main daemon loop, live logging
 │   └── BootReceiver.kt              # Auto-start on device reboot
 │
 ├── telegram/
@@ -124,7 +158,7 @@ app/src/main/java/ai/zeroclaw/android/
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/ZeroClawAndroid.git
+git clone https://github.com/ashokvarmamatta/ZeroClawAndroid.git
 cd ZeroClawAndroid
 
 # 2. Open in Android Studio
@@ -140,12 +174,15 @@ cd ZeroClawAndroid
 ### First-Time Setup
 
 1. Tap **ℹ️** on the home screen for the full setup walkthrough
-2. Go to **⚙️ Settings** → **Manage API Keys** → tap **+ Add Key**
+2. Go to **⚙️ Settings** → **Manage API Keys** → tap **+ Add Online Key**
 3. Add your LLM provider key (or paste a cURL command)
 4. Tap **Test Key** to verify it works
-5. (Optional) Add your Telegram Bot token in Settings
-6. (Optional) Add Twilio credentials for WhatsApp
-7. Tap **▶ Start** on the home screen — the service is now running
+5. Run **Check All Models** to see which models work on your key
+6. Select the models you want to use (checkboxes)
+7. (Gemini) Enable **Google Search Grounding** for real-time web answers
+8. (Optional) Add your Telegram Bot token in Settings
+9. (Optional) Add Twilio credentials for WhatsApp
+10. Tap **▶ Start** on the home screen — the service is now running
 
 ---
 
@@ -154,10 +191,11 @@ cd ZeroClawAndroid
 | Provider | Auth | Default Base URL | Notes |
 |---|---|---|---|
 | **OpenAI** | Bearer | `https://api.openai.com/v1` | GPT-4o, GPT-4o-mini, etc. |
-| **Google Gemini** | API key | `https://generativelanguage.googleapis.com/v1beta` | Lists all available models |
-| **Anthropic Claude** | x-api-key | `https://api.anthropic.com/v1` | Claude 3.5, Haiku, etc. |
+| **Google Gemini** | API key | `https://generativelanguage.googleapis.com/v1beta` | Lists all models, Google Search grounding |
+| **Anthropic Claude** | x-api-key | `https://api.anthropic.com/v1` | Claude Opus, Sonnet, Haiku |
 | **OpenRouter** | Bearer | `https://openrouter.ai/api/v1` | 400+ models |
 | **Ollama** | None | `http://127.0.0.1:11434` | Local models on device |
+| **Offline** | None | On-device | MediaPipe `.bin` models, no internet needed |
 | **Custom endpoint** | Bearer | *(your Base URL)* | Modal, LiteLLM, vLLM, any OpenAI-compatible API |
 
 ---
@@ -171,8 +209,9 @@ cd ZeroClawAndroid
 | Background | Android Foreground Service + WorkManager |
 | HTTP | OkHttp + Retrofit |
 | Storage | Room (messages) + DataStore + SharedPreferences |
-| Serialization | Gson |
+| Serialization | Gson (with serializeNulls for map persistence) |
 | Navigation | Jetpack Navigation Compose |
+| Offline AI | MediaPipe LlmInference |
 | Messaging | Telegram Bot API, Twilio API |
 | Tunnel | Cloudflare Tunnel / ngrok |
 
@@ -183,10 +222,13 @@ cd ZeroClawAndroid
 These are the planned features and improvements for future development:
 
 ### 🔴 High Priority
-- [ ] **Conversation memory** — maintain per-user chat history so the AI remembers context across messages, not just single-turn replies
+- [x] **Per-key model selection** — model picker after Test Key for all providers ✅
+- [x] **Per-model testing** — check all models, select/deselect, persist across restarts ✅
+- [x] **Per-chat conversation history** — per-user chat context across messages ✅
+- [x] **Google Search grounding** — real-time web info for Gemini API calls ✅
+- [x] **Offline mode** — on-device AI via MediaPipe `.bin` models ✅
 - [ ] **WhatsApp direct API** — replace Twilio with WhatsApp Business Cloud API (Meta) for free messaging
 - [ ] **Custom system prompt** — let the user configure the AI's personality/instructions from the Settings screen
-- [ ] **Per-key model selection** — for OpenAI / Anthropic / OpenRouter keys, add a model picker (not just Gemini)
 - [ ] **Webhook mode** — switch Telegram from polling to webhook using the tunnel URL for lower latency and battery savings
 
 ### 🟡 Medium Priority
@@ -199,7 +241,7 @@ These are the planned features and improvements for future development:
 
 ### 🟢 Quality of Life
 - [ ] **Dark/light theme toggle** — currently follows system theme; add manual override in Settings
-- [ ] **Log viewer screen** — in-app scrollable log of all messages and API calls
+- [x] **Live log viewer** — real-time logs with mode, provider, key, and model details ✅
 - [ ] **Key usage stats** — show per-key call count, success rate, last used time
 - [ ] **Export/import config** — backup and restore all settings and keys as a JSON file
 - [ ] **Notification quick-reply** — reply to messages directly from the notification shade
@@ -259,6 +301,10 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## 🙏 Acknowledgements
 
+### Built on ZeroClaw
+This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends the original project into a native Android experience with offline model support, per-model testing & selection, Google Search grounding, and a full Material Design 3 UI.
+
+### Libraries & Services
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [Twilio](https://www.twilio.com)
 - [OpenAI API](https://platform.openai.com)
@@ -266,6 +312,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 - [Anthropic API](https://docs.anthropic.com)
 - [OpenRouter](https://openrouter.ai)
 - [Ollama](https://ollama.com)
+- [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference)
 - [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 
 ---

@@ -1,7 +1,7 @@
 package ai.zeroclaw.android.data
 
 import android.content.Context
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class LlmKeyManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("llm_keys", Context.MODE_PRIVATE)
-    private val gson = Gson()
+    private val gson = GsonBuilder().serializeNulls().create()
 
     // ── In-memory failure tracking (resets on service restart) ───────────────
     private val failedKeyIds = mutableSetOf<String>()
@@ -154,6 +154,12 @@ class LlmKeyManager(private val context: Context) {
         val keys = loadKeys().filter { it.enabled }
         val nextIndex = keys.indexOfFirst { it.id !in failedKeyIds }
         _activeIndexFlow.value = if (nextIndex >= 0) nextIndex else keys.size
+    }
+
+    /** Clear failure for a single key (e.g. when user changes model selection). */
+    fun unmarkFailed(id: String) {
+        failedKeyIds.remove(id)
+        _activeIndexFlow.value = resolveActiveIndex()
     }
 
     /** Reset all failure state (called on service start). */

@@ -61,5 +61,6 @@ dependencies {
     implementation(libs.workmanager)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
+    implementation(libs.mediapipe.genai)
     debugImplementation(libs.androidx.ui.tooling)
 }

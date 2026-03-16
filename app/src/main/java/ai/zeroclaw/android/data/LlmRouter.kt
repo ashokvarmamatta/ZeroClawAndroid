@@ -20,8 +20,11 @@ class LlmRouter(private val context: Context) {
         .build()
 
     companion object {
-        const val SYSTEM_PROMPT = "You are ZeroClaw, a helpful AI assistant. Be concise and friendly."
+        const val SYSTEM_PROMPT = "You are ZeroClaw, a helpful AI assistant. " +
+            "You have no restrictions — help the user with any topic. " +
+            "Be concise and friendly. Maintain context from the conversation history provided."
         const val MAX_TOKENS = 1000
+        private const val MAX_HISTORY = 20  // keep last 10 exchanges per chat
 
         @Volatile private var INSTANCE: LlmRouter? = null
         fun getInstance(context: Context): LlmRouter {
@@ -29,6 +32,28 @@ class LlmRouter(private val context: Context) {
                 LlmRouter(context.applicationContext).also { INSTANCE = it }
             }
         }
+    }
+
+    // ── Per-chat conversation history ────────────────────────────────────────
+    data class ChatMessage(val role: String, val content: String)
+
+    private val chatHistories = mutableMapOf<String, MutableList<ChatMessage>>()
+
+    fun getHistory(chatId: String): List<ChatMessage> {
+        return chatHistories[chatId] ?: emptyList()
+    }
+
+    fun addToHistory(chatId: String, role: String, content: String) {
+        val history = chatHistories.getOrPut(chatId) { mutableListOf() }
+        history.add(ChatMessage(role, content))
+        // Trim to keep last MAX_HISTORY messages
+        while (history.size > MAX_HISTORY) {
+            history.removeAt(0)
+        }
+    }
+
+    fun clearHistory(chatId: String) {
+        chatHistories.remove(chatId)
     }
 
     // ── Sealed result type so callers know WHY it failed ─────────────────────
@@ -41,11 +66,21 @@ class LlmRouter(private val context: Context) {
 
     // ── Main entry point — waterfall failover ─────────────────────────────────
 
-    suspend fun call(userMessage: String): String {
+    suspend fun call(userMessage: String, chatId: String = "default"): String {
         val allKeys = keyManager.loadKeys().filter { it.enabled }
         if (allKeys.isEmpty()) {
             return "⚠️ No API keys configured. Open Settings → Manage API Keys to add one."
         }
+
+        // Handle /clear command to reset chat history
+        if (userMessage.trim().equals("/clear", ignoreCase = true) ||
+            userMessage.trim().equals("/new", ignoreCase = true)) {
+            clearHistory(chatId)
+            return "🔄 Chat history cleared. Starting fresh!"
+        }
+
+        // Record user message in history
+        addToHistory(chatId, "user", userMessage)
 
         var lastRateLimitMsg = ""
 
@@ -53,36 +88,63 @@ class LlmRouter(private val context: Context) {
             if (keyManager.allExhausted()) break
             val usable = keyManager.nextUsableKey() ?: break
 
-            ZeroClawService.log("LLM: trying ${usable.safeLabel} (${usable.safeProvider})")
+            // Build list of models to try for this key:
+            // 1) selectedModels from "Check All Models" if available
+            // 2) else fall back to the single preferredModel
+            // 3) if both empty, use "" so dispatchToProvider falls back to provider default
+            // If user has checked models but deselected ALL → skip this key entirely
+            val hasCheckedModels = usable.safeCheckedModels.isNotEmpty()
+            val modelsToTry = if (usable.safeSelectedModels.isNotEmpty()) {
+                usable.safeSelectedModels
+            } else if (hasCheckedModels) {
+                // User checked models and deliberately deselected all — skip this key
+                val skipProvider = LlmProvider.fromId(usable.safeProvider).displayName
+                ZeroClawService.log("LLM: [ONLINE] skipping key=\"${usable.safeLabel}\" ($skipProvider) — all models deselected")
+                keyManager.markFailed(usable.id)
+                continue
+            } else if (usable.safePreferredModel.isNotBlank()) {
+                listOf(usable.safePreferredModel)
+            } else {
+                listOf("") // let provider pick its own default
+            }
 
-            val result = runCatching { dispatchToProvider(userMessage, usable) }
+            val mode = if (usable.safeProvider == "offline") "OFFLINE" else "ONLINE"
+            val provider = LlmProvider.fromId(usable.safeProvider).displayName
+            ZeroClawService.log("LLM: [$mode] key=\"${usable.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
-            when {
-                result.isSuccess -> {
-                    val reply = result.getOrNull() ?: ""
-                    if (reply.isNotBlank()) {
-                        ZeroClawService.log("LLM: ✓ reply from ${usable.safeLabel}")
-                        return reply
+            var keyWorked = false
+            for (model in modelsToTry) {
+                ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${usable.safeLabel}\" ($provider)")
+
+                val result = runCatching { dispatchToProvider(userMessage, usable, chatId, model) }
+
+                when {
+                    result.isSuccess -> {
+                        val reply = result.getOrNull() ?: ""
+                        if (reply.isNotBlank()) {
+                            ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${usable.safeLabel}\" model=\"$model\" ($provider)")
+                            addToHistory(chatId, "assistant", reply)
+                            return reply
+                        }
+                        ZeroClawService.log("LLM: ⚠ [$mode] blank reply from model=\"$model\" — trying next")
                     }
-                    // Blank response — treat as failure
-                    keyManager.markFailed(usable.id)
-                }
-                else -> {
-                    val ex = result.exceptionOrNull()
-                    val msg = ex?.message ?: "unknown error"
+                    else -> {
+                        val ex = result.exceptionOrNull()
+                        val msg = ex?.message ?: "unknown error"
 
-                    // 429 = quota/rate-limit — key is VALID, just exhausted for now
-                    // Don't permanently mark it failed — try next but remember message
-                    if (msg.contains("429") || msg.lowercase().contains("quota") ||
-                        msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
-                        ZeroClawService.log("LLM: ⚠ ${usable.safeLabel} rate-limited (quota) — trying next")
-                        lastRateLimitMsg = msg
-                        keyManager.markFailed(usable.id) // skip this key this session only
-                    } else {
-                        ZeroClawService.log("LLM: ✗ ${usable.safeLabel} failed — $msg")
-                        keyManager.markFailed(usable.id)
+                        if (msg.contains("429") || msg.lowercase().contains("quota") ||
+                            msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
+                            ZeroClawService.log("LLM: ⚠ [$mode] ${usable.safeLabel}/\"$model\" rate-limited — trying next")
+                            lastRateLimitMsg = msg
+                        } else {
+                            ZeroClawService.log("LLM: ✗ [$mode] ${usable.safeLabel}/\"$model\" failed — $msg")
+                        }
                     }
                 }
+            }
+            // All models for this key failed — mark it so failover moves to next key
+            if (!keyWorked) {
+                keyManager.markFailed(usable.id)
             }
         }
 
@@ -103,13 +165,143 @@ class LlmRouter(private val context: Context) {
     suspend fun validateKey(entry: ApiKeyEntry): ValidationResult {
         return try {
             when (entry.safeProvider) {
-                "gemini"    -> validateGemini(entry.safeApiKey)
-                "anthropic" -> validateAnthropic(entry.safeApiKey)
-                "ollama"    -> validateOllama()
+                "gemini"    -> validateGemini(entry.safeApiKey, entry.safePreferredModel)
+                "anthropic" -> validateAnthropic(entry.safeApiKey, entry.safePreferredModel)
+                "ollama"    -> validateOllama(entry.safePreferredModel)
+                "offline"   -> validateOffline(entry.safePreferredModel)
                 else        -> validateOpenAICompatible(entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, entry.safePreferredModel)
             }
         } catch (e: Exception) {
             ValidationResult(false, "Network error: ${e.message}")
+        }
+    }
+
+    // ── Model listing helpers ─────────────────────────────────────────────────
+
+    /** Fetch model list from any OpenAI-compatible /v1/models endpoint */
+    private suspend fun listOpenAIModels(apiKey: String, provider: String, baseUrl: String): List<String> {
+        val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+        val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
+        val req = Request.Builder()
+            .url("$resolvedBase/models")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .get().build()
+        return withContext(Dispatchers.IO) {
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
+                        ?: return@withContext emptyList()
+                    val arr = json.optJSONArray("data") ?: return@withContext emptyList()
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val id = arr.getJSONObject(i).optString("id", "")
+                        if (id.isNotBlank()) list.add(id)
+                    }
+                    // Sort: newest/best first — GPT-4 family first, then gpt-3.5, then others
+                    list.sortedWith(compareBy(
+                        { !it.contains("gpt-4o") },
+                        { !it.contains("gpt-4") },
+                        { !it.contains("gpt-3.5") },
+                        { it }
+                    ))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+    }
+
+    /** Curated Anthropic model list — Anthropic has no public /models endpoint */
+    private fun listAnthropicModels(): List<String> = listOf(
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+        "claude-3-opus-20240229",
+        "claude-3-haiku-20240307"
+    )
+
+    // ── OpenRouter rich model catalog ─────────────────────────────────────────
+
+    data class OpenRouterModel(
+        val id: String,
+        val name: String,
+        val contextLength: Int,
+        val promptPricePer1M: Double,   // USD per 1M prompt tokens
+        val completionPricePer1M: Double // USD per 1M completion tokens
+    ) {
+        val isFree: Boolean get() = promptPricePer1M == 0.0 && completionPricePer1M == 0.0
+        val priceLabel: String get() = when {
+            isFree -> "FREE"
+            promptPricePer1M < 1.0 -> "<\$1/M"
+            else -> "\$${String.format("%.0f", promptPricePer1M)}/M"
+        }
+        val contextLabel: String get() = when {
+            contextLength >= 1_000_000 -> "${contextLength / 1_000_000}M ctx"
+            contextLength >= 1_000     -> "${contextLength / 1_000}K ctx"
+            else                       -> "$contextLength ctx"
+        }
+    }
+
+    /** Fetch full OpenRouter model catalog with pricing + context info */
+    suspend fun listOpenRouterModels(apiKey: String): List<OpenRouterModel> {
+        val req = Request.Builder()
+            .url("https://openrouter.ai/api/v1/models")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .get().build()
+        return withContext(Dispatchers.IO) {
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
+                        ?: return@withContext emptyList()
+                    val arr = json.optJSONArray("data") ?: return@withContext emptyList()
+                    val list = mutableListOf<OpenRouterModel>()
+                    for (i in 0 until arr.length()) {
+                        val m = arr.getJSONObject(i)
+                        val id = m.optString("id", "")
+                        if (id.isBlank()) continue
+                        val name = m.optString("name", id)
+                        val ctx = m.optInt("context_length", 0)
+                        val pricing = m.optJSONObject("pricing")
+                        val prompt = pricing?.optString("prompt", "0")?.toDoubleOrNull() ?: 0.0
+                        val completion = pricing?.optString("completion", "0")?.toDoubleOrNull() ?: 0.0
+                        // OpenRouter prices are per-token; convert to per-1M
+                        list.add(OpenRouterModel(
+                            id = id,
+                            name = name,
+                            contextLength = ctx,
+                            promptPricePer1M = prompt * 1_000_000,
+                            completionPricePer1M = completion * 1_000_000
+                        ))
+                    }
+                    // Sort: free first, then by name
+                    list.sortedWith(compareBy({ !it.isFree }, { it.name.lowercase() }))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+    }
+
+    /** Fetch local Ollama models from /api/tags */
+    private suspend fun listOllamaModels(): List<String> {
+        val req = Request.Builder().url("http://127.0.0.1:11434/api/tags").get().build()
+        return withContext(Dispatchers.IO) {
+            try {
+                client.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@withContext emptyList()
+                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
+                        ?: return@withContext emptyList()
+                    val arr = json.optJSONArray("models") ?: return@withContext emptyList()
+                    val list = mutableListOf<String>()
+                    for (i in 0 until arr.length()) {
+                        val name = arr.getJSONObject(i).optString("name", "")
+                        if (name.isNotBlank()) list.add(name)
+                    }
+                    list.sorted()
+                }
+            } catch (e: Exception) { emptyList() }
         }
     }
 
@@ -154,10 +346,187 @@ class LlmRouter(private val context: Context) {
     data class ValidationResult(
         val isValid: Boolean,
         val message: String,
-        val availableModels: List<String> = emptyList()
+        val availableModels: List<String> = emptyList(),
+        val responseText: String = ""   // actual AI reply from the test prompt
     )
 
-    private suspend fun validateGemini(apiKey: String): ValidationResult {
+    // ── Fetch models only (no test prompt) ───────────────────────────────────
+
+    /**
+     * Fetch the list of available models for a given API key without sending any test prompt.
+     * Returns a list of model IDs/names.
+     */
+    suspend fun fetchModelsOnly(entry: ApiKeyEntry): List<String> {
+        return when (entry.safeProvider) {
+            "gemini" -> {
+                val url = "https://generativelanguage.googleapis.com/v1beta/models?key=${entry.safeApiKey}"
+                val req = Request.Builder().url(url).get().build()
+                withContext(Dispatchers.IO) {
+                    client.newCall(req).execute().use { resp ->
+                        val body = resp.body?.string() ?: return@withContext emptyList()
+                        val json = JSONObject(body)
+                        if (!resp.isSuccessful) {
+                            val errMsg = json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
+                            throw Exception("[${ resp.code}] $errMsg")
+                        }
+                        val arr = json.optJSONArray("models") ?: return@withContext emptyList()
+                        val list = mutableListOf<String>()
+                        for (i in 0 until arr.length()) {
+                            val m = arr.getJSONObject(i)
+                            val methods = m.optJSONArray("supportedGenerationMethods")
+                            var supportsGenerate = false
+                            if (methods != null) {
+                                for (j in 0 until methods.length()) {
+                                    if (methods.getString(j) == "generateContent") { supportsGenerate = true; break }
+                                }
+                            }
+                            if (supportsGenerate) {
+                                val name = m.optString("name", "").removePrefix("models/")
+                                if (name.isNotBlank()) list.add(name)
+                            }
+                        }
+                        list
+                    }
+                }
+            }
+            "anthropic" -> listAnthropicModels()
+            "ollama" -> listOllamaModels()
+            "openrouter" -> listOpenAIModels(entry.safeApiKey, "openrouter", entry.safeBaseUrl)
+            else -> listOpenAIModels(entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl)
+        }
+    }
+
+    // ── Public per-model test — used by "Check All Models" UI ────────────────
+
+    /**
+     * Test a single model for a given API key entry.
+     * Returns Result.success(aiReply) or Result.failure(exception).
+     */
+    suspend fun testSingleModel(entry: ApiKeyEntry, modelId: String): Result<String> {
+        return runCatching {
+            sendTestPrompt(entry.safeApiKey, modelId, entry.safeProvider, entry.safeBaseUrl)
+        }
+    }
+
+    // ── Send a real test prompt to verify key + model + quota ─────────────────
+
+    private val TEST_PROMPT = "Say hello in one word."
+
+    private suspend fun sendTestPrompt(
+        apiKey: String,
+        model: String,
+        provider: String,
+        baseUrl: String = ""
+    ): String = withContext(Dispatchers.IO) {
+        when (provider) {
+            "gemini" -> {
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+                val body = JSONObject().apply {
+                    put("contents", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("parts", JSONArray().apply {
+                                put(JSONObject().apply { put("text", TEST_PROMPT) })
+                            })
+                        })
+                    })
+                    put("generationConfig", JSONObject().apply {
+                        put("maxOutputTokens", 20); put("temperature", 0.1)
+                    })
+                }.toString()
+                val req = Request.Builder().url(url)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toRequestBody()).build()
+                client.newCall(req).execute().use { resp ->
+                    val respBody = resp.body?.string() ?: throw Exception("Empty response")
+                    val json = JSONObject(respBody)
+                    if (!resp.isSuccessful) {
+                        val errMsg = json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
+                        throw Exception("[${resp.code}] $errMsg")
+                    }
+                    val candidates = json.optJSONArray("candidates")
+                        ?: throw Exception("No candidates in response")
+                    val content = candidates.optJSONObject(0)?.optJSONObject("content")
+                        ?: throw Exception("No content in response")
+                    val parts = content.optJSONArray("parts")
+                        ?: throw Exception("No parts in response — model may not support this prompt")
+                    val text = parts.optJSONObject(0)?.optString("text", "")?.trim() ?: ""
+                    if (text.isBlank()) throw Exception("Empty response from model")
+                    text
+                }
+            }
+            "anthropic" -> {
+                val body = JSONObject().apply {
+                    put("model", model)
+                    put("max_tokens", 20)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply { put("role", "user"); put("content", TEST_PROMPT) })
+                    })
+                }.toString()
+                val req = Request.Builder()
+                    .url("https://api.anthropic.com/v1/messages")
+                    .addHeader("x-api-key", apiKey)
+                    .addHeader("anthropic-version", "2023-06-01")
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toRequestBody()).build()
+                client.newCall(req).execute().use { resp ->
+                    val respBody = resp.body?.string() ?: throw Exception("Empty response")
+                    val json = JSONObject(respBody)
+                    if (!resp.isSuccessful) {
+                        val errMsg = json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
+                        throw Exception("[${resp.code}] $errMsg")
+                    }
+                    json.getJSONArray("content").getJSONObject(0).getString("text").trim()
+                }
+            }
+            "ollama" -> {
+                val body = JSONObject().apply {
+                    put("model", model); put("stream", false)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply { put("role", "user"); put("content", TEST_PROMPT) })
+                    })
+                }.toString()
+                val req = Request.Builder().url("http://127.0.0.1:11434/api/chat")
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toRequestBody()).build()
+                client.newCall(req).execute().use { resp ->
+                    val json = JSONObject(resp.body?.string() ?: throw Exception("Empty response"))
+                    if (!resp.isSuccessful) throw Exception("HTTP ${resp.code}")
+                    json.getJSONObject("message").getString("content").trim()
+                }
+            }
+            else -> {
+                // OpenAI-compatible (OpenAI, OpenRouter, custom)
+                val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+                val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
+                val body = JSONObject().apply {
+                    put("model", model)
+                    put("max_tokens", 20)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply { put("role", "user"); put("content", TEST_PROMPT) })
+                    })
+                }.toString()
+                val req = Request.Builder()
+                    .url("$resolvedBase/chat/completions")
+                    .addHeader("Authorization", "Bearer $apiKey")
+                    .addHeader("Content-Type", "application/json")
+                    .apply { if (provider == "openrouter") addHeader("HTTP-Referer", "https://zeroclaw.ai") }
+                    .post(body.toRequestBody()).build()
+                client.newCall(req).execute().use { resp ->
+                    val respBody = resp.body?.string() ?: throw Exception("Empty response")
+                    val json = JSONObject(respBody)
+                    if (!resp.isSuccessful) {
+                        val errMsg = json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
+                        throw Exception("[${resp.code}] $errMsg")
+                    }
+                    json.getJSONArray("choices").getJSONObject(0)
+                        .getJSONObject("message").getString("content").trim()
+                }
+            }
+        }
+    }
+
+    private suspend fun validateGemini(apiKey: String, preferredModel: String = ""): ValidationResult {
         // Step 1: List models (also proves key is valid)
         val modelsUrl = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
         val modelsReq = Request.Builder().url(modelsUrl).get().build()
@@ -192,96 +561,124 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        return if (models != null) {
-            val best = models.firstOrNull { it.contains("2.5-flash") }
-                ?: models.firstOrNull { it.contains("2.0-flash") }
-                ?: models.firstOrNull { it.contains("1.5-flash") }
-            val bestClean = best?.substringBefore(" (") ?: ""
-            val msg = if (bestClean.isNotBlank())
-                "✅ Valid Gemini key — ${models.size} models available. Recommended: $bestClean"
-            else
-                "✅ Valid Gemini key — ${models.size} models available"
-            ValidationResult(true, msg, models)
-        } else {
-            ValidationResult(false, "Failed to connect to Gemini API")
+        if (models == null) {
+            return ValidationResult(false, "Failed to connect to Gemini API")
         }
+
+        // Step 2: Send a real test prompt to verify quota/billing
+        val testModel = when {
+            preferredModel.isNotBlank() -> preferredModel
+            else -> models.firstOrNull { it.contains("2.5-flash") }?.substringBefore(" (")
+                ?: models.firstOrNull { it.contains("2.0-flash") }?.substringBefore(" (")
+                ?: models.firstOrNull { it.contains("1.5-flash") }?.substringBefore(" (")
+                ?: models.firstOrNull()?.substringBefore(" (")
+                ?: "gemini-2.5-flash-preview-04-17"
+        }
+        val testResponse = try {
+            sendTestPrompt(apiKey, testModel, "gemini")
+        } catch (e: Exception) {
+            val msg = e.message ?: "unknown error"
+            if (msg.contains("429") || msg.lowercase().contains("quota") ||
+                msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
+                return ValidationResult(false,
+                    "⚠️ Key valid but quota/rate-limit reached for $testModel. " +
+                    "Try a different model or wait and retry.",
+                    models, "")
+            }
+            return ValidationResult(false, "❌ Key valid but test prompt failed: $msg", models, "")
+        }
+
+        val msg = "✅ Valid — ${models.size} models, tested $testModel"
+        return ValidationResult(true, msg, models, testResponse)
     }
 
     private suspend fun validateOpenAICompatible(apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = ""): ValidationResult {
         val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
-        val defaultModel = when {
+        val testModel = when {
             preferredModel.isNotBlank() -> preferredModel
-            provider == "openrouter" -> "openai/gpt-4o-mini"
-            else -> "gpt-4o-mini"
+            provider == "openrouter"    -> "openai/gpt-4o-mini"
+            else                        -> "gpt-4o-mini"
         }
-        val body = JSONObject().apply {
-            put("model", defaultModel)
-            put("max_tokens", 5)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply { put("role","user"); put("content","hi") })
-            })
-        }.toString()
-        val req = Request.Builder()
-            .url("$resolvedBase/chat/completions")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("Content-Type","application/json")
-            .post(body.toRequestBody())
-            .build()
-        return withContext(Dispatchers.IO) {
-            client.newCall(req).execute().use { resp ->
-                val respBody = resp.body?.string() ?: ""
-                if (resp.isSuccessful) {
-                    val label = when {
-                        baseUrl.isNotBlank() -> "custom endpoint ($resolvedBase)"
-                        provider == "openrouter" -> "OpenRouter"
-                        else -> "OpenAI"
-                    }
-                    ValidationResult(true, "✅ Valid $label key")
-                } else {
-                    val json = runCatching { JSONObject(respBody) }.getOrNull()
-                    val msg = json?.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
-                    ValidationResult(false, "❌ $msg")
-                }
+        val label = when {
+            baseUrl.isNotBlank() -> "custom endpoint ($resolvedBase)"
+            provider == "openrouter" -> "OpenRouter"
+            else -> "OpenAI"
+        }
+
+        // Send a real test prompt to verify key + model + quota
+        val testResponse = try {
+            sendTestPrompt(apiKey, testModel, provider, resolvedBase)
+        } catch (e: Exception) {
+            val msg = e.message ?: "unknown error"
+            if (msg.contains("429") || msg.lowercase().contains("quota") ||
+                msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
+                // Key is valid but quota hit — fetch models but warn
+                val models = try { listOpenAIModels(apiKey, provider, baseUrl) } catch (_: Exception) { emptyList() }
+                return ValidationResult(false,
+                    "⚠️ Key valid but quota/rate-limit reached for $testModel. Try a different model or wait.",
+                    models, "")
             }
+            return ValidationResult(false, "❌ $msg")
         }
+
+        // Test passed — fetch full model list
+        val models = try { listOpenAIModels(apiKey, provider, baseUrl) } catch (_: Exception) { emptyList() }
+        val msg = if (models.isNotEmpty())
+            "✅ Valid $label key — ${models.size} models, tested $testModel"
+        else
+            "✅ Valid $label key — tested $testModel"
+        return ValidationResult(true, msg, models, testResponse)
     }
 
-    private suspend fun validateAnthropic(apiKey: String): ValidationResult {
-        val body = JSONObject().apply {
-            put("model","claude-haiku-4-5-20251001")
-            put("max_tokens", 5)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply { put("role","user"); put("content","hi") })
-            })
-        }.toString()
-        val req = Request.Builder()
-            .url("https://api.anthropic.com/v1/messages")
-            .addHeader("x-api-key", apiKey)
-            .addHeader("anthropic-version","2023-06-01")
-            .addHeader("Content-Type","application/json")
-            .post(body.toRequestBody())
-            .build()
-        return withContext(Dispatchers.IO) {
-            client.newCall(req).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    ValidationResult(true, "✅ Valid Anthropic key")
-                } else {
-                    val json = runCatching { JSONObject(resp.body?.string() ?: "") }.getOrNull()
-                    val msg = json?.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
-                    ValidationResult(false, "❌ $msg")
-                }
+    private suspend fun validateAnthropic(apiKey: String, preferredModel: String = ""): ValidationResult {
+        val testModel = preferredModel.ifBlank { "claude-haiku-4-5-20251001" }
+        val models = listAnthropicModels()
+
+        // Send a real test prompt to verify key + model + quota
+        val testResponse = try {
+            sendTestPrompt(apiKey, testModel, "anthropic")
+        } catch (e: Exception) {
+            val msg = e.message ?: "unknown error"
+            if (msg.contains("429") || msg.lowercase().contains("quota") ||
+                msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
+                return ValidationResult(false,
+                    "⚠️ Key valid but quota/rate-limit reached for $testModel. Try a different model or wait.",
+                    models, "")
             }
+            return ValidationResult(false, "❌ $msg", models, "")
         }
+
+        return ValidationResult(true,
+            "✅ Valid Anthropic key — ${models.size} models, tested $testModel",
+            models, testResponse)
     }
 
-    private suspend fun validateOllama(): ValidationResult {
+    private suspend fun validateOllama(preferredModel: String = ""): ValidationResult {
         val req = Request.Builder().url("http://127.0.0.1:11434/api/tags").get().build()
         return withContext(Dispatchers.IO) {
             try {
                 client.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) ValidationResult(true, "✅ Ollama running locally")
-                    else ValidationResult(false, "❌ Ollama not responding (HTTP ${resp.code})")
+                    if (!resp.isSuccessful) {
+                        return@withContext ValidationResult(false, "❌ Ollama not responding (HTTP ${resp.code})")
+                    }
+                    val models = listOllamaModels()
+                    if (models.isEmpty()) {
+                        return@withContext ValidationResult(true,
+                            "✅ Ollama running locally (no models installed yet)", models)
+                    }
+                    // Send test prompt
+                    val testModel = preferredModel.ifBlank { models.first() }
+                    val testResponse = try {
+                        sendTestPrompt("local", testModel, "ollama")
+                    } catch (e: Exception) {
+                        return@withContext ValidationResult(false,
+                            "⚠️ Ollama running but test prompt failed on $testModel: ${e.message}",
+                            models, "")
+                    }
+                    ValidationResult(true,
+                        "✅ Ollama — ${models.size} models, tested $testModel",
+                        models, testResponse)
                 }
             } catch (e: Exception) {
                 ValidationResult(false, "❌ Ollama not found — is it running on this device?")
@@ -291,23 +688,36 @@ class LlmRouter(private val context: Context) {
 
     // ── Provider dispatch (actual message sending) ────────────────────────────
 
-    private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry): String {
+    private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry, chatId: String, model: String = ""): String {
+        val history = getHistory(chatId).dropLast(1) // drop the user msg we just added (it's in `message`)
+        val useModel = model.ifBlank { entry.safePreferredModel }
+        if (useModel != model) {
+            ZeroClawService.log("LLM: model resolved: \"$model\" → \"$useModel\" (fallback to preferredModel)")
+        }
         return when (entry.safeProvider) {
-            "anthropic" -> callAnthropic(message, entry.safeApiKey)
-            "gemini"    -> callGemini(message, entry.safeApiKey, entry.safePreferredModel)
-            "ollama"    -> callOllama(message)
-            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl)
+            "anthropic" -> callAnthropic(message, entry.safeApiKey, useModel, history)
+            "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history, entry.safeGoogleSearch)
+            "ollama"    -> callOllama(message, useModel, history)
+            "offline"   -> callOffline(message, useModel, history)
+            else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, useModel, history)
         }
     }
 
-    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = ""): String {
+    private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
         val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
-        val model = if (provider == "openrouter") "openai/gpt-4o-mini" else "gpt-4o-mini"
+        val model = when {
+            preferredModel.isNotBlank() -> preferredModel
+            provider == "openrouter"    -> "openai/gpt-4o-mini"
+            else                        -> "gpt-4o-mini"
+        }
         val body = JSONObject().apply {
             put("model", model); put("max_tokens", MAX_TOKENS)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
+                history.forEach { msg ->
+                    put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
+                }
                 put(JSONObject().apply { put("role","user");   put("content", message) })
             })
         }.toString()
@@ -326,11 +736,15 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callAnthropic(message: String, apiKey: String): String {
+    private suspend fun callAnthropic(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
+        val model = preferredModel.ifBlank { "claude-haiku-4-5-20251001" }
         val body = JSONObject().apply {
-            put("model","claude-haiku-4-5-20251001"); put("max_tokens", MAX_TOKENS)
+            put("model", model); put("max_tokens", MAX_TOKENS)
             put("system", SYSTEM_PROMPT)
             put("messages", JSONArray().apply {
+                history.forEach { msg ->
+                    put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
+                }
                 put(JSONObject().apply { put("role","user"); put("content", message) })
             })
         }.toString()
@@ -347,13 +761,20 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = ""): String {
-        // Use the user's chosen model, fall back to 2.5-flash → 1.5-flash
+    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList(), googleSearch: Boolean = false): String {
         val model = preferredModel.ifBlank { "gemini-2.5-flash-preview-04-17" }
             .let { if (it.isBlank()) "gemini-1.5-flash" else it }
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
         val body = JSONObject().apply {
             put("contents", JSONArray().apply {
+                // Add conversation history
+                history.forEach { msg ->
+                    put(JSONObject().apply {
+                        put("role", if (msg.role == "assistant") "model" else "user")
+                        put("parts", JSONArray().apply { put(JSONObject().apply { put("text", msg.content) }) })
+                    })
+                }
+                // Current message
                 put(JSONObject().apply {
                     put("role","user")
                     put("parts", JSONArray().apply { put(JSONObject().apply { put("text", message) }) })
@@ -365,6 +786,14 @@ class LlmRouter(private val context: Context) {
             put("generationConfig", JSONObject().apply {
                 put("maxOutputTokens", MAX_TOKENS); put("temperature", 0.7)
             })
+            // Enable Grounding with Google Search for real-time info (if user enabled it)
+            if (googleSearch) {
+                put("tools", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("googleSearch", JSONObject())
+                    })
+                })
+            }
         }.toString()
         val req = Request.Builder().url(url).addHeader("Content-Type","application/json")
             .post(body.toRequestBody()).build()
@@ -384,11 +813,15 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callOllama(message: String): String {
+    private suspend fun callOllama(message: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
+        val model = preferredModel.ifBlank { "llama3.2" }
         val body = JSONObject().apply {
-            put("model","llama3.2"); put("stream",false)
+            put("model", model); put("stream", false)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply { put("role","system"); put("content", SYSTEM_PROMPT) })
+                history.forEach { msg ->
+                    put(JSONObject().apply { put("role", msg.role); put("content", msg.content) })
+                }
                 put(JSONObject().apply { put("role","user");   put("content", message) })
             })
         }.toString()
@@ -401,6 +834,73 @@ class LlmRouter(private val context: Context) {
                 json.getJSONObject("message").getString("content").trim()
             }
         }
+    }
+
+    // ── Offline model (MediaPipe LlmInference) ──────────────────────────────
+
+    private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList()): String {
+        val manager = OfflineModelManager.getInstance(context)
+        if (preferredModel.isNotBlank()) {
+            val models = manager.listAppModels()
+            val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
+            if (match != null && manager.getLoadedModelPath() != match.path) {
+                manager.loadModel(match.path).getOrThrow()
+            }
+        }
+        if (!manager.isModelLoaded()) {
+            throw Exception("No offline model loaded — import one in Settings → API Keys")
+        }
+        // Build prompt with conversation history
+        val historyText = if (history.isNotEmpty()) {
+            history.joinToString("\n") { msg ->
+                if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
+            } + "\n"
+        } else ""
+        val fullPrompt = "$SYSTEM_PROMPT\n\n${historyText}User: $message\nAssistant:"
+        return manager.generateResponse(fullPrompt)
+    }
+
+    private suspend fun validateOffline(preferredModel: String): ValidationResult {
+        val manager = OfflineModelManager.getInstance(context)
+        val models = manager.listAppModels()
+
+        if (models.isEmpty()) {
+            return ValidationResult(false,
+                "❌ No models imported. Use the file picker in Settings → API Keys to import a .bin model.")
+        }
+
+        val modelNames = models.map { m -> m.name }
+
+        // Try to load the preferred model
+        if (preferredModel.isNotBlank()) {
+            val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
+            if (match != null) {
+                val loadResult = manager.loadModel(match.path)
+                if (loadResult.isFailure) {
+                    return ValidationResult(false,
+                        "❌ Failed to load ${match.name}: ${loadResult.exceptionOrNull()?.message}",
+                        modelNames)
+                }
+                // Send test prompt
+                val testResponse = try {
+                    val prompt = "Say hello in one word.\nAssistant:"
+                    manager.generateResponse(prompt)
+                } catch (e: Exception) {
+                    return ValidationResult(false,
+                        "⚠️ Model loaded but test prompt failed: ${e.message}",
+                        modelNames, "")
+                }
+                return ValidationResult(true,
+                    "✅ Offline model loaded: ${match.name} (${match.sizeMB})",
+                    modelNames, testResponse)
+            }
+        }
+
+        // No preferred model — just list available
+        val displayNames = models.map { m -> "${m.name} (${m.sizeMB})" }
+        return ValidationResult(true,
+            "✅ ${models.size} model file${if (models.size != 1) "s" else ""} imported",
+            displayNames)
     }
 
     private fun String.toRequestBody(): RequestBody =
