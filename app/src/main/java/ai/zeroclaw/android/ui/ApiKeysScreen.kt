@@ -172,7 +172,10 @@ fun ApiKeysScreen(onBack: () -> Unit) {
     fun toggleModel(entry: ApiKeyEntry, modelId: String) {
         val current = entry.safeSelectedModels.toMutableList()
         if (modelId in current) current.remove(modelId) else current.add(modelId)
-        keyManager.updateKey(entry.copy(selectedModels = current))
+        // Ensure model stays in checkedModels so it remains visible in the list
+        val checked = entry.safeCheckedModels.toMutableMap()
+        if (modelId !in checked) checked[modelId] = null // treat as OK
+        keyManager.updateKey(entry.copy(selectedModels = current, checkedModels = checked))
         refresh()
     }
 
