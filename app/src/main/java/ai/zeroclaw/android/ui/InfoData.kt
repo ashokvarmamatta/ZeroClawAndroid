@@ -70,8 +70,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (8 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status Diagnostics, and GitHub integration. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (10 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, and Email. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -250,9 +250,9 @@ val OTHER_APPS_GUIDE = GuideSection(
     accentColor = Color(0xFF7C4DFF),
     intro = "ZeroClaw's architecture supports any chat platform that can send HTTP webhooks or be polled via API. Here's how other platforms work:",
     steps = listOf(
-        GuideStep(1, "🎮", "Discord Bot",
-            "Discord has a full bot API — create a bot in Discord Developer Portal and connect it to ZeroClaw via a simple bridge script.",
-            "Steps:\n1. Go to: https://discord.com/developers/applications\n2. New Application → Bot → Add Bot\n3. Copy Bot Token\n4. Enable Message Content Intent under Privileged Gateway Intents\n5. Invite bot to server via OAuth2 URL\n6. Run a tiny Python/Node bridge that receives Discord messages and forwards to ZeroClaw API\n\nDiscord support is planned as a native ZeroClaw channel — check the GitHub for updates.",
+        GuideStep(1, "🎮", "Discord Bot (Native)",
+            "ZeroClaw has built-in Discord bot support! Connect via Gateway WebSocket for real-time messaging with per-channel AI history.",
+            "Setup:\n1. Go to: https://discord.com/developers/applications\n2. New Application → Bot → Add Bot\n3. Copy Bot Token\n4. Enable these Privileged Gateway Intents:\n   • MESSAGE CONTENT INTENT\n   • SERVER MEMBERS INTENT (optional)\n5. Generate OAuth2 invite URL:\n   Scopes: bot\n   Permissions: Send Messages, Read Message History\n6. Invite bot to your server\n7. Paste Bot Token in ZeroClaw Settings → Discord Bot\n8. Start the service — bot connects via WebSocket\n\nFeatures:\n• Real-time messaging via Discord Gateway\n• Per-user conversation history\n• Auto-reconnect on disconnect\n• 2000 char message splitting\n• Typing indicators",
             "https://discord.com/developers/applications",
             badgeColor = Color(0xFF5865F2)
         ),
@@ -344,7 +344,17 @@ val AI_TOOLS_GUIDE = GuideSection(
             "How it works:\n• Uses GitHub's public REST API\n• No auth needed for public repos\n• Optional GitHub PAT for private repos & issue creation\n\nActions:\n• search — search repositories by keyword\n• readme — read a repo's README\n• issues — list open issues\n• create_issue — file a new issue (needs token)\n\nExample prompts:\n• \"Search GitHub for Android AI agents\"\n• \"Show me the README for zeroclaw-labs/zeroclaw\"\n• \"What are the open issues on my repo?\"\n• \"Create an issue on my-org/my-repo about the login bug\"",
             badgeColor = Color(0xFFFF6F00)
         ),
-        GuideStep(9, "⚙️", "Managing Tools",
+        GuideStep(9, "📝", "Notion Integration",
+            "The AI can interact with your Notion workspace — search pages, read content, create pages, and append text blocks.",
+            "How it works:\n• Uses the Notion REST API (v2022-06-28)\n• Requires a Notion Integration token\n• Create one at: notion.so/my-integrations\n\nActions:\n• search — find pages/databases in your workspace\n• read_page — get the content of a specific page\n• create_page — add a new page to a database\n• append — add text blocks to an existing page\n\nExample prompts:\n• \"Search my Notion for meeting notes\"\n• \"Read the project roadmap page\"\n• \"Create a new task in my todo database\"\n• \"Add a note to my daily log page\"\n\nNote: You'll need to share pages with your integration in Notion for it to access them.",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(10, "📧", "Email (SendGrid / Mailgun)",
+            "The AI can send emails on your behalf using SendGrid or Mailgun. Great for notifications, summaries, and automated communications.",
+            "How it works:\n• Uses SendGrid or Mailgun REST APIs\n• Needs an API key from your email provider\n• Supports draft mode (preview before sending)\n\nActions:\n• send — send an email immediately\n• draft — preview the email without sending\n\nParameters:\n• to — recipient email address\n• subject — email subject line\n• body — email body text\n• api_key — your SendGrid/Mailgun API key\n• provider — 'sendgrid' (default) or 'mailgun'\n\nExample prompts:\n• \"Send an email to john@example.com about the meeting\"\n• \"Draft a summary email of today's work\"",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(11, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)

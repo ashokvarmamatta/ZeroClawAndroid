@@ -13,6 +13,7 @@ import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.whatsapp.TwilioWhatsAppManager
+import ai.zeroclaw.android.discord.DiscordBotManager
 import ai.zeroclaw.android.tunnel.TunnelManager
 import ai.zeroclaw.android.tools.CronTool
 import ai.zeroclaw.android.tools.ToolSystem
@@ -24,6 +25,7 @@ class ZeroClawService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var telegramManager: TelegramBotManager
     private lateinit var whatsappManager: TwilioWhatsAppManager
+    private lateinit var discordManager: DiscordBotManager
     private lateinit var tunnelManager: TunnelManager
 
     companion object {
@@ -36,6 +38,7 @@ class ZeroClawService : Service() {
         @Volatile var tunnelUrl: String? = null
         @Volatile var telegramConnected = false
         @Volatile var whatsappConnected = false
+        @Volatile var discordConnected  = false
         val recentLogs = ArrayDeque<String>(50)
 
         fun log(msg: String) {
@@ -61,6 +64,7 @@ class ZeroClawService : Service() {
         createNotificationChannel()
         telegramManager = TelegramBotManager(this)
         whatsappManager = TwilioWhatsAppManager(this)
+        discordManager  = DiscordBotManager(this)
         tunnelManager   = TunnelManager(this)
     }
 
@@ -145,6 +149,21 @@ class ZeroClawService : Service() {
                 log("WhatsApp: Twilio not configured — go to Settings")
             }
 
+            // Discord
+            if (settings.discordToken.isNotBlank()) {
+                launch {
+                    try {
+                        discordManager.start(settings.discordToken)
+                        discordConnected = true
+                        log("Discord bot connected")
+                    } catch (e: Exception) {
+                        log("Discord error: ${e.message}")
+                    }
+                }
+            } else {
+                log("Discord: no token set — go to Settings")
+            }
+
             // Cron task checker — runs every 60 seconds
             launch {
                 val cronTool = ToolSystem.getInstance(this@ZeroClawService)
@@ -174,9 +193,11 @@ class ZeroClawService : Service() {
         isRunning        = false
         telegramConnected = false
         whatsappConnected = false
+        discordConnected  = false
         tunnelUrl         = null
         serviceScope.cancel()
         telegramManager.stop()
+        discordManager.stop()
         tunnelManager.stop()
         // Release offline model to free memory
         try { OfflineModelManager.getInstance(this).destroyEngine() } catch (_: Exception) {}

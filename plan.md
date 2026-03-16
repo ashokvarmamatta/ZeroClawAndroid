@@ -89,19 +89,22 @@
 | 64 | Google Search grounding — per-key toggle for Gemini API calls | ✅ DONE |
 | 65 | Detailed live logs — mode/provider/key/model in every log entry | ✅ DONE |
 | 66 | Screenshots + README update with all features, app icon, ZeroClaw Labs credit | ✅ DONE |
-| **67** | **ToolSystem.kt — tool registry & dispatcher: register tools, match tool calls in LLM response, execute, return results** | 🔲 TODO |
-| **68** | **WebSearchTool.kt — DuckDuckGo web search (no API key), returns top results as context** | 🔲 TODO |
-| **69** | **WebFetchTool.kt — fetch & extract readable text from any URL** | 🔲 TODO |
-| **70** | **LlmRouter.kt — inject available tools into system prompt, parse tool_use from response, execute, feed result back** | 🔲 TODO |
-| **71** | **SettingsScreen.kt — Tools section: toggle individual tools on/off** | 🔲 TODO |
-| **72** | **MemoryTool.kt — persistent memory store/recall/forget per user (SQLite)** | 🔲 TODO |
-| **73** | **PdfReadTool.kt — extract text from PDF files shared via Telegram/WhatsApp** | 🔲 TODO |
-| **74** | **ImageAnalysisTool.kt — pass images to vision-capable models (GPT-4o, Gemini)** | 🔲 TODO |
-| **75** | **CronTool.kt — scheduled recurring AI tasks (daily summaries, reminders)** | 🔲 TODO |
-| **76** | **NotionTool.kt — query/create/update Notion pages via API** | 🔲 TODO |
-| **77** | **EmailTool.kt — send/receive emails as a messaging channel** | 🔲 TODO |
-| **78** | **DiscordChannel.kt — Discord bot integration as messaging channel** | 🔲 TODO |
-| **79** | **SignalChannel.kt — Signal messaging integration** | 🔲 TODO |
+| 67 | ToolSystem.kt — tool registry & dispatcher | ✅ DONE |
+| 68 | WebSearchTool.kt — DuckDuckGo web search | ✅ DONE |
+| 69 | WebFetchTool.kt — URL content extraction | ✅ DONE |
+| 70 | LlmRouter.kt — tool system integration | ✅ DONE |
+| 71 | SettingsScreen.kt — tool toggle UI | ✅ DONE |
+| 72 | MemoryTool.kt — persistent per-user memory (Room/SQLite) | ✅ DONE |
+| 73 | PdfReadTool.kt — PDF text extraction | ✅ DONE |
+| 74 | ImageAnalysisTool.kt — vision model image analysis | ✅ DONE |
+| 75 | CronTool.kt — scheduled recurring AI tasks | ✅ DONE |
+| 76 | StatusTool.kt — service diagnostics & health reporting | ✅ DONE |
+| 77 | GitHubTool.kt — GitHub repo search, issues, READMEs | ✅ DONE |
+| 78 | InfoData.kt — AI Tools guide tab with all 8 tools documented | ✅ DONE |
+| **79** | **NotionTool.kt — query/create/update Notion pages via API** | 🔲 TODO |
+| **80** | **EmailTool.kt — send emails via SMTP or SendGrid** | 🔲 TODO |
+| **81** | **DiscordChannel.kt — Discord bot integration as messaging channel** | 🔲 TODO |
+| **82** | **SignalChannel.kt — Signal messaging integration** | 🔲 TODO |
 
 ---
 
@@ -273,15 +276,18 @@ data class ApiKeyEntry(
 - [x] `data/LlmRouter.kt`              ← NEW Phase 23
 - [x] `data/MessageDatabase.kt`
 - [x] `data/OfflineModelManager.kt`    ← Phase 59
-- [ ] `data/ToolSystem.kt`             ← Phase 67 (tool registry & dispatcher)
-- [ ] `tools/WebSearchTool.kt`         ← Phase 68 (DuckDuckGo search)
-- [ ] `tools/WebFetchTool.kt`          ← Phase 69 (URL content extraction)
-- [ ] `tools/MemoryTool.kt`            ← Phase 72 (persistent memory)
-- [ ] `tools/PdfReadTool.kt`           ← Phase 73 (PDF text extraction)
-- [ ] `tools/ImageAnalysisTool.kt`     ← Phase 74 (vision models)
-- [ ] `tools/CronTool.kt`              ← Phase 75 (scheduled tasks)
-- [ ] `tools/NotionTool.kt`            ← Phase 76 (Notion API)
-- [ ] `tools/EmailTool.kt`             ← Phase 77 (email send/receive)
+- [x] `tools/ToolSystem.kt`             ← Phase 67 (tool registry & dispatcher)
+- [x] `tools/WebSearchTool.kt`         ← Phase 68 (DuckDuckGo search)
+- [x] `tools/WebFetchTool.kt`          ← Phase 69 (URL content extraction)
+- [x] `tools/MemoryTool.kt`            ← Phase 72 (persistent memory)
+- [x] `tools/PdfReadTool.kt`           ← Phase 73 (PDF text extraction)
+- [x] `tools/ImageAnalysisTool.kt`     ← Phase 74 (vision models)
+- [x] `tools/CronTool.kt`              ← Phase 75 (scheduled tasks)
+- [x] `tools/StatusTool.kt`            ← Phase 76 (service diagnostics)
+- [x] `tools/GitHubTool.kt`            ← Phase 77 (GitHub integration)
+- [x] `data/MemoryDatabase.kt`         ← Phase 72 (Room DB for memory)
+- [ ] `tools/NotionTool.kt`            ← Phase 79 (Notion API)
+- [ ] `tools/EmailTool.kt`             ← Phase 80 (email send)
 
 ### Resources
 - [x] `app/src/main/res/values/strings.xml`

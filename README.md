@@ -50,7 +50,8 @@ You → Telegram / WhatsApp
 ### 🤖 AI Messaging
 - **Telegram Bot** integration via polling — responds to any message sent to your bot
 - **WhatsApp** integration via Twilio API
-- **Per-chat conversation history** — maintains separate context per Telegram/WhatsApp user across messages
+- **Discord Bot** — native Gateway WebSocket integration with real-time messaging
+- **Per-chat conversation history** — maintains separate context per Telegram/WhatsApp/Discord user across messages
 - Automatic AI replies powered by any LLM you configure
 - `/clear` or `/new` commands to reset chat history per user
 
@@ -82,7 +83,7 @@ You → Telegram / WhatsApp
 - Rate-limited (429) keys are skipped this session but re-tried on restart
 - Full session failure stats shown in the home screen
 
-### 🔧 AI Tools (8 Built-in)
+### 🔧 AI Tools (10 Built-in)
 - **Tool system** inspired by [ZeroClaw upstream](https://github.com/zeroclaw-labs/zeroclaw) — LLM can invoke tools during conversations
 - **Web Search** — DuckDuckGo search (no API key needed), returns top results with real-time info
 - **Web Fetch** — fetch any URL, strip HTML, extract readable text for summarization
@@ -92,6 +93,8 @@ You → Telegram / WhatsApp
 - **Scheduled Tasks (Cron)** — schedule recurring AI prompts per user (1min–7day intervals), auto-executed by the service daemon
 - **Status / Diagnostics** — AI can check its own service health, API key status, connections, and recent logs
 - **GitHub** — search repos, read READMEs, list issues, create issues from chat (inspired by upstream ZeroClaw skills)
+- **Notion** — search pages, read content, create pages, append blocks (requires Notion integration token)
+- **Email** — send emails via SendGrid or Mailgun, with draft preview mode
 - Tools work across **all providers** (OpenAI, Anthropic, Gemini, OpenRouter, Ollama)
 - Per-tool **enable/disable toggles** in Settings
 - Multi-round tool calling — LLM can chain multiple tool calls per message (max 3 rounds)
@@ -156,7 +159,9 @@ app/src/main/java/ai/zeroclaw/android/
 │   ├── ImageAnalysisTool.kt         # Vision model image analysis
 │   ├── CronTool.kt                  # Scheduled recurring AI tasks
 │   ├── StatusTool.kt                # Service diagnostics & health reporting
-│   └── GitHubTool.kt               # GitHub repo search, issues, READMEs
+│   ├── GitHubTool.kt               # GitHub repo search, issues, READMEs
+│   ├── NotionTool.kt               # Notion workspace search, read, create, append
+│   └── EmailTool.kt                # Send emails via SendGrid or Mailgun
 │
 ├── service/
 │   ├── ZeroClawService.kt           # Foreground service — main daemon loop, live logging
@@ -167,6 +172,9 @@ app/src/main/java/ai/zeroclaw/android/
 │
 ├── whatsapp/
 │   └── TwilioWhatsAppManager.kt     # Twilio WhatsApp send/receive
+│
+├── discord/
+│   └── DiscordBotManager.kt         # Discord Gateway WebSocket + REST
 │
 └── tunnel/
     └── TunnelManager.kt             # Cloudflare Tunnel / ngrok integration
@@ -276,14 +284,15 @@ These are the planned features and improvements for future development:
 - [ ] **Auto-restart on crash** — WorkManager periodic check to restart the service if it dies
 
 ### 🔵 Advanced / Future
-- [x] **Tool system** — extensible tool framework with 8 built-in tools, per-tool toggles in Settings ✅
+- [x] **Tool system** — extensible tool framework with 10 built-in tools, per-tool toggles in Settings ✅
 - [x] **Memory tool** — persistent per-user memory store/recall/forget via Room/SQLite ✅
 - [x] **PDF reader tool** — extract text from local files, content URIs, or remote URLs ✅
 - [x] **Image analysis tool** — analyze images using vision-capable models (GPT-4o, Gemini, Claude) ✅
 - [x] **Scheduled tasks (Cron)** — recurring AI prompts per user, auto-executed by the service daemon ✅
 - [x] **Status / Diagnostics tool** — AI self-checks service health, key status, connections ✅
 - [x] **GitHub tool** — search repos, read READMEs, list/create issues from chat ✅
-- [ ] **More tools** — Notion, email integration
+- [x] **Notion tool** — search, read, create, and append to Notion pages ✅
+- [x] **Email tool** — send emails via SendGrid or Mailgun with draft mode ✅
 - [ ] **RAG / document Q&A** — index local files and answer questions about them
 - [ ] **Plugin system** — user-installable plugins that add new skills to the agent
 - [ ] **Multi-device sync** — sync key list and config across multiple Android devices
