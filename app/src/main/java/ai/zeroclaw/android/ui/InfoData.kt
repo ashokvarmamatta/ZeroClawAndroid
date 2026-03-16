@@ -11,7 +11,8 @@ data class GuideStep(
     val description: String,
     val detail: String = "",   // expanded detail shown when step is tapped
     val codeSnippet: String = "", // URL / command / value to copy
-    val badgeColor: Color = Color(0xFF1A1A2E)
+    val badgeColor: Color = Color(0xFF1A1A2E),
+    val isNew: Boolean = false // shows NEW tag until user views the step
 )
 
 data class GuideSection(
@@ -357,12 +358,14 @@ val AI_TOOLS_GUIDE = GuideSection(
         GuideStep(11, "🌤️", "Weather",
             "The AI can check current weather and 3-day forecasts for any location worldwide — no API key needed. Uses wttr.in free service.",
             "How it works:\n• Uses wttr.in — free weather API, no key required\n• Supports city names, zip codes, and coordinates\n• Returns detailed weather data (temp, humidity, wind, UV, etc.)\n\nActions:\n• current — detailed current conditions (default)\n• forecast — 3-day forecast with daily highs/lows\n• brief — one-liner weather summary\n\nExample prompts:\n• \"What's the weather in New York?\"\n• \"Give me a 3-day forecast for Tokyo\"\n• \"Weather in 90210\"\n• \"Brief weather for London\"\n\nNo setup needed — works out of the box with any LLM provider.",
-            badgeColor = Color(0xFFFF6F00)
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
         ),
         GuideStep(12, "📝", "Summarize",
             "The AI can condense long text or web articles into key bullet points. Works with raw text or URLs — no LLM call needed inside the tool.",
             "How it works:\n• Uses extractive summarization — picks the most important sentences\n• Scores sentences by word frequency, position, cue phrases, and length\n• Can fetch a URL and summarize the page content directly\n• Returns top N key points (default 5, max 15)\n• Works entirely offline — no API key needed for the tool itself\n\nExample prompts:\n• \"Summarize this article: https://example.com/long-post\"\n• \"Give me key points from this text: [paste long text]\"\n• \"Summarize this in 10 sentences\"\n\nGreat for offline models — gives them condensed input they can work with.",
-            badgeColor = Color(0xFFFF6F00)
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
         ),
         GuideStep(13, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",

@@ -1,7 +1,32 @@
 # ZeroClawAndroid — Master Build Plan
 > **Purpose:** If this chat crashes, open a new chat, share this file, and development continues from last completed step.
 > **Project:** Android app that runs ZeroClaw AI agent, connects to Telegram & WhatsApp, deployable via Android Studio.
-> **Location:** `H:\Antigravity\ZeroClawAndroid`
+> **Location:** `D:\apps\ZeroClawAndroid`
+
+---
+
+## 🔗 Source Repositories (IMPORTANT — analyse these before implementing new features)
+
+| Repo | URL | Purpose |
+|------|-----|---------|
+| **ZeroClaw** | https://github.com/zeroclaw-labs/zeroclaw.git | Original upstream — skills, tools, agents, channels. Our app is the Android port of this. |
+| **OpenClaw** | https://github.com/openclaw/openclaw.git | Master/parent project — 50+ skills, 73 extensions, multi-agent, vector memory, hooks, workflows. Phases 85-140 are inspired by this. |
+
+> **For AI assistants:** When starting a new conversation and implementing phases 85+, clone/analyse these repos first to understand the original implementation before porting to Android/Kotlin. Don't guess — read the source.
+
+---
+
+## 📋 Dev Workflow Rules (follow this order for EVERY feature)
+
+1. **Implement** the feature (new tool, channel, UI, etc.)
+2. **Add info entry** in `InfoData.kt` — add a `GuideStep` with `isNew = true` in the relevant `GuideSection`
+3. **Add auto-tool detection** in `LlmRouter.kt` → `autoToolEnrich()` if it's a tool (so offline models can use it)
+4. **Update tool count** in `InfoData.kt` `APP_FEATURES` if a new tool was added
+5. **Mark phase done** in `plan.md` with ✅
+6. **Build** with `JAVA_HOME="C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr" ./gradlew assembleDebug`
+7. **Commit & push** to GitHub after every successful build
+8. **Screenshots** for testing go to `test_screenshots/` (gitignored) — analyse then delete before commit
+9. When setting `isNew = true` on a GuideStep, it shows a **NEW** badge until the user taps it (tracked via SharedPreferences)
 
 ---
 
