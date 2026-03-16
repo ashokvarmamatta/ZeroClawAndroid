@@ -95,47 +95,63 @@ class LlmRouter(private val context: Context) {
         val toolSystem = ToolSystem.getInstance(context)
         val toolsPrompt = toolSystem.buildToolsPrompt()
 
+        // ── Split keys: online first, offline last ──────────────────────
+        val onlineKeys = allKeys.filter { it.safeProvider != "offline" }
+        val offlineKeys = allKeys.filter { it.safeProvider == "offline" }
+
+        // Build ordered list: all online keys first, then offline as fallback
+        val orderedKeys = onlineKeys + offlineKeys
+
+        if (onlineKeys.isNotEmpty() && offlineKeys.isNotEmpty()) {
+            ZeroClawService.log("LLM: ${onlineKeys.size} online key(s) + ${offlineKeys.size} offline key(s) — online first, offline fallback")
+        } else if (onlineKeys.isNotEmpty()) {
+            ZeroClawService.log("LLM: ${onlineKeys.size} online key(s) — no offline fallback")
+        } else {
+            ZeroClawService.log("LLM: ${offlineKeys.size} offline key(s) only")
+        }
+
         var lastRateLimitMsg = ""
 
-        for (entry in allKeys) {
-            if (keyManager.allExhausted()) break
-            val usable = keyManager.nextUsableKey() ?: break
+        for (entry in orderedKeys) {
+            // Skip already-failed keys
+            if (keyManager.getFailedKeyIds().contains(entry.id)) continue
 
-            val hasCheckedModels = usable.safeCheckedModels.isNotEmpty()
-            val modelsToTry = if (usable.safeSelectedModels.isNotEmpty()) {
-                usable.safeSelectedModels
+            val hasCheckedModels = entry.safeCheckedModels.isNotEmpty()
+            val modelsToTry = if (entry.safeSelectedModels.isNotEmpty()) {
+                entry.safeSelectedModels
             } else if (hasCheckedModels) {
-                val skipProvider = LlmProvider.fromId(usable.safeProvider).displayName
-                ZeroClawService.log("LLM: [ONLINE] skipping key=\"${usable.safeLabel}\" ($skipProvider) — all models deselected")
-                keyManager.markFailed(usable.id)
+                val skipProvider = LlmProvider.fromId(entry.safeProvider).displayName
+                val mode = if (entry.safeProvider == "offline") "OFFLINE" else "ONLINE"
+                ZeroClawService.log("LLM: [$mode] skipping key=\"${entry.safeLabel}\" ($skipProvider) — all models deselected")
+                keyManager.markFailed(entry.id)
                 continue
-            } else if (usable.safePreferredModel.isNotBlank()) {
-                listOf(usable.safePreferredModel)
+            } else if (entry.safePreferredModel.isNotBlank()) {
+                listOf(entry.safePreferredModel)
             } else {
                 listOf("") // let provider pick its own default
             }
 
-            val mode = if (usable.safeProvider == "offline") "OFFLINE" else "ONLINE"
-            val provider = LlmProvider.fromId(usable.safeProvider).displayName
-            ZeroClawService.log("LLM: [$mode] key=\"${usable.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
+            val mode = if (entry.safeProvider == "offline") "OFFLINE" else "ONLINE"
+            val provider = LlmProvider.fromId(entry.safeProvider).displayName
+            ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
             var keyWorked = false
             for (model in modelsToTry) {
-                ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${usable.safeLabel}\" ($provider)")
+                ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
                 // Build the effective system prompt (base + tools)
                 val effectiveSystemPrompt = SYSTEM_PROMPT + toolsPrompt
 
-                val result = runCatching { dispatchToProvider(userMessage, usable, chatId, model, effectiveSystemPrompt) }
+                val result = runCatching { dispatchToProvider(userMessage, entry, chatId, model, effectiveSystemPrompt) }
 
                 when {
                     result.isSuccess -> {
                         var reply = result.getOrNull() ?: ""
                         if (reply.isNotBlank()) {
                             // ── Tool call loop ──────────────────────────────
-                            reply = handleToolCalls(reply, usable, chatId, model, effectiveSystemPrompt, toolSystem)
+                            reply = handleToolCalls(reply, entry, chatId, model, effectiveSystemPrompt, toolSystem)
 
-                            ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${usable.safeLabel}\" model=\"$model\" ($provider)")
+                            ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${entry.safeLabel}\" model=\"$model\" ($provider)")
                             addToHistory(chatId, "assistant", reply)
                             return reply
                         }
@@ -147,16 +163,20 @@ class LlmRouter(private val context: Context) {
 
                         if (msg.contains("429") || msg.lowercase().contains("quota") ||
                             msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
-                            ZeroClawService.log("LLM: ⚠ [$mode] ${usable.safeLabel}/\"$model\" rate-limited — trying next")
+                            ZeroClawService.log("LLM: ⚠ [$mode] ${entry.safeLabel}/\"$model\" rate-limited — trying next")
                             lastRateLimitMsg = msg
                         } else {
-                            ZeroClawService.log("LLM: ✗ [$mode] ${usable.safeLabel}/\"$model\" failed — $msg")
+                            ZeroClawService.log("LLM: ✗ [$mode] ${entry.safeLabel}/\"$model\" failed — $msg")
                         }
                     }
                 }
             }
             if (!keyWorked) {
-                keyManager.markFailed(usable.id)
+                keyManager.markFailed(entry.id)
+                // Log when transitioning from online to offline fallback
+                if (entry.safeProvider != "offline" && onlineKeys.all { keyManager.getFailedKeyIds().contains(it.id) } && offlineKeys.isNotEmpty()) {
+                    ZeroClawService.log("LLM: ⚠ All online keys exhausted — falling back to OFFLINE mode")
+                }
             }
         }
 
@@ -167,7 +187,7 @@ class LlmRouter(private val context: Context) {
             "This means your keys ARE valid but you've exceeded the free tier. " +
             "Try again in a minute or add a paid-tier key."
         } else {
-            "⚠️ All $failedCount/$totalCount API keys failed. " +
+            "⚠️ All $failedCount/$totalCount API keys failed (online + offline). " +
             "Check your keys in Settings → Manage API Keys, then restart the service."
         }
     }
