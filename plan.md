@@ -81,6 +81,94 @@
 | 56 | LlmRouter.kt — listOpenRouterModels(): call GET /v1/models with Bearer token, parse full model list including id + name + context_length + pricing, return as OpenRouterModel data objects | ✅ DONE |
 | 57 | ApiKeysScreen.kt — "Browse Models" button for OpenRouter: opens full-screen bottom sheet/dialog showing live model catalog; searchable by name; shows context size + pricing; user taps model → sets it as selectedModel | ✅ DONE |
 | 58 | ApiKeysScreen.kt — after Browse Models picks a model, auto-run Test Key against that model; show result inline so user knows it works before saving | ✅ DONE |
+| 59 | Offline mode — OfflineModelManager.kt for MediaPipe .bin models, SAF file picker, import/use-in-place dialog | ✅ DONE |
+| 60 | Per-model testing — Check All Models button, per-model pass/fail, auto-select working models | ✅ DONE |
+| 61 | Model selection persistence — serializeNulls fix, Edit Selection button, deselect keeps in list | ✅ DONE |
+| 62 | Skip key when all models deselected, unmarkFailed on re-select | ✅ DONE |
+| 63 | Per-chat conversation history — separate context per Telegram/WhatsApp user | ✅ DONE |
+| 64 | Google Search grounding — per-key toggle for Gemini API calls | ✅ DONE |
+| 65 | Detailed live logs — mode/provider/key/model in every log entry | ✅ DONE |
+| 66 | Screenshots + README update with all features, app icon, ZeroClaw Labs credit | ✅ DONE |
+| **67** | **ToolSystem.kt — tool registry & dispatcher: register tools, match tool calls in LLM response, execute, return results** | 🔲 TODO |
+| **68** | **WebSearchTool.kt — DuckDuckGo web search (no API key), returns top results as context** | 🔲 TODO |
+| **69** | **WebFetchTool.kt — fetch & extract readable text from any URL** | 🔲 TODO |
+| **70** | **LlmRouter.kt — inject available tools into system prompt, parse tool_use from response, execute, feed result back** | 🔲 TODO |
+| **71** | **SettingsScreen.kt — Tools section: toggle individual tools on/off** | 🔲 TODO |
+| **72** | **MemoryTool.kt — persistent memory store/recall/forget per user (SQLite)** | 🔲 TODO |
+| **73** | **PdfReadTool.kt — extract text from PDF files shared via Telegram/WhatsApp** | 🔲 TODO |
+| **74** | **ImageAnalysisTool.kt — pass images to vision-capable models (GPT-4o, Gemini)** | 🔲 TODO |
+| **75** | **CronTool.kt — scheduled recurring AI tasks (daily summaries, reminders)** | 🔲 TODO |
+| **76** | **NotionTool.kt — query/create/update Notion pages via API** | 🔲 TODO |
+| **77** | **EmailTool.kt — send/receive emails as a messaging channel** | 🔲 TODO |
+| **78** | **DiscordChannel.kt — Discord bot integration as messaging channel** | 🔲 TODO |
+| **79** | **SignalChannel.kt — Signal messaging integration** | 🔲 TODO |
+
+---
+
+## 🆕 Phase 67-79 Detail: Tool System & Skills (from ZeroClaw upstream)
+
+### Architecture — Tool System
+```
+User sends message via Telegram/WhatsApp
+         ↓
+   LlmRouter builds system prompt with available tools
+         ↓
+   LLM decides: reply directly OR call a tool
+         ↓
+   If tool_use → ToolSystem.dispatch(toolName, args)
+         ↓
+   Tool executes (web search, fetch URL, read PDF, etc.)
+         ↓
+   Result fed back to LLM as tool_result
+         ↓
+   LLM generates final reply using tool result
+         ↓
+   Reply sent back to user
+```
+
+### Tool Interface
+```kotlin
+interface Tool {
+    val name: String
+    val description: String       // shown to LLM in system prompt
+    val parameters: String        // JSON schema for args
+    suspend fun execute(args: Map<String, String>): ToolResult
+}
+
+data class ToolResult(
+    val success: Boolean,
+    val content: String,          // text result fed back to LLM
+    val error: String? = null
+)
+```
+
+### Phase 67 — ToolSystem.kt (registry & dispatcher)
+- `ToolSystem` singleton: register tools, list enabled tools, dispatch by name
+- `buildToolsPrompt()`: generates tool descriptions for system prompt injection
+- `parseToolCalls(response)`: extracts tool_use blocks from LLM response
+- `executeToolCall(name, args)`: runs tool, returns ToolResult
+- Per-tool enable/disable stored in DataStore
+
+### Phase 68 — WebSearchTool (DuckDuckGo, no key needed)
+- Searches DuckDuckGo HTML endpoint, parses top 5 results
+- Returns: title + snippet + URL for each result
+- LLM uses results to answer user's question with real-time info
+
+### Phase 69 — WebFetchTool (URL content extraction)
+- Fetches URL, strips HTML tags, extracts readable text
+- Truncates to ~4000 chars to fit context
+- Useful for "summarize this article" type requests
+
+### Phase 70 — LlmRouter integration
+- System prompt includes tool definitions when tools are enabled
+- After LLM response, check for tool_use → execute → send tool_result → get final reply
+- Works with all providers: OpenAI (function calling), Anthropic (tool_use), Gemini (function declarations)
+- Max 3 tool rounds per message to prevent infinite loops
+
+### Phase 71 — Settings UI for tools
+- New "Tools" section in Settings or AI Configuration
+- Toggle switch per tool (Web Search, Web Fetch, Memory, etc.)
+- Tool status shown on Home screen
 
 ---
 
@@ -184,6 +272,16 @@ data class ApiKeyEntry(
 - [x] `data/LlmKeyManager.kt`          ← NEW Phase 22
 - [x] `data/LlmRouter.kt`              ← NEW Phase 23
 - [x] `data/MessageDatabase.kt`
+- [x] `data/OfflineModelManager.kt`    ← Phase 59
+- [ ] `data/ToolSystem.kt`             ← Phase 67 (tool registry & dispatcher)
+- [ ] `tools/WebSearchTool.kt`         ← Phase 68 (DuckDuckGo search)
+- [ ] `tools/WebFetchTool.kt`          ← Phase 69 (URL content extraction)
+- [ ] `tools/MemoryTool.kt`            ← Phase 72 (persistent memory)
+- [ ] `tools/PdfReadTool.kt`           ← Phase 73 (PDF text extraction)
+- [ ] `tools/ImageAnalysisTool.kt`     ← Phase 74 (vision models)
+- [ ] `tools/CronTool.kt`              ← Phase 75 (scheduled tasks)
+- [ ] `tools/NotionTool.kt`            ← Phase 76 (Notion API)
+- [ ] `tools/EmailTool.kt`             ← Phase 77 (email send/receive)
 
 ### Resources
 - [x] `app/src/main/res/values/strings.xml`
