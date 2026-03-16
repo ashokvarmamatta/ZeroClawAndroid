@@ -301,6 +301,10 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## 🙏 Acknowledgements
 
+### Built on ZeroClaw
+This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends the original project into a native Android experience with offline model support, per-model testing & selection, Google Search grounding, and a full Material Design 3 UI.
+
+### Libraries & Services
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [Twilio](https://www.twilio.com)
 - [OpenAI API](https://platform.openai.com)
