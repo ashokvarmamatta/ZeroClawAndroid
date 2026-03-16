@@ -2,6 +2,7 @@ package ai.zeroclaw.android.data
 
 import android.content.Context
 import ai.zeroclaw.android.service.ZeroClawService
+import ai.zeroclaw.android.tools.ToolCall
 import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -110,6 +111,11 @@ class LlmRouter(private val context: Context) {
             ZeroClawService.log("LLM: ${offlineKeys.size} offline key(s) only")
         }
 
+        // ── Auto-tool enrichment for offline models ──────────────────────
+        // Pre-execute tools for queries that match patterns, so offline models
+        // get real data injected into the prompt instead of saying "I can't access..."
+        var enrichedMessage: String? = null
+
         var lastRateLimitMsg = ""
 
         for (entry in orderedKeys) {
@@ -135,6 +141,12 @@ class LlmRouter(private val context: Context) {
             val provider = LlmProvider.fromId(entry.safeProvider).displayName
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
+            // For offline models, auto-enrich with tool results (lazy, runs once)
+            if (entry.safeProvider == "offline" && enrichedMessage == null) {
+                enrichedMessage = autoToolEnrich(userMessage, chatId, toolSystem)
+            }
+            val messageForModel = if (entry.safeProvider == "offline") enrichedMessage!! else userMessage
+
             var keyWorked = false
             for (model in modelsToTry) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
@@ -142,7 +154,7 @@ class LlmRouter(private val context: Context) {
                 // Build the effective system prompt (base + tools)
                 val effectiveSystemPrompt = SYSTEM_PROMPT + toolsPrompt
 
-                val result = runCatching { dispatchToProvider(userMessage, entry, chatId, model, effectiveSystemPrompt) }
+                val result = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
 
                 when {
                     result.isSuccess -> {
@@ -251,6 +263,108 @@ class LlmRouter(private val context: Context) {
         }
 
         return reply
+    }
+
+    // ── Smart auto-tool: pre-execute tools for models that can't call them ────
+
+    /**
+     * Detect if the user message matches a tool pattern and auto-execute it.
+     * Returns enriched message with tool results injected, or the original message.
+     * This is critical for offline/small models that can't generate tool_call blocks.
+     */
+    private suspend fun autoToolEnrich(
+        userMessage: String,
+        chatId: String,
+        toolSystem: ToolSystem
+    ): String {
+        val msg = userMessage.lowercase().trim()
+        val toolCalls = mutableListOf<ToolCall>()
+
+        // ── Weather detection ──
+        val weatherPatterns = listOf(
+            Regex("(?:what(?:'s| is) the )?weather (?:in|at|for|of) (.+)", RegexOption.IGNORE_CASE),
+            Regex("(?:current |today(?:'s)? )?(?:temperature|weather|forecast) (?:in|at|for|of) (.+)", RegexOption.IGNORE_CASE),
+            Regex("(?:how(?:'s| is) the )?weather (?:in|at|for|of) (.+)", RegexOption.IGNORE_CASE),
+            Regex("(?:is it (?:raining|cold|hot|warm|snowing) (?:in|at) )(.+)", RegexOption.IGNORE_CASE),
+            Regex("(?:forecast|weather report) (?:for |in |of )?(.+)", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in weatherPatterns) {
+            val match = pattern.find(userMessage)
+            if (match != null) {
+                val location = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                if (location.isNotBlank()) {
+                    val action = if (msg.contains("forecast") || msg.contains("3 day") || msg.contains("week")) "forecast" else "current"
+                    toolCalls.add(ToolCall("auto_weather", "weather", mapOf("location" to location, "action" to action)))
+                    break
+                }
+            }
+        }
+
+        // ── Web search detection ──
+        if (toolCalls.isEmpty()) {
+            val searchPatterns = listOf(
+                Regex("(?:search|google|look up|find) (?:for |about |up )?(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:who is|who was|what is|what are|when did|when was|where is|how many) (.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:latest|recent|current|today(?:'s)?) (?:news|updates?|info) (?:on |about |for )?(.{3,})", RegexOption.IGNORE_CASE)
+            )
+            // Only trigger web search for questions that seem to need real-time info
+            val needsRealtime = msg.contains("latest") || msg.contains("current") || msg.contains("recent") ||
+                    msg.contains("today") || msg.contains("news") || msg.contains("score") ||
+                    msg.contains("price") || msg.contains("search") || msg.contains("google") ||
+                    msg.contains("look up") || msg.contains("find out")
+            if (needsRealtime) {
+                for (pattern in searchPatterns) {
+                    val match = pattern.find(userMessage)
+                    if (match != null) {
+                        val query = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                        if (query.length >= 3) {
+                            toolCalls.add(ToolCall("auto_search", "web_search", mapOf("query" to query)))
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Status detection ──
+        if (toolCalls.isEmpty() && (msg.contains("status") || msg.contains("diagnostics") || msg.contains("health check"))) {
+            if (msg.contains("key") || msg.contains("api")) {
+                toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "keys")))
+            } else if (msg.contains("log")) {
+                toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "logs")))
+            } else if (msg.contains("connect") || msg.contains("telegram") || msg.contains("whatsapp")) {
+                toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "connections")))
+            } else {
+                toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "overview")))
+            }
+        }
+
+        // No auto-tool matched — return original
+        if (toolCalls.isEmpty()) return userMessage
+
+        // Execute matched tools and build enriched message
+        val results = StringBuilder()
+        for (call in toolCalls) {
+            val enrichedCall = if (call.name == "memory" && call.args["user_id"].isNullOrBlank()) {
+                call.copy(args = call.args + ("user_id" to chatId))
+            } else call
+
+            ZeroClawService.log("AUTO-TOOL: pre-executing ${call.name}(${call.args})")
+            val result = toolSystem.executeTool(enrichedCall)
+            if (result.success) {
+                ZeroClawService.log("AUTO-TOOL: ✓ ${call.name} returned ${result.content.length} chars")
+                results.appendLine("[${call.name} result]:")
+                results.appendLine(result.content)
+            } else {
+                ZeroClawService.log("AUTO-TOOL: ✗ ${call.name} failed — ${result.error}")
+            }
+        }
+
+        return if (results.isNotBlank()) {
+            "$userMessage\n\n[Real-time data retrieved for you — use this to answer:]\n${results.toString().take(4000)}"
+        } else {
+            userMessage
+        }
     }
 
     // ── Validate a single key (used when user saves in dialog) ───────────────
