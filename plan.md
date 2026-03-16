@@ -105,10 +105,167 @@
 | 80 | EmailTool.kt — send emails via SendGrid/Mailgun | ✅ DONE |
 | 81 | DiscordBotManager.kt — Discord Gateway WebSocket + REST | ✅ DONE |
 | 82 | SignalBridgeManager.kt — Signal via signal-cli REST API | ✅ DONE |
+| 83 | LlmRouter — online-first failover (online keys → offline fallback) | ✅ DONE |
+| 84 | ApiKeysScreen — online section top, offline section bottom | ✅ DONE |
+| | | |
+| | **═══ OpenClaw-Inspired Features (Phase 85+) ═══** | |
+| | | |
+| | **── NEW TOOLS (Skills) ──** | |
+| **85** | **WeatherTool.kt — weather queries via OpenWeatherMap or wttr.in (free, no key)** | 🔲 TODO |
+| **86** | **SummarizeTool.kt — summarize long text/URLs/documents via LLM** | 🔲 TODO |
+| **87** | **TranslateTool.kt — language translation via LLM or Google Translate API** | 🔲 TODO |
+| **88** | **ImageGenTool.kt — AI image generation (DALL-E, Gemini Imagen, Stability)** | 🔲 TODO |
+| **89** | **SpeechToTextTool.kt — voice/audio transcription via Whisper API** | 🔲 TODO |
+| **90** | **TextToSpeechTool.kt — TTS via Android native or cloud APIs** | 🔲 TODO |
+| **91** | **CalendarTool.kt — read/create Android calendar events** | 🔲 TODO |
+| **92** | **ContactsTool.kt — search/read Android contacts** | 🔲 TODO |
+| **93** | **LocationTool.kt — GPS location, nearby places, geocoding** | 🔲 TODO |
+| **94** | **CalculatorTool.kt — evaluate math expressions & unit conversions** | 🔲 TODO |
+| **95** | **RssFeedTool.kt — monitor RSS/Atom feeds, blog watcher** | 🔲 TODO |
+| **96** | **QrCodeTool.kt — generate & scan QR codes** | 🔲 TODO |
+| **97** | **FileManagerTool.kt — list, read, write local files on device** | 🔲 TODO |
+| **98** | **ClipboardTool.kt — read/write device clipboard** | 🔲 TODO |
+| **99** | **SpotifyTool.kt — Spotify playback control (play, pause, next, search)** | 🔲 TODO |
+| **100** | **SmartHomeTool.kt — Philips Hue / generic IoT device control** | 🔲 TODO |
+| **101** | **BraveTool.kt — Brave Search API (alternative to DuckDuckGo)** | 🔲 TODO |
+| **102** | **BookmarkTool.kt — save, list, search bookmarks per user** | 🔲 TODO |
+| | | |
+| | **── MESSAGING CHANNELS ──** | |
+| **103** | **SlackBotManager.kt — Slack workspace bot (RTM or Events API)** | 🔲 TODO |
+| **104** | **MatrixBotManager.kt — Matrix/Element protocol integration** | 🔲 TODO |
+| **105** | **IrcBotManager.kt — IRC protocol bot** | 🔲 TODO |
+| **106** | **TeamsBotManager.kt — Microsoft Teams bot integration** | 🔲 TODO |
+| **107** | **TwitchBotManager.kt — Twitch chat bot** | 🔲 TODO |
+| **108** | **LineBotManager.kt — LINE messaging integration** | 🔲 TODO |
+| **109** | **WebChatServer.kt — built-in web chat UI served via tunnel** | 🔲 TODO |
+| | | |
+| | **── ADVANCED AI FEATURES ──** | |
+| **110** | **Custom system prompts — per-channel/per-user configurable persona** | 🔲 TODO |
+| **111** | **Streaming responses — stream LLM output to Telegram/Discord in real-time** | 🔲 TODO |
+| **112** | **Multi-agent system — spawn sub-agents for parallel tasks** | 🔲 TODO |
+| **113** | **Agent profiles — named AI personas with different prompts/tools/models** | 🔲 TODO |
+| **114** | **Workflow engine — multi-step automated pipelines (lobster-inspired)** | 🔲 TODO |
+| **115** | **Tool loop detection — prevent infinite tool call chains** | 🔲 TODO |
+| **116** | **Thinking/reasoning mode — extended thinking for complex problems** | 🔲 TODO |
+| **117** | **Conversation summarization — auto-compress long chat histories** | 🔲 TODO |
+| | | |
+| | **── MEMORY & CONTEXT (Vector Search) ──** | |
+| **118** | **VectorMemory.kt — semantic search with embeddings (OpenAI/Gemini)** | 🔲 TODO |
+| **119** | **HybridSearch.kt — combine semantic + keyword search for recall** | 🔲 TODO |
+| **120** | **QueryExpansion.kt — auto-generate related queries for better memory retrieval** | 🔲 TODO |
+| **121** | **TemporalDecay.kt — weight recent memories higher in search results** | 🔲 TODO |
+| **122** | **SessionManager.kt — named sessions, session switching, session export** | 🔲 TODO |
+| | | |
+| | **── INFRASTRUCTURE & PLATFORM ──** | |
+| **123** | **HooksSystem.kt — before/after tool call middleware (request/response transform)** | 🔲 TODO |
+| **124** | **PluginSystem.kt — user-installable plugin packages (.zip skills)** | 🔲 TODO |
+| **125** | **WebViewTool.kt — browser automation via Android WebView** | 🔲 TODO |
+| **126** | **MediaPipeline.kt — image resize, audio convert, video frame extraction** | 🔲 TODO |
+| **127** | **RichNotifications.kt — per-channel push notifications with quick reply** | 🔲 TODO |
+| **128** | **BiometricLock.kt — fingerprint/face auth to protect the app** | 🔲 TODO |
+| **129** | **DevicePairing.kt — pair with desktop/other devices via QR code** | 🔲 TODO |
+| **130** | **AutoRecovery.kt — WorkManager watchdog to restart service on crash** | 🔲 TODO |
+| | | |
+| | **── CONFIGURATION & UX ──** | |
+| **131** | **ExportImportConfig.kt — backup/restore all settings & keys as JSON** | 🔲 TODO |
+| **132** | **ThemeToggle — manual dark/light/system theme switch in Settings** | 🔲 TODO |
+| **133** | **PerChannelPrompt — custom system prompt per Telegram/Discord/etc** | 🔲 TODO |
+| **134** | **RateLimiting.kt — per-user message rate limits (anti-abuse)** | 🔲 TODO |
+| **135** | **UsageTracking.kt — track token usage & costs per key/model** | 🔲 TODO |
+| **136** | **ApprovalSystem.kt — require user approval for dangerous tool actions** | 🔲 TODO |
+| **137** | **ConversationLabels.kt — tag/label/pin conversations** | 🔲 TODO |
+| **138** | **HomeWidget.kt — Android home screen widget (service status + quick start)** | 🔲 TODO |
+| **139** | **VoiceInput.kt — voice message transcription from Telegram/WhatsApp** | 🔲 TODO |
+| **140** | **GroupChatSupport.kt — handle Telegram/Discord group messages with @mention** | 🔲 TODO |
 
 ---
 
-## 🆕 Phase 67-79 Detail: Tool System & Skills (from ZeroClaw upstream)
+## 🆕 Phase 85-140 Detail: OpenClaw-Inspired Features
+
+### Source: [OpenClaw](https://github.com/openclaw/openclaw.git)
+OpenClaw is a production-grade personal AI framework with 50+ skills, 73 extensions,
+20+ messaging channels, and 13+ model providers. The features below are adapted for
+Android-native implementation in ZeroClaw Android.
+
+### Priority Tiers
+
+**🔴 HIGH PRIORITY (Phases 85-102) — New Tools**
+These directly enhance what the AI can do in conversations.
+
+| Phase | Tool | What It Does | API/Source |
+|-------|------|-------------|-----------|
+| 85 | Weather | Current weather & forecasts | wttr.in (free, no key) |
+| 86 | Summarize | Condense long text/articles | Uses existing LLM keys |
+| 87 | Translate | Multi-language translation | LLM-based or Google API |
+| 88 | Image Gen | Generate images from text | DALL-E / Gemini Imagen |
+| 89 | Speech-to-Text | Transcribe voice/audio | Whisper API |
+| 90 | Text-to-Speech | Read replies aloud | Android TTS / cloud APIs |
+| 91 | Calendar | Read/create calendar events | Android CalendarProvider |
+| 92 | Contacts | Search device contacts | Android ContactsProvider |
+| 93 | Location | GPS, places, geocoding | Android LocationManager |
+| 94 | Calculator | Math expressions & units | Local eval (no API) |
+| 95 | RSS Feed | Monitor blogs & feeds | Direct HTTP + XML parsing |
+| 96 | QR Code | Generate & scan QR codes | ZXing library |
+| 97 | File Manager | List/read/write files | Android SAF |
+| 98 | Clipboard | Read/write clipboard | Android ClipboardManager |
+| 99 | Spotify | Music playback control | Spotify Web API |
+| 100 | Smart Home | Control Hue/IoT devices | Hue REST API / mDNS |
+| 101 | Brave Search | Alternative web search | Brave Search API |
+| 102 | Bookmarks | Save/search bookmarks | Room DB per user |
+
+**🟡 MEDIUM PRIORITY (Phases 103-117) — Channels & AI**
+New messaging channels and smarter AI behavior.
+
+| Phase | Feature | Description |
+|-------|---------|-------------|
+| 103 | Slack | Slack workspace bot via Events/RTM API |
+| 104 | Matrix | Matrix/Element decentralized messaging |
+| 105 | IRC | IRC protocol bot (raw TCP) |
+| 106 | MS Teams | Microsoft Teams bot via Bot Framework |
+| 107 | Twitch | Twitch chat integration (IRC-based) |
+| 108 | LINE | LINE Messaging API bot |
+| 109 | Web Chat | Built-in web chat UI served via tunnel URL |
+| 110 | Custom Prompts | Per-channel & per-user AI persona/instructions |
+| 111 | Streaming | Stream LLM responses to chat in real-time (edit-in-place) |
+| 112 | Multi-Agent | Spawn sub-agents for parallel/specialized tasks |
+| 113 | Agent Profiles | Named personas (coder, assistant, creative, etc.) |
+| 114 | Workflows | Multi-step automation pipelines with conditions |
+| 115 | Loop Detection | Prevent infinite tool call chains |
+| 116 | Thinking Mode | Extended reasoning for complex problems |
+| 117 | Auto-Summarize | Compress long conversation histories |
+
+**🟢 QUALITY OF LIFE (Phases 118-140) — Memory, Infra, UX**
+Advanced memory, platform features, and polish.
+
+| Phase | Feature | Description |
+|-------|---------|-------------|
+| 118 | Vector Memory | Semantic search with embeddings |
+| 119 | Hybrid Search | Semantic + keyword for better recall |
+| 120 | Query Expansion | Auto-generate related search queries |
+| 121 | Temporal Decay | Weight recent memories higher |
+| 122 | Sessions | Named sessions, switching, export |
+| 123 | Hooks | Before/after middleware for tool calls |
+| 124 | Plugins | User-installable skill packages |
+| 125 | WebView | Browser automation tool |
+| 126 | Media Pipeline | Image/audio/video processing |
+| 127 | Rich Notifs | Per-channel push with quick reply |
+| 128 | Biometric Lock | Fingerprint/face auth |
+| 129 | Device Pairing | QR-based desktop pairing |
+| 130 | Auto-Recovery | WorkManager crash watchdog |
+| 131 | Config Export | Backup/restore settings as JSON |
+| 132 | Theme Toggle | Manual dark/light/system switch |
+| 133 | Channel Prompts | Per-channel system prompts |
+| 134 | Rate Limiting | Per-user anti-abuse limits |
+| 135 | Usage Tracking | Token costs per key/model |
+| 136 | Approval System | Confirm dangerous tool actions |
+| 137 | Conv Labels | Tag/pin conversations |
+| 138 | Home Widget | Android widget for status |
+| 139 | Voice Input | Transcribe voice messages |
+| 140 | Group Chat | @mention-based group support |
+
+---
+
+## 🆕 Phase 67-82 Detail: Tool System & Skills (from ZeroClaw upstream)
 
 ### Architecture — Tool System
 ```
