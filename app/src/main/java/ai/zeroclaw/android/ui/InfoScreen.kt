@@ -30,19 +30,49 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.SharedPreferences
 
 // ─── InfoScreen ───────────────────────────────────────────────────────────────
+
+/**
+ * Helper to track which "NEW" guide steps the user has seen.
+ * Uses SharedPreferences for simplicity — stores step keys like "tools_11".
+ */
+object SeenStepsTracker {
+    private const val PREFS_NAME = "zeroclaw_seen_steps"
+
+    private fun prefs(context: Context): SharedPreferences =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun hasSeen(context: Context, sectionId: String, stepNumber: Int): Boolean =
+        prefs(context).getBoolean("${sectionId}_$stepNumber", false)
+
+    fun markSeen(context: Context, sectionId: String, stepNumber: Int) {
+        prefs(context).edit().putBoolean("${sectionId}_$stepNumber", true).apply()
+    }
+
+    fun hasNewInSection(context: Context, section: GuideSection): Boolean =
+        section.steps.any { it.isNew && !hasSeen(context, section.id, it.number) }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfoScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     // Tab 0 = About, tabs 1+ = guide sections
     var selectedTabIndex by remember { mutableStateOf(0) }
     val guideSections = ALL_GUIDE_SECTIONS
 
-    data class TabDef(val emoji: String, val label: String)
-    val tabs = listOf(TabDef("🦀", "About")) +
-        guideSections.map { TabDef(it.emoji, it.label) }
+    // Track seen state so UI recomposes when steps are marked seen
+    var seenVersion by remember { mutableIntStateOf(0) }
+
+    data class TabDef(val emoji: String, val label: String, val hasNew: Boolean)
+    @Suppress("UNUSED_EXPRESSION")
+    seenVersion // trigger recomposition when a step is marked seen
+    val tabs = listOf(TabDef("🦀", "About", false)) +
+        guideSections.map { section ->
+            TabDef(section.emoji, section.label, SeenStepsTracker.hasNewInSection(context, section))
+        }
 
     Scaffold(
         topBar = {
@@ -91,6 +121,15 @@ fun InfoScreen(onBack: () -> Unit) {
                                 fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Normal,
                                 fontSize = 13.sp
                             )
+                            // NEW dot on tabs that have unseen new features
+                            if (tab.hasNew) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFF1744))
+                                )
+                            }
                         }
                     }
                 }
@@ -107,7 +146,13 @@ fun InfoScreen(onBack: () -> Unit) {
                 if (tabIndex == 0) {
                     AboutTabContent()
                 } else {
-                    GuideSectionContent(section = guideSections[tabIndex - 1])
+                    GuideSectionContent(
+                        section = guideSections[tabIndex - 1],
+                        onStepSeen = { stepNumber ->
+                            SeenStepsTracker.markSeen(context, guideSections[tabIndex - 1].id, stepNumber)
+                            seenVersion++
+                        }
+                    )
                 }
             }
         }
@@ -374,7 +419,8 @@ private fun ArchRow(label: String, value: String) {
 // ─── Section content ──────────────────────────────────────────────────────────
 
 @Composable
-fun GuideSectionContent(section: GuideSection) {
+fun GuideSectionContent(section: GuideSection, onStepSeen: (Int) -> Unit = {}) {
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -382,7 +428,10 @@ fun GuideSectionContent(section: GuideSection) {
     ) {
         item { IntroCard(section) }
         itemsIndexed(section.steps) { _, step ->
-            StepCard(step, section.accentColor)
+            val showNew = step.isNew && !SeenStepsTracker.hasSeen(context, section.id, step.number)
+            StepCard(step, section.accentColor, showNew) {
+                onStepSeen(step.number)
+            }
         }
         item { Spacer(modifier = Modifier.height(32.dp)) }
     }
@@ -419,23 +468,29 @@ fun IntroCard(section: GuideSection) {
 // ─── Step card ────────────────────────────────────────────────────────────────
 
 @Composable
-fun StepCard(step: GuideStep, accentColor: Color) {
+fun StepCard(step: GuideStep, accentColor: Color, showNewBadge: Boolean = false, onSeen: () -> Unit = {}) {
     val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { expanded = !expanded },
+            .clickable {
+                expanded = !expanded
+                if (showNewBadge) onSeen()
+            },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (showNewBadge)
+                Color(0xFFFF1744).copy(alpha = 0.06f)
+            else
+                MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
-            // Header row: badge + emoji + title + chevron
+            // Header row: badge + emoji + title + NEW tag + chevron
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -463,6 +518,19 @@ fun StepCard(step: GuideStep, accentColor: Color) {
                     maxLines = if (expanded) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                // NEW badge
+                if (showNewBadge) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFFF1744))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("NEW", color = Color.White, fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+                    }
+                }
 
                 Icon(
                     if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
