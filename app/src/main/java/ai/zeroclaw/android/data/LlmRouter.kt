@@ -696,7 +696,7 @@ class LlmRouter(private val context: Context) {
         }
         return when (entry.safeProvider) {
             "anthropic" -> callAnthropic(message, entry.safeApiKey, useModel, history)
-            "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history)
+            "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history, entry.safeGoogleSearch)
             "ollama"    -> callOllama(message, useModel, history)
             "offline"   -> callOffline(message, useModel, history)
             else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, useModel, history)
@@ -761,7 +761,7 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList()): String {
+    private suspend fun callGemini(message: String, apiKey: String, preferredModel: String = "", history: List<ChatMessage> = emptyList(), googleSearch: Boolean = false): String {
         val model = preferredModel.ifBlank { "gemini-2.5-flash-preview-04-17" }
             .let { if (it.isBlank()) "gemini-1.5-flash" else it }
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
@@ -786,12 +786,14 @@ class LlmRouter(private val context: Context) {
             put("generationConfig", JSONObject().apply {
                 put("maxOutputTokens", MAX_TOKENS); put("temperature", 0.7)
             })
-            // Enable Grounding with Google Search for real-time info
-            put("tools", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("googleSearch", JSONObject())
+            // Enable Grounding with Google Search for real-time info (if user enabled it)
+            if (googleSearch) {
+                put("tools", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("googleSearch", JSONObject())
+                    })
                 })
-            })
+            }
         }.toString()
         val req = Request.Builder().url(url).addHeader("Content-Type","application/json")
             .post(body.toRequestBody()).build()

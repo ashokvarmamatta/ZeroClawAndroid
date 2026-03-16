@@ -343,7 +343,11 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                             else expandedModelLists + entry.id
                         },
                         onToggleModel = { modelId -> toggleModel(entry, modelId) },
-                        onRetestModel = { modelId -> retestModel(entry, modelId) }
+                        onRetestModel = { modelId -> retestModel(entry, modelId) },
+                        onToggleGoogleSearch = {
+                            keyManager.updateKey(entry.copy(googleSearch = !entry.safeGoogleSearch))
+                            refresh()
+                        }
                     )
                 }
             } else {
@@ -779,7 +783,8 @@ fun ApiKeyCard(
     onCheckAllModels: () -> Unit = {},
     onToggleModelList: () -> Unit = {},
     onToggleModel: (String) -> Unit = {},
-    onRetestModel: (String) -> Unit = {}
+    onRetestModel: (String) -> Unit = {},
+    onToggleGoogleSearch: () -> Unit = {}
 ) {
     val provider = LlmProvider.fromId(entry.safeProvider)
     val accentColor = providerColor(entry.safeProvider)
@@ -1158,6 +1163,49 @@ fun ApiKeyCard(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // ── Google Search grounding toggle (Gemini only) ────────────────
+            if (entry.safeProvider == "gemini") {
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF4285F4).copy(alpha = 0.08f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleGoogleSearch() }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🔍", fontSize = 16.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Google Search Grounding",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                if (entry.safeGoogleSearch) "Replies include real-time web info"
+                                else "Replies use training data only",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = entry.safeGoogleSearch,
+                            onCheckedChange = { onToggleGoogleSearch() },
+                            modifier = Modifier.height(20.dp),
+                            colors = SwitchDefaults.colors(
+                                checkedTrackColor = Color(0xFF4285F4),
+                                checkedThumbColor = Color.White
+                            )
+                        )
                     }
                 }
             }
