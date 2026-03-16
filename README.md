@@ -82,6 +82,15 @@ You → Telegram / WhatsApp
 - Rate-limited (429) keys are skipped this session but re-tried on restart
 - Full session failure stats shown in the home screen
 
+### 🔧 AI Tools (Extensible)
+- **Tool system** inspired by [ZeroClaw upstream](https://github.com/zeroclaw-labs/zeroclaw) — LLM can invoke tools during conversations
+- **Web Search** — DuckDuckGo search (no API key needed), returns top results with real-time info
+- **Web Fetch** — fetch any URL, strip HTML, extract readable text for summarization
+- Tools work across **all providers** (OpenAI, Anthropic, Gemini, OpenRouter, Ollama)
+- Per-tool **enable/disable toggles** in Settings
+- Multi-round tool calling — LLM can chain multiple tool calls per message (max 3 rounds)
+- `/tools` command to list enabled tools in chat
+
 ### 📱 Offline Mode
 - Run AI **completely offline** using on-device `.bin` models via MediaPipe LlmInference
 - **Import models** from file picker (SAF — no storage permissions needed)
@@ -126,10 +135,15 @@ app/src/main/java/ai/zeroclaw/android/
 ├── data/
 │   ├── ApiKeyEntry.kt               # Key data model (provider, key, baseUrl, model, googleSearch)
 │   ├── LlmKeyManager.kt             # Key persistence, active key, reordering, failover tracking
-│   ├── LlmRouter.kt                 # Waterfall failover, per-provider dispatch, chat history, validation
+│   ├── LlmRouter.kt                 # Waterfall failover, per-provider dispatch, tool integration
 │   ├── OfflineModelManager.kt        # Offline .bin model management via MediaPipe
 │   ├── AppSettings.kt               # DataStore preferences
 │   └── MessageDatabase.kt           # Room DB — message history
+│
+├── tools/
+│   ├── ToolSystem.kt                # Tool registry, dispatcher, prompt injection, call parsing
+│   ├── WebSearchTool.kt             # DuckDuckGo web search (no API key needed)
+│   └── WebFetchTool.kt              # URL content fetching & HTML text extraction
 │
 ├── service/
 │   ├── ZeroClawService.kt           # Foreground service — main daemon loop, live logging
@@ -249,7 +263,8 @@ These are the planned features and improvements for future development:
 - [ ] **Auto-restart on crash** — WorkManager periodic check to restart the service if it dies
 
 ### 🔵 Advanced / Future
-- [ ] **Tool use / function calling** — let the AI call local device functions (read contacts, calendar, send SMS)
+- [x] **Tool system** — extensible tool framework with Web Search (DuckDuckGo) and Web Fetch, per-tool toggles in Settings ✅
+- [ ] **More tools** — Memory (persistent), PDF reading, image analysis, Notion, email, scheduled tasks
 - [ ] **RAG / document Q&A** — index local files and answer questions about them
 - [ ] **Plugin system** — user-installable plugins that add new skills to the agent
 - [ ] **Multi-device sync** — sync key list and config across multiple Android devices
