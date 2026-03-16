@@ -330,7 +330,43 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 3. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 3. Translate ────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val translatePatterns = listOf(
+                // "translate X to Y"
+                Regex("translate\\s+['\"]?(.+?)['\"]?\\s+(?:to|into|in)\\s+(\\w+)", RegexOption.IGNORE_CASE),
+                // "X in spanish", "hello in hindi"
+                Regex("['\"]?(.+?)['\"]?\\s+in\\s+(spanish|french|german|japanese|chinese|korean|hindi|telugu|tamil|arabic|russian|portuguese|italian|dutch|swedish|turkish|thai|vietnamese|indonesian|kannada|malayalam|marathi|gujarati|bengali|punjabi|urdu|persian|hebrew|greek|polish|romanian|hungarian|finnish|danish|norwegian|filipino|swahili|czech|ukrainian|serbian|croatian|slovak|slovenian|estonian|latvian|lithuanian|georgian|albanian|catalan|afrikaans|bulgarian|malay)", RegexOption.IGNORE_CASE),
+                // "how do you say X in Y"
+                Regex("how (?:do you |to )?say\\s+['\"]?(.+?)['\"]?\\s+in\\s+(\\w+)", RegexOption.IGNORE_CASE),
+                // "what is X in Y"
+                Regex("what(?:'s| is)\\s+['\"]?(.+?)['\"]?\\s+in\\s+(\\w+)\\s*\\??", RegexOption.IGNORE_CASE)
+            )
+            val needsTranslate = msg.contains("translate") || msg.contains("translation") ||
+                    msg.contains("how do you say") || msg.contains("how to say") ||
+                    msg.contains("in spanish") || msg.contains("in french") || msg.contains("in german") ||
+                    msg.contains("in hindi") || msg.contains("in telugu") || msg.contains("in japanese") ||
+                    msg.contains("in chinese") || msg.contains("in korean") || msg.contains("in arabic") ||
+                    msg.contains("in tamil") || msg.contains("in russian") || msg.contains("in portuguese")
+            if (needsTranslate) {
+                for (pattern in translatePatterns) {
+                    val match = pattern.find(userMessage)
+                    if (match != null) {
+                        val text = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                        val targetLang = match.groupValues[2].trim()
+                        if (text.isNotBlank() && text.length >= 1 && targetLang.isNotBlank()) {
+                            toolCalls.add(ToolCall("auto_translate", "translate", mapOf(
+                                "text" to text,
+                                "to" to targetLang
+                            )))
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 4. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
