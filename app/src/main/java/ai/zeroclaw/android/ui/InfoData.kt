@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (13 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, and Translate. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (14 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, and Image Gen. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -373,7 +373,13 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(14, "⚙️", "Managing Tools",
+        GuideStep(14, "🎨", "Image Generation",
+            "The AI can generate images from text descriptions. Free via Pollinations.ai (no key needed), or DALL-E 3 if you have an OpenAI key.",
+            "How it works:\n• Primary: Pollinations.ai — 100% free, no API key, no signup\n• Optional: DALL-E 3 via OpenAI (needs API key, falls back to Pollinations on failure)\n• Returns a direct URL to the generated image\n\nSizes:\n• square — 1024x1024 (default)\n• wide — 1792x1024 (landscape)\n• tall — 1024x1792 (portrait)\n\nExample prompts:\n• \"Generate an image of a sunset over mountains\"\n• \"Create a picture of a robot playing guitar\"\n• \"Draw a cat wearing a space suit\"\n• \"Generate a wide landscape of a futuristic city\"\n\nNo setup needed — Pollinations.ai works out of the box. Add OpenAI key for DALL-E quality.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(15, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)

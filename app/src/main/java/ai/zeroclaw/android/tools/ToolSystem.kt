@@ -73,6 +73,7 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(WeatherTool())
         registerTool(SummarizeTool())
         registerTool(TranslateTool())
+        registerTool(ImageGenTool(context))
     }
 
     fun registerTool(tool: Tool) {

@@ -222,7 +222,7 @@ These directly enhance what the AI can do in conversations.
 | 85 | Weather ✅ | Current weather & forecasts | wttr.in (free, no key) |
 | 86 | Summarize ✅ | Condense long text/articles | Extractive (no LLM needed) |
 | 87 | Translate ✅ | Multi-language translation | MyMemory API (free, no key) |
-| 88 | Image Gen | Generate images from text | DALL-E / Gemini Imagen |
+| 88 | Image Gen ✅ | Generate images from text | Pollinations.ai (free) + DALL-E 3 |
 | 89 | Speech-to-Text | Transcribe voice/audio | Whisper API |
 | 90 | Text-to-Speech | Read replies aloud | Android TTS / cloud APIs |
 | 91 | Calendar | Read/create calendar events | Android CalendarProvider |
