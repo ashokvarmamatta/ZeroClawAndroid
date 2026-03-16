@@ -68,6 +68,8 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(CronTool(context))
         registerTool(StatusTool(context))
         registerTool(GitHubTool())
+        registerTool(NotionTool())
+        registerTool(EmailTool())
     }
 
     fun registerTool(tool: Tool) {

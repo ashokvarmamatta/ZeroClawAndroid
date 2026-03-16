@@ -45,6 +45,7 @@ class StatusTool(private val context: Context) : Tool {
         sb.appendLine("\n📡 Connections:")
         sb.appendLine("  Telegram: ${if (ZeroClawService.telegramConnected) "✓ Connected" else "✗ Disconnected"}")
         sb.appendLine("  WhatsApp: ${if (ZeroClawService.whatsappConnected) "✓ Connected" else "✗ Disconnected"}")
+        sb.appendLine("  Discord:  ${if (ZeroClawService.discordConnected) "✓ Connected" else "✗ Disconnected"}")
         val tunnel = ZeroClawService.tunnelUrl
         sb.appendLine("  Tunnel: ${tunnel ?: "Not active"}")
 
@@ -132,6 +133,7 @@ class StatusTool(private val context: Context) : Tool {
         sb.appendLine("🦀 Service: ${if (ZeroClawService.isRunning) "RUNNING" else "STOPPED"}")
         sb.appendLine("✈️ Telegram: ${if (ZeroClawService.telegramConnected) "Connected (polling)" else "Disconnected"}")
         sb.appendLine("💬 WhatsApp: ${if (ZeroClawService.whatsappConnected) "Connected (webhook on :8080)" else "Disconnected"}")
+        sb.appendLine("🎮 Discord:  ${if (ZeroClawService.discordConnected) "Connected (Gateway WebSocket)" else "Disconnected"}")
 
         val tunnel = ZeroClawService.tunnelUrl
         sb.appendLine("🌐 Tunnel: ${tunnel ?: "Not active"}")

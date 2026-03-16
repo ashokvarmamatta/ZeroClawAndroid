@@ -43,6 +43,7 @@ fun SettingsScreen(
     var twilioSid by remember { mutableStateOf("") }
     var twilioToken by remember { mutableStateOf("") }
     var twilioFrom by remember { mutableStateOf("whatsapp:+14155238886") }
+    var discordToken by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(true) }
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
@@ -64,6 +65,7 @@ fun SettingsScreen(
             twilioSid = s.twilioSid
             twilioToken = s.twilioToken
             twilioFrom = s.twilioFrom
+            discordToken = s.discordToken
             autoStart = s.autoStart
         }
         val keys = keyManager.loadKeys()
@@ -86,7 +88,7 @@ fun SettingsScreen(
                         scope.launch {
                             settings.save(
                                 zeroClawUrl, telegramToken, twilioSid,
-                                twilioToken, twilioFrom, "", "", autoStart
+                                twilioToken, twilioFrom, "", "", autoStart, discordToken
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -190,6 +192,10 @@ fun SettingsScreen(
             item { SectionHeader("✈️ Telegram Bot") }
             item {
                 SettingsTextField("Bot Token (from @BotFather)", telegramToken, true) { telegramToken = it }
+            }
+            item { SectionHeader("🎮 Discord Bot") }
+            item {
+                SettingsTextField("Bot Token (from Discord Developer Portal)", discordToken, true) { discordToken = it }
             }
             item { SectionHeader("💬 WhatsApp (Twilio)") }
             item { SettingsTextField("Twilio Account SID", twilioSid, false) { twilioSid = it } }

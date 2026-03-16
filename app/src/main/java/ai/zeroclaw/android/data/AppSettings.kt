@@ -16,7 +16,8 @@ data class SettingsData(
     val twilioFrom: String = "whatsapp:+14155238886",
     val llmApiKey: String = "",
     val llmProvider: String = "openai",
-    val autoStart: Boolean = true
+    val autoStart: Boolean = true,
+    val discordToken: String = ""
 )
 
 class AppSettings(private val context: Context) {
@@ -33,6 +34,7 @@ class AppSettings(private val context: Context) {
         val KEY_LLM_API_KEY = stringPreferencesKey("llm_api_key")
         val KEY_LLM_PROVIDER = stringPreferencesKey("llm_provider")
         val KEY_AUTO_START = booleanPreferencesKey("auto_start")
+        val KEY_DISCORD_TOKEN = stringPreferencesKey("discord_token")
     }
 
     suspend fun getAll(): SettingsData {
@@ -45,14 +47,15 @@ class AppSettings(private val context: Context) {
             twilioFrom = prefs[KEY_TWILIO_FROM] ?: "whatsapp:+14155238886",
             llmApiKey = prefs[KEY_LLM_API_KEY] ?: "",
             llmProvider = prefs[KEY_LLM_PROVIDER] ?: "openai",
-            autoStart = prefs[KEY_AUTO_START] ?: true
+            autoStart = prefs[KEY_AUTO_START] ?: true,
+            discordToken = prefs[KEY_DISCORD_TOKEN] ?: ""
         )
     }
 
     suspend fun save(
         zeroClawUrl: String, telegramToken: String, twilioSid: String,
         twilioToken: String, twilioFrom: String, llmApiKey: String,
-        llmProvider: String, autoStart: Boolean
+        llmProvider: String, autoStart: Boolean, discordToken: String = ""
     ) {
         context.appDataStore.edit { prefs ->
             prefs[KEY_ZEROCLAW_URL] = zeroClawUrl
@@ -63,6 +66,7 @@ class AppSettings(private val context: Context) {
             prefs[KEY_LLM_API_KEY] = llmApiKey
             prefs[KEY_LLM_PROVIDER] = llmProvider
             prefs[KEY_AUTO_START] = autoStart
+            prefs[KEY_DISCORD_TOKEN] = discordToken
         }
         // Also save auto_start to legacy SharedPreferences for BootReceiver
         context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
