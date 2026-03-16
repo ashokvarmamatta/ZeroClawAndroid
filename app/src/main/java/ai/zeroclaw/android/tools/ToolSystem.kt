@@ -66,6 +66,8 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(PdfReadTool(context))
         registerTool(ImageAnalysisTool(context))
         registerTool(CronTool(context))
+        registerTool(StatusTool(context))
+        registerTool(GitHubTool())
     }
 
     fun registerTool(tool: Tool) {

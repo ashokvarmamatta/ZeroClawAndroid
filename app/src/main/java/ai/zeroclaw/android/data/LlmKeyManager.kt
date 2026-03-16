@@ -171,6 +171,9 @@ class LlmKeyManager(private val context: Context) {
     /** How many keys are currently failed this session. */
     fun failedCount() = failedKeyIds.size
 
+    /** Get set of currently failed key IDs (for diagnostics). */
+    fun getFailedKeyIds(): Set<String> = failedKeyIds.toSet()
+
     /** True if ALL enabled keys have failed. */
     fun allExhausted(): Boolean {
         val keys = loadKeys().filter { it.enabled }
