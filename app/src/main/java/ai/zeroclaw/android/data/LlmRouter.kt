@@ -268,9 +268,9 @@ class LlmRouter(private val context: Context) {
     // ── Smart auto-tool: pre-execute tools for models that can't call them ────
 
     /**
-     * Detect if the user message matches a tool pattern and auto-execute it.
-     * Returns enriched message with tool results injected, or the original message.
-     * This is critical for offline/small models that can't generate tool_call blocks.
+     * Detect tool-worthy patterns in the user message and auto-execute them.
+     * Returns enriched message with tool results injected so even dumb offline
+     * models can answer properly. Covers ALL 11 tools.
      */
     private suspend fun autoToolEnrich(
         userMessage: String,
@@ -280,31 +280,21 @@ class LlmRouter(private val context: Context) {
         val msg = userMessage.lowercase().trim()
         val toolCalls = mutableListOf<ToolCall>()
 
-        // ── Weather detection ──
-        // Weather keywords that signal a weather query
+        // ── 1. Weather ──────────────────────────────────────────────────────
         val weatherKeywords = listOf("weather", "temperature", "forecast", "rain", "raining",
             "snow", "snowing", "cold", "hot", "warm", "humid", "humidity", "wind", "windy",
             "sunny", "cloudy", "storm", "climate", "degrees", "celsius", "fahrenheit")
         val hasWeatherKeyword = weatherKeywords.any { msg.contains(it) }
-
-        // "current <location>" is a common weather query pattern
         val isCurrentQuery = msg.startsWith("current ") && msg.length > 10
 
         if (hasWeatherKeyword || isCurrentQuery) {
             val weatherPatterns = listOf(
-                // "current ammerpet", "current weather ammerpet", "current new york"
                 Regex("^current\\s+(?:weather\\s+(?:in|at|for|of)\\s+)?(.+)", RegexOption.IGNORE_CASE),
-                // "weather in london", "weather london", "weather for tokyo"
                 Regex("(?:what(?:'s| is) the )?weather\\s+(?:in|at|for|of|)\\s*(.+)", RegexOption.IGNORE_CASE),
-                // "temperature in paris", "forecast for berlin"
                 Regex("(?:temperature|forecast|weather report)\\s+(?:in|at|for|of|)\\s*(.+)", RegexOption.IGNORE_CASE),
-                // "how's the weather in X"
                 Regex("(?:how(?:'s| is) the )?weather\\s+(?:in|at|for|of)\\s+(.+)", RegexOption.IGNORE_CASE),
-                // "is it raining in X", "is it cold in X"
                 Regex("is it (?:raining|cold|hot|warm|snowing|sunny|cloudy|windy)\\s+(?:in|at)\\s+(.+)", RegexOption.IGNORE_CASE),
-                // "rain in mumbai", "snow in denver"
                 Regex("(?:rain|snow|storm|sun|clouds?)\\s+(?:in|at|for)\\s+(.+)", RegexOption.IGNORE_CASE),
-                // Last resort: just strip known keywords and treat rest as location
                 Regex("(?:weather|temperature|forecast|current)\\s+(.{2,})", RegexOption.IGNORE_CASE)
             )
             for (pattern in weatherPatterns) {
@@ -312,7 +302,6 @@ class LlmRouter(private val context: Context) {
                 if (match != null) {
                     var location = match.groupValues[1].trim()
                         .removeSuffix("?").removeSuffix(".").removeSuffix("!").trim()
-                    // Strip trailing weather words that got captured
                     location = location.replace(Regex("\\s+(weather|temperature|forecast|today|now|right now|currently)$", RegexOption.IGNORE_CASE), "").trim()
                     if (location.isNotBlank() && location.length >= 2) {
                         val action = if (msg.contains("forecast") || msg.contains("3 day") || msg.contains("week")) "forecast" else "current"
@@ -323,20 +312,41 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── Web search detection ──
+        // ── 2. Web Fetch (URL in message) ───────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
+            val urlMatch = urlPattern.find(userMessage)
+            if (urlMatch != null) {
+                val url = urlMatch.groupValues[1].removeSuffix(",").removeSuffix(")").removeSuffix(".")
+                if (url.lowercase().endsWith(".pdf")) {
+                    // PDF URL → use pdf_read tool
+                    toolCalls.add(ToolCall("auto_pdf", "pdf_read", mapOf("source" to url)))
+                } else if (url.matches(Regex(".*\\.(png|jpg|jpeg|gif|webp|bmp)(\\?.*)?$", RegexOption.IGNORE_CASE))) {
+                    // Image URL → skip for offline (needs vision model)
+                    // But still fetch web page context if there's text around it
+                } else {
+                    // Regular URL → web_fetch
+                    toolCalls.add(ToolCall("auto_fetch", "web_fetch", mapOf("url" to url)))
+                }
+            }
+        }
+
+        // ── 3. Web Search ───────────────────────────────────────────────────
         if (toolCalls.isEmpty()) {
             val searchPatterns = listOf(
-                Regex("(?:search|google|look up|find|search for) (?:for |about |up )?(.{3,})", RegexOption.IGNORE_CASE),
-                Regex("(?:who is|who was|what is|what are|when did|when was|where is|how many|how much) (.{3,})", RegexOption.IGNORE_CASE),
-                Regex("(?:latest|recent|current|today(?:'s)?) (?:news|updates?|info|results?|scores?) (?:on |about |for )?(.{3,})", RegexOption.IGNORE_CASE),
-                Regex("(?:tell me about|what happened|what's happening) (?:with |in |at )?(.{3,})", RegexOption.IGNORE_CASE)
+                Regex("(?:search|google|look up|find out|search for)\\s+(?:for |about |up )?(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:who is|who was|what is|what are|when did|when was|where is|how many|how much|how old)\\s+(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:latest|recent|current|today(?:'s)?)\\s+(?:news|updates?|info|results?|scores?)\\s+(?:on |about |for )?(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:tell me about|what happened|what's happening|explain)\\s+(?:with |in |at |to )?(.{3,})", RegexOption.IGNORE_CASE)
             )
-            val needsRealtime = msg.contains("latest") || msg.contains("current") || msg.contains("recent") ||
+            val needsSearch = msg.contains("latest") || msg.contains("current") || msg.contains("recent") ||
                     msg.contains("today") || msg.contains("news") || msg.contains("score") ||
                     msg.contains("price") || msg.contains("search") || msg.contains("google") ||
                     msg.contains("look up") || msg.contains("find out") || msg.contains("who is") ||
-                    msg.contains("what is") || msg.contains("tell me about") || msg.contains("what happened")
-            if (needsRealtime) {
+                    msg.contains("what is") || msg.contains("who was") || msg.contains("when did") ||
+                    msg.contains("where is") || msg.contains("how many") || msg.contains("how much") ||
+                    msg.contains("tell me about") || msg.contains("what happened") || msg.contains("explain")
+            if (needsSearch) {
                 for (pattern in searchPatterns) {
                     val match = pattern.find(userMessage)
                     if (match != null) {
@@ -350,16 +360,175 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── Status detection ──
-        if (toolCalls.isEmpty() && (msg.contains("status") || msg.contains("diagnostics") || msg.contains("health check"))) {
+        // ── 4. Memory ───────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            // Store memory
+            val storePatterns = listOf(
+                Regex("(?:remember|save|store|note)\\s+(?:that\\s+)?(?:my\\s+)?(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:my )?(name|birthday|age|email|phone|address|favorite|fav|job|work|hobby)\\s+(?:is|=)\\s+(.+)", RegexOption.IGNORE_CASE)
+            )
+            if (msg.contains("remember") || msg.contains("save") || msg.contains("store") || msg.contains("note that")) {
+                for (pattern in storePatterns) {
+                    val match = pattern.find(userMessage)
+                    if (match != null) {
+                        val content = match.groupValues[match.groupValues.size - 1].trim().removeSuffix("?").removeSuffix(".").trim()
+                        if (content.length >= 3) {
+                            // Try to extract key=value
+                            val kvMatch = Regex("(.+?)\\s+(?:is|=|:)\\s+(.+)", RegexOption.IGNORE_CASE).find(content)
+                            if (kvMatch != null) {
+                                toolCalls.add(ToolCall("auto_memory", "memory", mapOf(
+                                    "action" to "store",
+                                    "key" to kvMatch.groupValues[1].trim(),
+                                    "value" to kvMatch.groupValues[2].trim()
+                                )))
+                            } else {
+                                toolCalls.add(ToolCall("auto_memory", "memory", mapOf(
+                                    "action" to "store",
+                                    "key" to "note_${System.currentTimeMillis() / 1000}",
+                                    "value" to content
+                                )))
+                            }
+                            break
+                        }
+                    }
+                }
+            }
+            // Recall memory
+            if (toolCalls.isEmpty() && (msg.contains("what do you remember") || msg.contains("what do you know about me") ||
+                        msg.contains("recall") || msg.contains("my memories") || msg.contains("what did i tell you"))) {
+                toolCalls.add(ToolCall("auto_memory", "memory", mapOf("action" to "recall", "key" to "all")))
+            }
+            // Forget memory
+            if (toolCalls.isEmpty() && (msg.contains("forget") || msg.contains("delete memory") || msg.contains("erase"))) {
+                val forgetMatch = Regex("(?:forget|delete|erase)\\s+(?:my\\s+)?(?:memory\\s+(?:of|about)\\s+)?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (forgetMatch != null) {
+                    val key = forgetMatch.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                    if (key.isNotBlank() && key != "me" && key != "everything") {
+                        toolCalls.add(ToolCall("auto_memory", "memory", mapOf("action" to "forget", "key" to key)))
+                    } else if (key == "everything" || key == "all") {
+                        toolCalls.add(ToolCall("auto_memory", "memory", mapOf("action" to "forget", "key" to "all")))
+                    }
+                }
+            }
+        }
+
+        // ── 5. PDF Read ─────────────────────────────────────────────────────
+        if (toolCalls.isEmpty() && (msg.contains("pdf") || msg.contains(".pdf"))) {
+            val pdfMatch = Regex("(?:read|open|extract|summarize|what(?:'s| is) in)\\s+(?:this |the )?(?:pdf\\s+)?(.+\\.pdf)", RegexOption.IGNORE_CASE).find(userMessage)
+            if (pdfMatch != null) {
+                toolCalls.add(ToolCall("auto_pdf", "pdf_read", mapOf("source" to pdfMatch.groupValues[1].trim())))
+            }
+        }
+
+        // ── 6. Cron / Scheduled Tasks ───────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            // Schedule a task
+            if (msg.contains("schedule") || msg.contains("remind me every") || msg.contains("repeat every") ||
+                msg.contains("run every") || msg.contains("set alarm") || msg.contains("set reminder")) {
+                val intervalMatch = Regex("(?:every|each)\\s+(\\d+)\\s*(min|minute|hour|hr|day|h|m|d)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (intervalMatch != null) {
+                    val num = intervalMatch.groupValues[1].toIntOrNull() ?: 60
+                    val unit = intervalMatch.groupValues[2].lowercase()
+                    val minutes = when {
+                        unit.startsWith("h") -> num * 60
+                        unit.startsWith("d") -> num * 1440
+                        else -> num
+                    }
+                    val prompt = userMessage.replace(Regex("(?:schedule|remind me|repeat|run|set)\\s+", RegexOption.IGNORE_CASE), "")
+                        .replace(intervalMatch.value, "").trim()
+                    val name = prompt.take(30).replace(Regex("[^a-zA-Z0-9 ]"), "").trim().replace(" ", "_").ifBlank { "task" }
+                    toolCalls.add(ToolCall("auto_cron", "cron", mapOf(
+                        "action" to "schedule",
+                        "name" to name,
+                        "interval_minutes" to minutes.toString(),
+                        "prompt" to prompt.ifBlank { userMessage }
+                    )))
+                }
+            }
+            // List tasks
+            if (toolCalls.isEmpty() && (msg.contains("scheduled task") || msg.contains("list task") ||
+                        msg.contains("my task") || msg.contains("active task") || msg.contains("what tasks") ||
+                        msg.contains("show tasks") || msg.contains("cron list"))) {
+                toolCalls.add(ToolCall("auto_cron", "cron", mapOf("action" to "list")))
+            }
+            // Cancel task
+            if (toolCalls.isEmpty() && (msg.contains("cancel task") || msg.contains("stop task") ||
+                        msg.contains("remove task") || msg.contains("delete task") || msg.contains("cancel reminder"))) {
+                val cancelMatch = Regex("(?:cancel|stop|remove|delete)\\s+(?:the\\s+)?(?:task|reminder)\\s+(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (cancelMatch != null) {
+                    toolCalls.add(ToolCall("auto_cron", "cron", mapOf("action" to "cancel", "name" to cancelMatch.groupValues[1].trim())))
+                }
+            }
+        }
+
+        // ── 7. Status / Diagnostics ─────────────────────────────────────────
+        if (toolCalls.isEmpty() && (msg.contains("status") || msg.contains("diagnostics") ||
+                    msg.contains("health check") || msg.contains("service running") || msg.contains("is zeroclaw"))) {
             if (msg.contains("key") || msg.contains("api")) {
                 toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "keys")))
             } else if (msg.contains("log")) {
                 toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "logs")))
-            } else if (msg.contains("connect") || msg.contains("telegram") || msg.contains("whatsapp")) {
+            } else if (msg.contains("connect") || msg.contains("telegram") || msg.contains("whatsapp") || msg.contains("discord")) {
                 toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "connections")))
             } else {
                 toolCalls.add(ToolCall("auto_status", "status", mapOf("action" to "overview")))
+            }
+        }
+
+        // ── 8. GitHub ───────────────────────────────────────────────────────
+        if (toolCalls.isEmpty() && (msg.contains("github") || msg.contains("repo") || msg.contains("repository"))) {
+            // Search repos
+            val searchMatch = Regex("(?:search|find|look for)\\s+(?:github\\s+)?(?:repos?|repositories?)\\s+(?:for |about |named )?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+            if (searchMatch != null) {
+                toolCalls.add(ToolCall("auto_github", "github", mapOf("action" to "search", "query" to searchMatch.groupValues[1].trim())))
+            }
+            // Read README
+            if (toolCalls.isEmpty()) {
+                val readmeMatch = Regex("(?:readme|read me|about)\\s+(?:of |for |from )?(?:(?:https?://)?github\\.com/)?([\\w-]+/[\\w.-]+)", RegexOption.IGNORE_CASE).find(userMessage)
+                    ?: Regex("(?:https?://)?github\\.com/([\\w-]+/[\\w.-]+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (readmeMatch != null) {
+                    toolCalls.add(ToolCall("auto_github", "github", mapOf("action" to "readme", "repo" to readmeMatch.groupValues[1].trim())))
+                }
+            }
+            // List issues
+            if (toolCalls.isEmpty() && msg.contains("issue")) {
+                val issueMatch = Regex("issues?\\s+(?:of |for |from |on )?(?:(?:https?://)?github\\.com/)?([\\w-]+/[\\w.-]+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (issueMatch != null) {
+                    toolCalls.add(ToolCall("auto_github", "github", mapOf("action" to "issues", "repo" to issueMatch.groupValues[1].trim())))
+                }
+            }
+        }
+
+        // ── 9. Notion ───────────────────────────────────────────────────────
+        if (toolCalls.isEmpty() && msg.contains("notion")) {
+            if (msg.contains("search") || msg.contains("find")) {
+                val notionSearch = Regex("(?:search|find)\\s+(?:in\\s+)?notion\\s+(?:for\\s+)?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                    ?: Regex("notion\\s+(?:search|find)\\s+(?:for\\s+)?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (notionSearch != null) {
+                    toolCalls.add(ToolCall("auto_notion", "notion", mapOf("action" to "search", "query" to notionSearch.groupValues[1].trim())))
+                }
+            } else if (msg.contains("read") || msg.contains("open") || msg.contains("show")) {
+                val pageMatch = Regex("(?:read|open|show)\\s+(?:the\\s+)?notion\\s+(?:page\\s+)?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (pageMatch != null) {
+                    toolCalls.add(ToolCall("auto_notion", "notion", mapOf("action" to "search", "query" to pageMatch.groupValues[1].trim())))
+                }
+            }
+        }
+
+        // ── 10. Email ───────────────────────────────────────────────────────
+        if (toolCalls.isEmpty() && (msg.contains("send email") || msg.contains("send an email") ||
+                    msg.contains("email to") || msg.contains("mail to") || msg.contains("draft email"))) {
+            val emailMatch = Regex("(?:to|recipient:?)\\s+([\\w.+-]+@[\\w.-]+)", RegexOption.IGNORE_CASE).find(userMessage)
+            val subjectMatch = Regex("(?:subject|about|regarding):?\\s+(.+?)(?:\\.|,|\\n|$)", RegexOption.IGNORE_CASE).find(userMessage)
+            if (emailMatch != null) {
+                val action = if (msg.contains("draft")) "draft" else "send"
+                val args = mutableMapOf(
+                    "action" to action,
+                    "to" to emailMatch.groupValues[1].trim()
+                )
+                if (subjectMatch != null) args["subject"] = subjectMatch.groupValues[1].trim()
+                args["body"] = userMessage // Let the LLM compose the body from the full message
+                toolCalls.add(ToolCall("auto_email", "email", args))
             }
         }
 
@@ -385,7 +554,7 @@ class LlmRouter(private val context: Context) {
         }
 
         return if (results.isNotBlank()) {
-            "$userMessage\n\n[Real-time data retrieved for you — use this to answer:]\n${results.toString().take(4000)}"
+            "$userMessage\n\n[Real-time data retrieved for you — use this to answer the user naturally:]\n${results.toString().take(4000)}"
         } else {
             userMessage
         }
