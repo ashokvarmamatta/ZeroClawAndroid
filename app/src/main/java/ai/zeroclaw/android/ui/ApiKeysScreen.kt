@@ -176,6 +176,8 @@ fun ApiKeysScreen(onBack: () -> Unit) {
         val checked = entry.safeCheckedModels.toMutableMap()
         if (modelId !in checked) checked[modelId] = null // treat as OK
         keyManager.updateKey(entry.copy(selectedModels = current, checkedModels = checked))
+        // If user selected a model, clear any "failed" mark so the key is usable again
+        if (current.isNotEmpty()) keyManager.unmarkFailed(entry.id)
         refresh()
     }
 

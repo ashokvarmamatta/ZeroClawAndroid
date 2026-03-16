@@ -156,6 +156,12 @@ class LlmKeyManager(private val context: Context) {
         _activeIndexFlow.value = if (nextIndex >= 0) nextIndex else keys.size
     }
 
+    /** Clear failure for a single key (e.g. when user changes model selection). */
+    fun unmarkFailed(id: String) {
+        failedKeyIds.remove(id)
+        _activeIndexFlow.value = resolveActiveIndex()
+    }
+
     /** Reset all failure state (called on service start). */
     fun resetFailures() {
         failedKeyIds.clear()
