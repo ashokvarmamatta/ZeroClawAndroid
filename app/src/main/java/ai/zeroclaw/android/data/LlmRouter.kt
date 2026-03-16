@@ -366,7 +366,27 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 4. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 4. Image Generation ─────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val imageGenKeywords = msg.contains("generate") || msg.contains("create") || msg.contains("draw") ||
+                    msg.contains("make") || msg.contains("design") || msg.contains("paint")
+            val imageNouns = msg.contains("image") || msg.contains("picture") || msg.contains("photo") ||
+                    msg.contains("illustration") || msg.contains("art") || msg.contains("artwork") ||
+                    msg.contains("wallpaper") || msg.contains("poster") || msg.contains("logo")
+            if (imageGenKeywords && imageNouns) {
+                val prompt = userMessage
+                    .replace(Regex("(?:generate|create|draw|make|design|paint)\\s+(?:an?|the|me)?\\s*(?:image|picture|photo|illustration|art|artwork|wallpaper|poster|logo)\\s*(?:of|about|showing|with|for)?\\s*", RegexOption.IGNORE_CASE), "")
+                    .trim().ifBlank { userMessage }
+                val size = when {
+                    msg.contains("wide") || msg.contains("landscape") || msg.contains("horizontal") -> "wide"
+                    msg.contains("tall") || msg.contains("portrait") || msg.contains("vertical") -> "tall"
+                    else -> "square"
+                }
+                toolCalls.add(ToolCall("auto_imagegen", "image_gen", mapOf("prompt" to prompt, "size" to size)))
+            }
+        }
+
+        // ── 5. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
