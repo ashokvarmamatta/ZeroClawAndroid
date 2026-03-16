@@ -37,5 +37,8 @@ Thumbs.db
 /test-results/
 /reports/
 
+# Test screenshots (temporary, for reference only)
+test_screenshots/
+
 # ProGuard
 /proguard/

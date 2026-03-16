@@ -281,21 +281,44 @@ class LlmRouter(private val context: Context) {
         val toolCalls = mutableListOf<ToolCall>()
 
         // ── Weather detection ──
-        val weatherPatterns = listOf(
-            Regex("(?:what(?:'s| is) the )?weather (?:in|at|for|of) (.+)", RegexOption.IGNORE_CASE),
-            Regex("(?:current |today(?:'s)? )?(?:temperature|weather|forecast) (?:in|at|for|of) (.+)", RegexOption.IGNORE_CASE),
-            Regex("(?:how(?:'s| is) the )?weather (?:in|at|for|of) (.+)", RegexOption.IGNORE_CASE),
-            Regex("(?:is it (?:raining|cold|hot|warm|snowing) (?:in|at) )(.+)", RegexOption.IGNORE_CASE),
-            Regex("(?:forecast|weather report) (?:for |in |of )?(.+)", RegexOption.IGNORE_CASE)
-        )
-        for (pattern in weatherPatterns) {
-            val match = pattern.find(userMessage)
-            if (match != null) {
-                val location = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
-                if (location.isNotBlank()) {
-                    val action = if (msg.contains("forecast") || msg.contains("3 day") || msg.contains("week")) "forecast" else "current"
-                    toolCalls.add(ToolCall("auto_weather", "weather", mapOf("location" to location, "action" to action)))
-                    break
+        // Weather keywords that signal a weather query
+        val weatherKeywords = listOf("weather", "temperature", "forecast", "rain", "raining",
+            "snow", "snowing", "cold", "hot", "warm", "humid", "humidity", "wind", "windy",
+            "sunny", "cloudy", "storm", "climate", "degrees", "celsius", "fahrenheit")
+        val hasWeatherKeyword = weatherKeywords.any { msg.contains(it) }
+
+        // "current <location>" is a common weather query pattern
+        val isCurrentQuery = msg.startsWith("current ") && msg.length > 10
+
+        if (hasWeatherKeyword || isCurrentQuery) {
+            val weatherPatterns = listOf(
+                // "current ammerpet", "current weather ammerpet", "current new york"
+                Regex("^current\\s+(?:weather\\s+(?:in|at|for|of)\\s+)?(.+)", RegexOption.IGNORE_CASE),
+                // "weather in london", "weather london", "weather for tokyo"
+                Regex("(?:what(?:'s| is) the )?weather\\s+(?:in|at|for|of|)\\s*(.+)", RegexOption.IGNORE_CASE),
+                // "temperature in paris", "forecast for berlin"
+                Regex("(?:temperature|forecast|weather report)\\s+(?:in|at|for|of|)\\s*(.+)", RegexOption.IGNORE_CASE),
+                // "how's the weather in X"
+                Regex("(?:how(?:'s| is) the )?weather\\s+(?:in|at|for|of)\\s+(.+)", RegexOption.IGNORE_CASE),
+                // "is it raining in X", "is it cold in X"
+                Regex("is it (?:raining|cold|hot|warm|snowing|sunny|cloudy|windy)\\s+(?:in|at)\\s+(.+)", RegexOption.IGNORE_CASE),
+                // "rain in mumbai", "snow in denver"
+                Regex("(?:rain|snow|storm|sun|clouds?)\\s+(?:in|at|for)\\s+(.+)", RegexOption.IGNORE_CASE),
+                // Last resort: just strip known keywords and treat rest as location
+                Regex("(?:weather|temperature|forecast|current)\\s+(.{2,})", RegexOption.IGNORE_CASE)
+            )
+            for (pattern in weatherPatterns) {
+                val match = pattern.find(userMessage)
+                if (match != null) {
+                    var location = match.groupValues[1].trim()
+                        .removeSuffix("?").removeSuffix(".").removeSuffix("!").trim()
+                    // Strip trailing weather words that got captured
+                    location = location.replace(Regex("\\s+(weather|temperature|forecast|today|now|right now|currently)$", RegexOption.IGNORE_CASE), "").trim()
+                    if (location.isNotBlank() && location.length >= 2) {
+                        val action = if (msg.contains("forecast") || msg.contains("3 day") || msg.contains("week")) "forecast" else "current"
+                        toolCalls.add(ToolCall("auto_weather", "weather", mapOf("location" to location, "action" to action)))
+                        break
+                    }
                 }
             }
         }
@@ -303,15 +326,16 @@ class LlmRouter(private val context: Context) {
         // ── Web search detection ──
         if (toolCalls.isEmpty()) {
             val searchPatterns = listOf(
-                Regex("(?:search|google|look up|find) (?:for |about |up )?(.{3,})", RegexOption.IGNORE_CASE),
-                Regex("(?:who is|who was|what is|what are|when did|when was|where is|how many) (.{3,})", RegexOption.IGNORE_CASE),
-                Regex("(?:latest|recent|current|today(?:'s)?) (?:news|updates?|info) (?:on |about |for )?(.{3,})", RegexOption.IGNORE_CASE)
+                Regex("(?:search|google|look up|find|search for) (?:for |about |up )?(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:who is|who was|what is|what are|when did|when was|where is|how many|how much) (.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:latest|recent|current|today(?:'s)?) (?:news|updates?|info|results?|scores?) (?:on |about |for )?(.{3,})", RegexOption.IGNORE_CASE),
+                Regex("(?:tell me about|what happened|what's happening) (?:with |in |at )?(.{3,})", RegexOption.IGNORE_CASE)
             )
-            // Only trigger web search for questions that seem to need real-time info
             val needsRealtime = msg.contains("latest") || msg.contains("current") || msg.contains("recent") ||
                     msg.contains("today") || msg.contains("news") || msg.contains("score") ||
                     msg.contains("price") || msg.contains("search") || msg.contains("google") ||
-                    msg.contains("look up") || msg.contains("find out")
+                    msg.contains("look up") || msg.contains("find out") || msg.contains("who is") ||
+                    msg.contains("what is") || msg.contains("tell me about") || msg.contains("what happened")
             if (needsRealtime) {
                 for (pattern in searchPatterns) {
                     val match = pattern.find(userMessage)
