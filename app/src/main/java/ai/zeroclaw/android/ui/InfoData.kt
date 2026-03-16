@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (12 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, and Summarize. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (13 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, and Translate. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -367,7 +367,13 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(13, "⚙️", "Managing Tools",
+        GuideStep(13, "🌐", "Translate",
+            "The AI can translate text between 50+ languages. Auto-detects the source language. Uses MyMemory API — free, no API key needed.",
+            "How it works:\n• Uses MyMemory Translation API (free, no key)\n• Supports 50+ languages including Hindi, Telugu, Tamil, Japanese, Chinese, Arabic, etc.\n• Auto-detects source language if not specified\n• Returns original + translated text with confidence score\n\nSupported languages:\n• European: Spanish, French, German, Italian, Portuguese, Russian, Dutch, Swedish, Polish...\n• Asian: Japanese, Korean, Chinese, Thai, Vietnamese, Indonesian...\n• Indian: Hindi, Telugu, Tamil, Kannada, Malayalam, Marathi, Gujarati, Bengali, Punjabi, Urdu\n• Others: Arabic, Turkish, Hebrew, Swahili, Filipino...\n\nExample prompts:\n• \"Translate hello world to Spanish\"\n• \"Translate 'good morning' to Hindi\"\n• \"Translate this to Japanese: I love sushi\"\n• \"What is 'thank you' in Telugu?\"\n\nNo setup needed — works out of the box.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(14, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
