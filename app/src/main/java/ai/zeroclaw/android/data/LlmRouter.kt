@@ -98,7 +98,8 @@ class LlmRouter(private val context: Context) {
                 usable.safeSelectedModels
             } else if (hasCheckedModels) {
                 // User checked models and deliberately deselected all — skip this key
-                ZeroClawService.log("LLM: skipping ${usable.safeLabel} — all models deselected")
+                val skipProvider = LlmProvider.fromId(usable.safeProvider).displayName
+                ZeroClawService.log("LLM: [ONLINE] skipping key=\"${usable.safeLabel}\" ($skipProvider) — all models deselected")
                 keyManager.markFailed(usable.id)
                 continue
             } else if (usable.safePreferredModel.isNotBlank()) {
@@ -107,9 +108,13 @@ class LlmRouter(private val context: Context) {
                 listOf("") // let provider pick its own default
             }
 
+            val mode = if (usable.safeProvider == "offline") "OFFLINE" else "ONLINE"
+            val provider = LlmProvider.fromId(usable.safeProvider).displayName
+            ZeroClawService.log("LLM: [$mode] key=\"${usable.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
+
             var keyWorked = false
             for (model in modelsToTry) {
-                ZeroClawService.log("LLM: trying ${usable.safeLabel} / $model")
+                ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${usable.safeLabel}\" ($provider)")
 
                 val result = runCatching { dispatchToProvider(userMessage, usable, chatId, model) }
 
@@ -117,11 +122,11 @@ class LlmRouter(private val context: Context) {
                     result.isSuccess -> {
                         val reply = result.getOrNull() ?: ""
                         if (reply.isNotBlank()) {
-                            ZeroClawService.log("LLM: ✓ reply from ${usable.safeLabel} / $model")
+                            ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${usable.safeLabel}\" model=\"$model\" ($provider)")
                             addToHistory(chatId, "assistant", reply)
                             return reply
                         }
-                        // Blank response — try next model
+                        ZeroClawService.log("LLM: ⚠ [$mode] blank reply from model=\"$model\" — trying next")
                     }
                     else -> {
                         val ex = result.exceptionOrNull()
@@ -129,12 +134,10 @@ class LlmRouter(private val context: Context) {
 
                         if (msg.contains("429") || msg.lowercase().contains("quota") ||
                             msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
-                            ZeroClawService.log("LLM: ⚠ ${usable.safeLabel}/$model rate-limited — trying next model")
+                            ZeroClawService.log("LLM: ⚠ [$mode] ${usable.safeLabel}/\"$model\" rate-limited — trying next")
                             lastRateLimitMsg = msg
-                            // Try next model in this key's list before giving up on the key
                         } else {
-                            ZeroClawService.log("LLM: ✗ ${usable.safeLabel}/$model failed — $msg")
-                            // Try next model
+                            ZeroClawService.log("LLM: ✗ [$mode] ${usable.safeLabel}/\"$model\" failed — $msg")
                         }
                     }
                 }
@@ -688,6 +691,9 @@ class LlmRouter(private val context: Context) {
     private suspend fun dispatchToProvider(message: String, entry: ApiKeyEntry, chatId: String, model: String = ""): String {
         val history = getHistory(chatId).dropLast(1) // drop the user msg we just added (it's in `message`)
         val useModel = model.ifBlank { entry.safePreferredModel }
+        if (useModel != model) {
+            ZeroClawService.log("LLM: model resolved: \"$model\" → \"$useModel\" (fallback to preferredModel)")
+        }
         return when (entry.safeProvider) {
             "anthropic" -> callAnthropic(message, entry.safeApiKey, useModel, history)
             "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history)
