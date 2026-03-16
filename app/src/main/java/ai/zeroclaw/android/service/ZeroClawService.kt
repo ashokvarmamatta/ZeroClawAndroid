@@ -14,6 +14,8 @@ import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.whatsapp.TwilioWhatsAppManager
 import ai.zeroclaw.android.tunnel.TunnelManager
+import ai.zeroclaw.android.tools.CronTool
+import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.*
 
 class ZeroClawService : Service() {
@@ -141,6 +143,29 @@ class ZeroClawService : Service() {
                 }
             } else {
                 log("WhatsApp: Twilio not configured — go to Settings")
+            }
+
+            // Cron task checker — runs every 60 seconds
+            launch {
+                val cronTool = ToolSystem.getInstance(this@ZeroClawService)
+                    .allTools().filterIsInstance<CronTool>().firstOrNull()
+                if (cronTool != null) {
+                    while (isActive) {
+                        try {
+                            val dueTasks = cronTool.getDueTasks()
+                            for (task in dueTasks) {
+                                log("CRON: running '${task.name}' for user ${task.userId}")
+                                val reply = LlmRouter.getInstance(this@ZeroClawService)
+                                    .call(task.prompt, chatId = task.userId)
+                                log("CRON: '${task.name}' → ${reply.take(100)}")
+                                cronTool.markRun(task)
+                            }
+                        } catch (e: Exception) {
+                            log("CRON: error — ${e.message}")
+                        }
+                        delay(60_000L)
+                    }
+                }
             }
         }
     }
