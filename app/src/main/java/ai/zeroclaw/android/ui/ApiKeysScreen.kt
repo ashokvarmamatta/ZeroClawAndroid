@@ -243,66 +243,7 @@ fun ApiKeysScreen(onBack: () -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ── OFFLINE MODE SECTION ─────────────────────────────────────
-            item {
-                OfflineModeSection(
-                    offlineKey = offlineKey,
-                    appModels = offlineModelsApp,
-                    offlineManager = offlineManager,
-                    isLoading = offlineLoading,
-                    isImporting = offlineImporting,
-                    validation = offlineValidation,
-                    onLoadModel = { model ->
-                        offlineLoading = true
-                        scope.launch {
-                            val result = offlineManager.loadModel(model.path)
-                            if (result.isSuccess) {
-                                if (offlineKey != null) {
-                                    keyManager.updateKey(offlineKey.copy(
-                                        preferredModel = model.name,
-                                        enabled = true
-                                    ))
-                                } else {
-                                    keyManager.addKey(ApiKeyEntry(
-                                        label = "Offline: ${model.name}",
-                                        provider = "offline",
-                                        apiKey = "offline",
-                                        preferredModel = model.name,
-                                        enabled = true
-                                    ))
-                                }
-                                offlineValidation = ValidationUi(ValidationState.SUCCESS,
-                                    "✅ Model loaded: ${model.name} (${model.sizeMB})")
-                            } else {
-                                offlineValidation = ValidationUi(ValidationState.ERROR,
-                                    "❌ Failed: ${result.exceptionOrNull()?.message}")
-                            }
-                            offlineLoading = false
-                            refresh()
-                        }
-                    },
-                    onPickModel = {
-                        modelPickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
-                    },
-                    onDeleteModel = { showDeleteModel = it },
-                    onDisableOffline = {
-                        if (offlineKey != null) {
-                            keyManager.updateKey(offlineKey.copy(enabled = false))
-                            offlineManager.destroyEngine()
-                            offlineValidation = ValidationUi()
-                            refresh()
-                        }
-                    },
-                    onEnableOffline = {
-                        if (offlineKey != null) {
-                            keyManager.updateKey(offlineKey.copy(enabled = true))
-                            refresh()
-                        }
-                    }
-                )
-            }
-
-            // ── ONLINE MODE SECTION ──────────────────────────────────────
+            // ── ONLINE MODE SECTION (first — primary) ───────────────────
             item {
                 Spacer(Modifier.height(4.dp))
                 OnlineModeHeader(
@@ -373,6 +314,66 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+
+            // ── OFFLINE MODE SECTION (fallback — after online) ──────────
+            item {
+                Spacer(Modifier.height(4.dp))
+                OfflineModeSection(
+                    offlineKey = offlineKey,
+                    appModels = offlineModelsApp,
+                    offlineManager = offlineManager,
+                    isLoading = offlineLoading,
+                    isImporting = offlineImporting,
+                    validation = offlineValidation,
+                    onLoadModel = { model ->
+                        offlineLoading = true
+                        scope.launch {
+                            val result = offlineManager.loadModel(model.path)
+                            if (result.isSuccess) {
+                                if (offlineKey != null) {
+                                    keyManager.updateKey(offlineKey.copy(
+                                        preferredModel = model.name,
+                                        enabled = true
+                                    ))
+                                } else {
+                                    keyManager.addKey(ApiKeyEntry(
+                                        label = "Offline: ${model.name}",
+                                        provider = "offline",
+                                        apiKey = "offline",
+                                        preferredModel = model.name,
+                                        enabled = true
+                                    ))
+                                }
+                                offlineValidation = ValidationUi(ValidationState.SUCCESS,
+                                    "✅ Model loaded: ${model.name} (${model.sizeMB})")
+                            } else {
+                                offlineValidation = ValidationUi(ValidationState.ERROR,
+                                    "❌ Failed: ${result.exceptionOrNull()?.message}")
+                            }
+                            offlineLoading = false
+                            refresh()
+                        }
+                    },
+                    onPickModel = {
+                        modelPickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+                    },
+                    onDeleteModel = { showDeleteModel = it },
+                    onDisableOffline = {
+                        if (offlineKey != null) {
+                            keyManager.updateKey(offlineKey.copy(enabled = false))
+                            offlineManager.destroyEngine()
+                            offlineValidation = ValidationUi()
+                            refresh()
+                        }
+                    },
+                    onEnableOffline = {
+                        if (offlineKey != null) {
+                            keyManager.updateKey(offlineKey.copy(enabled = true))
+                            refresh()
+                        }
+                    }
+                )
             }
 
             item { Spacer(Modifier.height(80.dp)) }
