@@ -70,8 +70,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (10 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, and Email. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (11 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, and Weather. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -354,7 +354,12 @@ val AI_TOOLS_GUIDE = GuideSection(
             "How it works:\n• Uses SendGrid or Mailgun REST APIs\n• Needs an API key from your email provider\n• Supports draft mode (preview before sending)\n\nActions:\n• send — send an email immediately\n• draft — preview the email without sending\n\nParameters:\n• to — recipient email address\n• subject — email subject line\n• body — email body text\n• api_key — your SendGrid/Mailgun API key\n• provider — 'sendgrid' (default) or 'mailgun'\n\nExample prompts:\n• \"Send an email to john@example.com about the meeting\"\n• \"Draft a summary email of today's work\"",
             badgeColor = Color(0xFFFF6F00)
         ),
-        GuideStep(11, "⚙️", "Managing Tools",
+        GuideStep(11, "🌤️", "Weather",
+            "The AI can check current weather and 3-day forecasts for any location worldwide — no API key needed. Uses wttr.in free service.",
+            "How it works:\n• Uses wttr.in — free weather API, no key required\n• Supports city names, zip codes, and coordinates\n• Returns detailed weather data (temp, humidity, wind, UV, etc.)\n\nActions:\n• current — detailed current conditions (default)\n• forecast — 3-day forecast with daily highs/lows\n• brief — one-liner weather summary\n\nExample prompts:\n• \"What's the weather in New York?\"\n• \"Give me a 3-day forecast for Tokyo\"\n• \"Weather in 90210\"\n• \"Brief weather for London\"\n\nNo setup needed — works out of the box with any LLM provider.",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(12, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
