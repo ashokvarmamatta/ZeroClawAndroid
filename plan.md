@@ -136,12 +136,12 @@
 | | **═══ OpenClaw-Inspired Features (Phase 85+) ═══** | |
 | | | |
 | | **── NEW TOOLS (Skills) ──** | |
-| **85** | **WeatherTool.kt — weather queries via OpenWeatherMap or wttr.in (free, no key)** | 🔲 TODO |
-| **86** | **SummarizeTool.kt — summarize long text/URLs/documents via LLM** | 🔲 TODO |
-| **87** | **TranslateTool.kt — language translation via LLM or Google Translate API** | 🔲 TODO |
-| **88** | **ImageGenTool.kt — AI image generation (DALL-E, Gemini Imagen, Stability)** | 🔲 TODO |
-| **89** | **SpeechToTextTool.kt — voice/audio transcription via Whisper API** | 🔲 TODO |
-| **90** | **TextToSpeechTool.kt — TTS via Android native or cloud APIs** | 🔲 TODO |
+| **85** | **WeatherTool.kt — weather via wttr.in (free, no key)** | ✅ DONE |
+| **86** | **SummarizeTool.kt — extractive summarization (no LLM needed)** | ✅ DONE |
+| **87** | **TranslateTool.kt — 50+ languages via MyMemory API (free)** | ✅ DONE |
+| **88** | **ImageGenTool.kt — Pollinations.ai (free) + DALL-E 3** | ✅ DONE |
+| **89** | **SpeechToTextTool.kt — Whisper API transcription** | ✅ DONE |
+| **90** | **TextToSpeechTool.kt — Android native TTS (free, offline)** | ✅ DONE |
 | **91** | **CalendarTool.kt — read/create Android calendar events** | 🔲 TODO |
 | **92** | **ContactsTool.kt — search/read Android contacts** | 🔲 TODO |
 | **93** | **LocationTool.kt — GPS location, nearby places, geocoding** | 🔲 TODO |
@@ -223,8 +223,8 @@ These directly enhance what the AI can do in conversations.
 | 86 | Summarize ✅ | Condense long text/articles | Extractive (no LLM needed) |
 | 87 | Translate ✅ | Multi-language translation | MyMemory API (free, no key) |
 | 88 | Image Gen ✅ | Generate images from text | Pollinations.ai (free) + DALL-E 3 |
-| 89 | Speech-to-Text | Transcribe voice/audio | Whisper API |
-| 90 | Text-to-Speech | Read replies aloud | Android TTS / cloud APIs |
+| 89 | Speech-to-Text ✅ | Transcribe voice/audio | Whisper API (OpenAI/Groq) |
+| 90 | Text-to-Speech ✅ | Read replies aloud | Android TTS (free, offline) |
 | 91 | Calendar | Read/create calendar events | Android CalendarProvider |
 | 92 | Contacts | Search device contacts | Android ContactsProvider |
 | 93 | Location | GPS, places, geocoding | Android LocationManager |

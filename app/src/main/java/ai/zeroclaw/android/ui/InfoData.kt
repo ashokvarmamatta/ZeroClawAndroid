@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (14 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, and Image Gen. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (16 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, and Text-to-Speech. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -379,7 +379,19 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(15, "⚙️", "Managing Tools",
+        GuideStep(15, "🎤", "Speech-to-Text",
+            "The AI can transcribe audio/voice files to text using OpenAI's Whisper model. Supports mp3, wav, m4a, ogg, webm, flac.",
+            "How it works:\n• Uses OpenAI Whisper API for accurate transcription\n• Accepts local files, content:// URIs, or audio URLs\n• Auto-downloads remote audio files to cache\n• Supports 50+ languages with auto-detection\n• Returns full transcribed text\n\nSupported formats:\n• mp3, mp4, wav, m4a, ogg, webm, flac\n\nExample prompts:\n• \"Transcribe this audio: [file path or URL]\"\n• \"What does this voice message say? [audio URL]\"\n• \"Convert this recording to text\"\n\nRequires an OpenAI API key (Whisper model).",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(16, "🔊", "Text-to-Speech",
+            "The AI can read text aloud or save speech to an audio file. Uses Android's built-in TTS — free, works offline, no API key.",
+            "How it works:\n• Uses Android's native TextToSpeech engine\n• 100% free, works completely offline\n• Supports 30+ languages depending on device\n• Adjustable speed: slow, normal, fast\n• Can save to WAV audio file\n\nActions:\n• speak — read text aloud on the device\n• save — save speech as audio file\n• voices — list available TTS voices\n\nExample prompts:\n• \"Read this aloud: Hello world\"\n• \"Speak this in Spanish: Buenos dias\"\n• \"Save this as audio: Today's summary...\"\n• \"What voices are available?\"\n\nNo setup needed — uses whatever TTS engine is installed on your device (Google, Samsung, etc.).",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(17, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
