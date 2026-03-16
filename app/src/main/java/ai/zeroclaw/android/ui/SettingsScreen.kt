@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import ai.zeroclaw.android.data.AppSettings
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
+import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,7 +47,17 @@ fun SettingsScreen(
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
 
+    // Tools state
+    val toolSystem = remember { ToolSystem.getInstance(context) }
+    var toolStates by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+
     LaunchedEffect(Unit) {
+        // Load tool enabled states
+        val states = mutableMapOf<String, Boolean>()
+        for (tool in toolSystem.allTools()) {
+            states[tool.name] = toolSystem.isEnabled(tool.name)
+        }
+        toolStates = states
         settings.getAll().let { s ->
             zeroClawUrl = s.zeroClawUrl
             telegramToken = s.telegramToken
@@ -95,6 +106,85 @@ fun SettingsScreen(
             }
             item { OfflineModelSourcesSection() }
             item { ApiKeyProvidersSection() }
+            // ── AI TOOLS SECTION ──────────────────────────────────────
+            item { SectionHeader("🔧 AI Tools") }
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Tools the AI can use during conversations. When enabled, the LLM can call these tools to answer questions with real-time data.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 17.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        for (tool in toolSystem.allTools()) {
+                            val isEnabled = toolStates[tool.name] ?: true
+                            val toolEmoji = when (tool.name) {
+                                "web_search" -> "🔍"
+                                "web_fetch" -> "🌐"
+                                "memory" -> "🧠"
+                                "pdf_read" -> "📄"
+                                "image_analysis" -> "🖼️"
+                                "cron" -> "⏰"
+                                "notion" -> "📝"
+                                "email" -> "📧"
+                                else -> "🔧"
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(toolEmoji, fontSize = 20.sp)
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        tool.name.replace("_", " ")
+                                            .replaceFirstChar { it.uppercase() },
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 14.sp
+                                    )
+                                    Text(
+                                        tool.description.take(80) +
+                                            if (tool.description.length > 80) "…" else "",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 15.sp,
+                                        maxLines = 2
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Switch(
+                                    checked = isEnabled,
+                                    onCheckedChange = { enabled ->
+                                        toolStates = toolStates + (tool.name to enabled)
+                                        scope.launch { toolSystem.setEnabled(tool.name, enabled) }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedTrackColor = Color(0xFF00BCD4),
+                                        checkedThumbColor = Color.White
+                                    )
+                                )
+                            }
+                            if (tool != toolSystem.allTools().last()) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(start = 40.dp),
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             item { SectionHeader("⚙️ ZeroClaw Configuration") }
             item { SettingsTextField("ZeroClaw API URL", zeroClawUrl, false) { zeroClawUrl = it } }
             item { SectionHeader("✈️ Telegram Bot") }

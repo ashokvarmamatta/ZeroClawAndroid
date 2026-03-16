@@ -70,6 +70,10 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
+    FeatureItem("🔧", "AI Tools (Web Search, Fetch & more)",
+        "Built-in tools the AI can use: search the web via DuckDuckGo, fetch & read any URL, and more coming. Toggle tools on/off in Settings. Works across all providers."),
+    FeatureItem("🔍", "Google Search Grounding (Gemini)",
+        "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
         "Smart persistence with boot auto-restart, wake locks, and foreground service — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
