@@ -786,6 +786,12 @@ class LlmRouter(private val context: Context) {
             put("generationConfig", JSONObject().apply {
                 put("maxOutputTokens", MAX_TOKENS); put("temperature", 0.7)
             })
+            // Enable Grounding with Google Search for real-time info
+            put("tools", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("googleSearch", JSONObject())
+                })
+            })
         }.toString()
         val req = Request.Builder().url(url).addHeader("Content-Type","application/json")
             .post(body.toRequestBody()).build()
