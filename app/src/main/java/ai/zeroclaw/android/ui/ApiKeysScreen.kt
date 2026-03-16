@@ -161,6 +161,9 @@ fun ApiKeysScreen(onBack: () -> Unit) {
                 results = results
             ))
 
+            // Auto-expand model list so user sees results immediately
+            expandedModelLists = expandedModelLists + entry.id
+
             refresh()
         }
     }
@@ -1059,7 +1062,15 @@ fun ApiKeyCard(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
-                            entry.safeCheckedModels.toSortedMap().forEach { (modelId, errorMsg) ->
+                            // Merge checkedModels with selectedModels that may be missing
+                            // (recovery for data saved before serializeNulls fix)
+                            val mergedModels = buildMap {
+                                putAll(entry.safeCheckedModels)
+                                for (m in entry.safeSelectedModels) {
+                                    if (m !in this) put(m, null) // selected but missing → treat as OK
+                                }
+                            }
+                            mergedModels.toSortedMap().forEach { (modelId, errorMsg) ->
                                 val works = errorMsg == null
                                 val isSelected = modelId in entry.safeSelectedModels
                                 val isRetesting = retestingModel == "${entry.id}:$modelId"
@@ -1146,17 +1157,45 @@ fun ApiKeyCard(
                 }
             }
 
-            // ── Selected models summary ─────────────────────────────────────
+            // ── Selected models summary with Edit Selection button ──────────
             if (entry.safeSelectedModels.isNotEmpty() && entry.safeCheckedModels.isNotEmpty()
                 && !isModelListExpanded && checkState?.isChecking != true) {
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    "Using: ${entry.safeSelectedModels.joinToString(", ")}",
-                    fontSize = 10.sp,
-                    color = Color(0xFF4CAF50).copy(alpha = 0.7f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Using: ${entry.safeSelectedModels.joinToString(", ")}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        onClick = onToggleModelList,
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF00BCD4).copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Edit, null,
+                                modifier = Modifier.size(12.dp),
+                                tint = Color(0xFF00BCD4))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "Edit Selection",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF00BCD4)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
