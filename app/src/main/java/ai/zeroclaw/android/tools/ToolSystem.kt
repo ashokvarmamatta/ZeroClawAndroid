@@ -70,6 +70,7 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(GitHubTool())
         registerTool(NotionTool())
         registerTool(EmailTool())
+        registerTool(WeatherTool())
     }
 
     fun registerTool(tool: Tool) {
