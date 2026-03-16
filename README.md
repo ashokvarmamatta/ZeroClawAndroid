@@ -82,7 +82,7 @@ You → Telegram / WhatsApp
 - Rate-limited (429) keys are skipped this session but re-tried on restart
 - Full session failure stats shown in the home screen
 
-### 🔧 AI Tools (6 Built-in)
+### 🔧 AI Tools (8 Built-in)
 - **Tool system** inspired by [ZeroClaw upstream](https://github.com/zeroclaw-labs/zeroclaw) — LLM can invoke tools during conversations
 - **Web Search** — DuckDuckGo search (no API key needed), returns top results with real-time info
 - **Web Fetch** — fetch any URL, strip HTML, extract readable text for summarization
@@ -90,6 +90,8 @@ You → Telegram / WhatsApp
 - **PDF Reader** — extract text from local files, content URIs, or remote PDF URLs
 - **Image Analysis** — analyze images using vision-capable models (GPT-4o, Gemini, Claude)
 - **Scheduled Tasks (Cron)** — schedule recurring AI prompts per user (1min–7day intervals), auto-executed by the service daemon
+- **Status / Diagnostics** — AI can check its own service health, API key status, connections, and recent logs
+- **GitHub** — search repos, read READMEs, list issues, create issues from chat (inspired by upstream ZeroClaw skills)
 - Tools work across **all providers** (OpenAI, Anthropic, Gemini, OpenRouter, Ollama)
 - Per-tool **enable/disable toggles** in Settings
 - Multi-round tool calling — LLM can chain multiple tool calls per message (max 3 rounds)
@@ -152,7 +154,9 @@ app/src/main/java/ai/zeroclaw/android/
 │   ├── MemoryTool.kt                # Persistent per-user memory store/recall/forget
 │   ├── PdfReadTool.kt               # PDF text extraction (local, URI, URL)
 │   ├── ImageAnalysisTool.kt         # Vision model image analysis
-│   └── CronTool.kt                  # Scheduled recurring AI tasks
+│   ├── CronTool.kt                  # Scheduled recurring AI tasks
+│   ├── StatusTool.kt                # Service diagnostics & health reporting
+│   └── GitHubTool.kt               # GitHub repo search, issues, READMEs
 │
 ├── service/
 │   ├── ZeroClawService.kt           # Foreground service — main daemon loop, live logging
@@ -272,11 +276,13 @@ These are the planned features and improvements for future development:
 - [ ] **Auto-restart on crash** — WorkManager periodic check to restart the service if it dies
 
 ### 🔵 Advanced / Future
-- [x] **Tool system** — extensible tool framework with 6 built-in tools, per-tool toggles in Settings ✅
+- [x] **Tool system** — extensible tool framework with 8 built-in tools, per-tool toggles in Settings ✅
 - [x] **Memory tool** — persistent per-user memory store/recall/forget via Room/SQLite ✅
 - [x] **PDF reader tool** — extract text from local files, content URIs, or remote URLs ✅
 - [x] **Image analysis tool** — analyze images using vision-capable models (GPT-4o, Gemini, Claude) ✅
 - [x] **Scheduled tasks (Cron)** — recurring AI prompts per user, auto-executed by the service daemon ✅
+- [x] **Status / Diagnostics tool** — AI self-checks service health, key status, connections ✅
+- [x] **GitHub tool** — search repos, read READMEs, list/create issues from chat ✅
 - [ ] **More tools** — Notion, email integration
 - [ ] **RAG / document Q&A** — index local files and answer questions about them
 - [ ] **Plugin system** — user-installable plugins that add new skills to the agent

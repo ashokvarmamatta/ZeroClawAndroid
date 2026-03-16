@@ -70,8 +70,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (6 built-in)",
-        "Web Search (DuckDuckGo), Web Fetch, Memory (per-user persistent), PDF Reader, Image Analysis (vision models), and Scheduled Tasks (cron). Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (8 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status Diagnostics, and GitHub integration. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -295,6 +295,63 @@ val OTHER_APPS_GUIDE = GuideSection(
     )
 )
 
+// ─── AI Tools Guide ──────────────────────────────────────────────────────────
+
+val AI_TOOLS_GUIDE = GuideSection(
+    id = "tools",
+    label = "AI Tools",
+    emoji = "🔧",
+    accentColor = Color(0xFFFF6F00),
+    intro = "ZeroClaw's AI can use tools during conversations — search the web, remember things, read PDFs, analyze images, and run scheduled tasks. Toggle each tool on/off in Settings.",
+    steps = listOf(
+        GuideStep(1, "🔍", "Web Search",
+            "The AI can search the web in real-time using DuckDuckGo — no API key needed. Ask about current events, news, or anything requiring up-to-date info.",
+            "How it works:\n• AI detects your question needs web info\n• Sends query to DuckDuckGo HTML search\n• Parses top 5 results (title, snippet, URL)\n• Uses results to give you an informed answer\n\nExample prompts:\n• \"What's the latest news about Android 16?\"\n• \"Who won the game last night?\"\n• \"What's the weather in Tokyo?\"\n\nNo setup needed — works out of the box with any LLM provider.",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(2, "🌐", "Web Fetch",
+            "The AI can fetch and read any webpage — articles, docs, blogs. It strips HTML and extracts clean readable text for summarization.",
+            "How it works:\n• AI receives a URL from your message\n• Downloads the page content\n• Strips scripts, styles, nav, footer, ads\n• Extracts clean text (max 6000 chars)\n• Summarizes or answers questions about it\n\nExample prompts:\n• \"Summarize this article: https://example.com/post\"\n• \"What does this page say? [URL]\"\n• \"Read this doc and explain it: [URL]\"\n\nSupports any public URL — articles, documentation, blog posts, etc.",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(3, "🧠", "Memory (Persistent)",
+            "The AI can remember things about you across conversations. It stores, recalls, and forgets memories per user — powered by a local SQLite database.",
+            "How it works:\n• AI stores key-value memories per user in Room/SQLite\n• Memories survive app restarts — fully persistent\n• Each Telegram/WhatsApp user gets their own memory space\n• AI auto-detects when to store or recall\n\nActions:\n• store — save a fact (key + value)\n• recall — retrieve by key, search, or list all\n• forget — delete a specific memory or all\n\nExample prompts:\n• \"Remember that my favorite color is blue\"\n• \"What do you remember about me?\"\n• \"Forget my birthday\"\n\nMemories are stored locally on your device — never sent anywhere.",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(4, "📄", "PDF Reader",
+            "The AI can read and extract text from PDF files — local files on your device, content URIs, or remote PDF URLs.",
+            "How it works:\n• Uses Android PdfRenderer for page info\n• Extracts text from PDF byte streams (BT/ET operators)\n• Supports local file paths, content:// URIs, and HTTP URLs\n• Remote PDFs are downloaded to cache first\n• Returns extracted text (max 5000 chars)\n\nExample prompts:\n• \"Read this PDF and summarize it: [URL]\"\n• \"What does this document say? [file path]\"\n\nNote: Works best with text-based PDFs. Scanned/image-only PDFs may return limited text (they need OCR).",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(5, "🖼️", "Image Analysis",
+            "The AI can analyze images using vision-capable models like GPT-4o, Gemini, or Claude. Send a file path, content URI, or image URL.",
+            "How it works:\n• Loads image from file, URI, or URL\n• Resizes to max 1024px (keeps base64 size reasonable)\n• Sends to a vision-capable model from your API keys\n• Returns a detailed description or analysis\n\nSupported models:\n• OpenAI: GPT-4o, GPT-4o-mini (vision)\n• Google: Gemini Pro, Flash (multimodal)\n• Anthropic: Claude Sonnet, Opus (vision)\n\nExample prompts:\n• \"What's in this image? [URL]\"\n• \"Describe this photo: [file path]\"\n• \"Can you read the text in this screenshot?\"\n\nRequires at least one vision-capable API key configured.",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(6, "⏰", "Scheduled Tasks (Cron)",
+            "The AI can schedule recurring tasks that run automatically at set intervals. Great for daily summaries, reminders, or periodic checks.",
+            "How it works:\n• AI creates a cron task with a name, interval, and prompt\n• Tasks are persisted in SharedPreferences (survive restarts)\n• Service daemon checks every 60 seconds for due tasks\n• Due tasks are executed via LlmRouter automatically\n• Results are logged in the Live Logs\n\nActions:\n• schedule — create a task (name, interval_minutes, prompt)\n• list — show all scheduled tasks\n• cancel — remove a task by name\n\nExample prompts:\n• \"Schedule a daily news summary every 1440 minutes\"\n• \"Remind me to drink water every 60 minutes\"\n• \"What tasks are scheduled?\"\n• \"Cancel the water reminder\"\n\nIntervals: 1 minute to 7 days (10080 minutes).",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(7, "📊", "Status / Diagnostics",
+            "The AI can check its own health — service state, API key status, connections, and recent logs. Ask it how things are going.",
+            "How it works:\n• Reads ZeroClaw service state (running/stopped)\n• Checks Telegram & WhatsApp connection status\n• Reports API key health (enabled, failed, models)\n• Shows recent log entries\n\nActions:\n• overview — full status report\n• keys — detailed API key health\n• logs — recent log entries\n• connections — Telegram/WhatsApp/Tunnel state\n\nExample prompts:\n• \"What's the service status?\"\n• \"Are my API keys working?\"\n• \"Show me the recent logs\"\n• \"Is Telegram connected?\"",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(8, "🐙", "GitHub Integration",
+            "The AI can search GitHub repos, read READMEs, list issues, and even create issues — all from chat. Inspired by upstream ZeroClaw skills.",
+            "How it works:\n• Uses GitHub's public REST API\n• No auth needed for public repos\n• Optional GitHub PAT for private repos & issue creation\n\nActions:\n• search — search repositories by keyword\n• readme — read a repo's README\n• issues — list open issues\n• create_issue — file a new issue (needs token)\n\nExample prompts:\n• \"Search GitHub for Android AI agents\"\n• \"Show me the README for zeroclaw-labs/zeroclaw\"\n• \"What are the open issues on my repo?\"\n• \"Create an issue on my-org/my-repo about the login bug\"",
+            badgeColor = Color(0xFFFF6F00)
+        ),
+        GuideStep(9, "⚙️", "Managing Tools",
+            "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
+            "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
+            badgeColor = Color(0xFFFF6F00)
+        )
+    )
+)
+
 // ─── All sections list ─────────────────────────────────────────────────────────
 
-val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, OTHER_APPS_GUIDE)
+val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, OTHER_APPS_GUIDE)
