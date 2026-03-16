@@ -92,8 +92,15 @@ class LlmRouter(private val context: Context) {
             // 1) selectedModels from "Check All Models" if available
             // 2) else fall back to the single preferredModel
             // 3) if both empty, use "" so dispatchToProvider falls back to provider default
+            // If user has checked models but deselected ALL → skip this key entirely
+            val hasCheckedModels = usable.safeCheckedModels.isNotEmpty()
             val modelsToTry = if (usable.safeSelectedModels.isNotEmpty()) {
                 usable.safeSelectedModels
+            } else if (hasCheckedModels) {
+                // User checked models and deliberately deselected all — skip this key
+                ZeroClawService.log("LLM: skipping ${usable.safeLabel} — all models deselected")
+                keyManager.markFailed(usable.id)
+                continue
             } else if (usable.safePreferredModel.isNotBlank()) {
                 listOf(usable.safePreferredModel)
             } else {
