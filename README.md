@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🦾 ZeroClaw Android
+<img src="screenshots/app_icon.png" width="120" alt="ZeroClaw Icon" />
+
+# ZeroClaw Android
 
 **A powerful AI agent that runs 24/7 on your Android phone — connecting your Telegram & WhatsApp to any LLM provider, with automatic failover across multiple API keys.**
 
