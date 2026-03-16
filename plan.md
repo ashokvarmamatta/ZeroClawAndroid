@@ -195,7 +195,7 @@ These directly enhance what the AI can do in conversations.
 | Phase | Tool | What It Does | API/Source |
 |-------|------|-------------|-----------|
 | 85 | Weather ✅ | Current weather & forecasts | wttr.in (free, no key) |
-| 86 | Summarize | Condense long text/articles | Uses existing LLM keys |
+| 86 | Summarize ✅ | Condense long text/articles | Extractive (no LLM needed) |
 | 87 | Translate | Multi-language translation | LLM-based or Google API |
 | 88 | Image Gen | Generate images from text | DALL-E / Gemini Imagen |
 | 89 | Speech-to-Text | Transcribe voice/audio | Whisper API |

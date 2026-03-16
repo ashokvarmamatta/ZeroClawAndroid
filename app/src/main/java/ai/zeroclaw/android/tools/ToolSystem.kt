@@ -71,6 +71,7 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(NotionTool())
         registerTool(EmailTool())
         registerTool(WeatherTool())
+        registerTool(SummarizeTool())
     }
 
     fun registerTool(tool: Tool) {
