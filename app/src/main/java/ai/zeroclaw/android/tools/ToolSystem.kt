@@ -63,6 +63,7 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(WebSearchTool())
         registerTool(WebFetchTool())
         registerTool(MemoryTool(context))
+        registerTool(PdfReadTool(context))
     }
 
     fun registerTool(tool: Tool) {
