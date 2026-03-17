@@ -4,7 +4,7 @@
 
 # ZeroClaw Android
 
-**A powerful AI agent that runs 24/7 on your Android phone — connecting your Telegram & WhatsApp to any LLM provider, with automatic failover across multiple API keys.**
+**A 24/7 AI agent daemon for Android — 11 messaging channels, 28 built-in AI tools, multi-provider failover. Runs entirely on your phone.**
 
 [![Android](https://img.shields.io/badge/Platform-Android%2026%2B-green?logo=android)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple?logo=kotlin)](https://kotlinlang.org)
@@ -17,18 +17,21 @@
 
 ## 📖 What is ZeroClaw?
 
-ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service in the background, listens to your Telegram bot and WhatsApp number, routes every message through your configured LLM providers, and replies automatically — all without a server.
+ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service, listening across **11 messaging channels** simultaneously — Telegram, WhatsApp, Discord, Signal, Slack, Matrix, IRC, Microsoft Teams, Twitch, LINE, and a built-in WebChat. Every message is routed through your configured LLM providers with automatic failover, augmented by 28 built-in AI tools, and replied to automatically — all without a server.
 
 No cloud subscription. No always-on PC. Just your Android device.
 
 ```
-You → Telegram / WhatsApp
-         ↓
-   ZeroClaw Service (background daemon)
-         ↓
-   LLM Router (OpenAI / Gemini / Anthropic / OpenRouter / Ollama / Offline)
-         ↓
-   Auto-reply back to Telegram / WhatsApp
+You → Telegram / WhatsApp / Discord / Signal / Slack / Matrix / IRC
+    → Teams / Twitch / LINE / WebChat
+              ↓
+    ZeroClaw Service (background daemon)
+              ↓
+    Tool System (28 built-in tools)
+              ↓
+    LLM Router (OpenAI / Gemini / Anthropic / OpenRouter / Ollama / Offline)
+              ↓
+    Auto-reply back to originating channel
 ```
 
 ---
@@ -47,83 +50,102 @@ You → Telegram / WhatsApp
 
 ## ✨ Features
 
-### 🤖 AI Messaging
-- **Telegram Bot** integration via polling — responds to any message sent to your bot
-- **WhatsApp** integration via Twilio API
-- **Discord Bot** — native Gateway WebSocket integration with real-time messaging
+### 💬 11 Messaging Channels (Phases 103-109)
+
+#### Original 4 Channels
+- **Telegram Bot** — polling-based integration, responds to any message sent to your bot; `/clear`, `/new`, `/tools` commands
+- **WhatsApp** — integration via Twilio API; send and receive messages on your WhatsApp number
+- **Discord Bot** — native Gateway WebSocket integration with real-time event handling
 - **Signal** — integration via signal-cli REST API bridge
-- **Per-chat conversation history** — maintains separate context per Telegram/WhatsApp/Discord/Signal user across messages
-- Automatic AI replies powered by any LLM you configure
-- `/clear` or `/new` commands to reset chat history per user
+
+#### New Channels (Phases 103-109)
+- **Slack** (Phase 103) — Slack Bot via Events API and Web API; responds in channels and DMs, supports slash commands
+- **Matrix** (Phase 104) — Matrix protocol client via matrix-nio / Synapse; join rooms and respond to messages in the decentralized federated network
+- **IRC** (Phase 105) — classic IRC bot using TCP socket connection; joins channels, responds to PRIVMSG, supports nicknames
+- **Microsoft Teams** (Phase 106) — Teams Bot Framework integration; handles messages in teams, channels, and 1:1 chats via Bot Service webhooks
+- **Twitch** (Phase 107) — Twitch Chat bot via IRC/TMI; responds to chat messages in your stream channel, supports !commands
+- **LINE** (Phase 108) — LINE Messaging API integration; responds to LINE friends and group messages via webhook
+- **WebChat** (Phase 109) — built-in HTTP WebSocket chat server; browser-accessible chat interface at your tunnel URL, no account needed
+
+All channels share:
+- **Per-chat conversation history** — separate context per user per channel
+- **Tool access** — all 28 tools available from any channel
+- **Multi-round tool calling** — up to 3 rounds per message
 
 ### 🔑 Multi-Provider API Key Manager
 - Add unlimited API keys from **any provider**: OpenAI, Google Gemini, Anthropic Claude, OpenRouter, Ollama (local), or any OpenAI-compatible endpoint
-- **Custom Base URL** support — works with Modal, self-hosted models, local proxies, any custom endpoint
-- **cURL import mode** — paste a raw `curl` command and the app auto-extracts the Bearer token, base URL, and model
+- **Custom Base URL** support — Modal, self-hosted models, local proxies, any custom endpoint
+- **cURL import mode** — paste a raw `curl` command and the app auto-extracts Bearer token, base URL, and model
 - **Live key testing** — validates each key against the real API before saving
 - **Gemini model picker** — lists all available models on your key, recommends the best one (★)
-- **Priority reordering** — use ↑↓ buttons to set the failover chain order
-- **Set Active key** — pin any key as the default starting point (persists across restarts)
+- **Priority reordering** — ↑↓ buttons to set the failover chain order
+- **Set Active key** — pin any key as the default starting point
 
 ### 🔍 Per-Model Testing & Selection
-- **Check All Models** — tests every model available on your API key and shows pass/fail status
-- **Per-model selection** — choose exactly which models to use via checkboxes (persists across app restarts)
+- **Check All Models** — tests every model available on your API key, shows pass/fail
+- **Per-model selection** — choose exactly which models to use (persists across restarts)
 - **Edit Selection** — reselect models anytime without re-checking
-- **Individual model retest** — re-test a single failed model without re-checking all
-- Deselecting all models on a key **skips that key entirely** — respects your intent
-- Re-selecting a model **immediately re-enables the key** — no service restart needed
+- **Individual model retest** — re-test a single model without re-checking all
 
 ### 🔍 Google Search Grounding (Gemini)
 - **Per-key toggle** to enable/disable Google Search grounding on Gemini API calls
-- When enabled, Gemini replies include **real-time web information** — same as the Gemini app
-- When disabled, replies use training data only
+- When enabled, replies include real-time web information
 
 ### ⚡ Auto Failover
-- Keys are tried in order (top → bottom)
-- If a key fails or hits quota, ZeroClaw silently moves to the next one
-- Rate-limited (429) keys are skipped this session but re-tried on restart
-- Full session failure stats shown in the home screen
+- Keys tried in order (top → bottom); silent fallback on failure or quota hit
+- Rate-limited (429) keys skipped this session, re-tried on restart
 
-### 🔧 AI Tools (10 Built-in)
-- **Tool system** inspired by [ZeroClaw upstream](https://github.com/zeroclaw-labs/zeroclaw) — LLM can invoke tools during conversations
-- **Web Search** — DuckDuckGo search (no API key needed), returns top results with real-time info
-- **Web Fetch** — fetch any URL, strip HTML, extract readable text for summarization
-- **Memory** — persistent per-user memory store/recall/forget via Room/SQLite (survives app restarts)
-- **PDF Reader** — extract text from local files, content URIs, or remote PDF URLs
-- **Image Analysis** — analyze images using vision-capable models (GPT-4o, Gemini, Claude)
-- **Scheduled Tasks (Cron)** — schedule recurring AI prompts per user (1min–7day intervals), auto-executed by the service daemon
-- **Status / Diagnostics** — AI can check its own service health, API key status, connections, and recent logs
-- **GitHub** — search repos, read READMEs, list issues, create issues from chat (inspired by upstream ZeroClaw skills)
-- **Notion** — search pages, read content, create pages, append blocks (requires Notion integration token)
-- **Email** — send emails via SendGrid or Mailgun, with draft preview mode
-- Tools work across **all providers** (OpenAI, Anthropic, Gemini, OpenRouter, Ollama)
-- Per-tool **enable/disable toggles** in Settings
-- Multi-round tool calling — LLM can chain multiple tool calls per message (max 3 rounds)
-- `/tools` command to list enabled tools in chat
+### 🔧 AI Tools — 28 Built-in Tools
+
+#### Core Tools (10)
+- **Web Search** — DuckDuckGo (no API key), real-time results
+- **Web Fetch** — URL content fetching & HTML text extraction
+- **Memory** — persistent per-user memory store/recall/forget (Room/SQLite)
+- **PDF Reader** — extract text from local files, URIs, or remote PDFs
+- **Image Analysis** — vision model image analysis (GPT-4o, Gemini, Claude)
+- **Cron / Scheduled Tasks** — recurring AI prompts per user, 1min–7day intervals
+- **Status / Diagnostics** — AI self-checks service health and key status
+- **GitHub** — search repos, read READMEs, list/create issues
+- **Notion** — search, read, create, and append to Notion pages
+- **Email** — send emails via SendGrid or Mailgun with draft preview
+
+#### Extended Toolbox (18 — Phases 85-102)
+- **Summarize** — extractive text summarization without an LLM call
+- **Translate** — 50+ languages via MyMemory API (free, no key needed)
+- **ImageGen** — generate images via Pollinations.ai (free) or DALL-E 3
+- **SpeechToText** — transcribe voice messages via OpenAI Whisper
+- **TextToSpeech** — AI responses as spoken audio via Android TTS
+- **Calendar** — read, create, delete Android calendar events
+- **Contacts** — look up and manage Android contacts
+- **Location** — GPS coordinates, reverse geocoding, nearby places
+- **Calculator** — evaluate math expressions and unit conversions
+- **RSS** — fetch and parse RSS/Atom feeds, surface latest headlines
+- **QR Code** — generate QR images, decode QR from images or URLs
+- **FileManager** — list, read, write, delete files in app storage
+- **Clipboard** — read from and write to Android clipboard
+- **Spotify** — search tracks, control playback, get now-playing info
+- **SmartHome** — control Home Assistant devices and automations
+- **BraveTool** — web search via Brave Search API
+- **Bookmark** — save, list, search, and delete bookmarked URLs
 
 ### 📱 Offline Mode
 - Run AI **completely offline** using on-device `.bin` models via MediaPipe LlmInference
-- **Import models** from file picker (SAF — no storage permissions needed)
-- Choose to **save to app storage** or **use from current location**
-- Toggle offline mode on/off independently of online keys
+- Import models via file picker (SAF — no storage permissions needed)
 
 ### 📊 Live Logs
-- Real-time log viewer on the home screen
-- Shows **mode** (ONLINE/OFFLINE), **provider**, **key label**, and **exact model** for every LLM call
-- Logs model fallbacks, rate limits, failures, and skipped keys
-- Telegram message receipt and reply confirmations
+- Real-time log viewer showing mode, provider, key label, and model for every call
+- Logs fallbacks, rate limits, failures, and tool invocations
 
 ### 🌐 Public URL Exposure
 - Built-in **Cloudflare Tunnel** / **ngrok** support (TunnelManager)
-- Exposes your device to the internet so webhooks and bots can reach it
+- Required for webhooks — Teams, LINE, WebChat, Slack Events API
 
 ### 📱 Native Android UI (Material Design 3)
-- Home screen with live service status, active key info, failover indicator, and live logs
-- Full AI Configuration screen with online/offline mode management
-- Settings screen for Telegram token, Twilio credentials, tunnel config
-- In-app help/guide system (InfoScreen) with tabbed walkthrough
-- Starts automatically on device reboot (BootReceiver)
-- Keeps running in background with a persistent notification
+- Home dashboard with service status, active key info, live logs
+- AI Configuration screen with per-provider key and model management
+- Settings screen with per-channel token configuration
+- In-app setup guide with tabbed walkthrough
+- Auto-starts on device reboot (BootReceiver)
 
 ---
 
@@ -132,56 +154,94 @@ You → Telegram / WhatsApp
 ```
 app/src/main/java/ai/zeroclaw/android/
 │
-├── MainActivity.kt                  # Nav host, all routes
+├── MainActivity.kt
 │
 ├── ui/
-│   ├── HomeScreen.kt                # Dashboard — start/stop service, status, live logs
-│   ├── ApiKeysScreen.kt             # AI Configuration — online/offline, model testing, selection
-│   ├── SettingsScreen.kt            # Bot tokens, Twilio, tunnel, model/key directories
-│   ├── InfoScreen.kt                # In-app setup guide (tabbed)
-│   ├── InfoData.kt                  # Guide content data
-│   └── theme/                       # Material 3 theme, colors
+│   ├── HomeScreen.kt
+│   ├── ApiKeysScreen.kt
+│   ├── SettingsScreen.kt
+│   ├── InfoScreen.kt
+│   ├── InfoData.kt
+│   └── theme/
 │
 ├── data/
-│   ├── ApiKeyEntry.kt               # Key data model (provider, key, baseUrl, model, googleSearch)
-│   ├── LlmKeyManager.kt             # Key persistence, active key, reordering, failover tracking
-│   ├── LlmRouter.kt                 # Waterfall failover, per-provider dispatch, tool integration
-│   ├── OfflineModelManager.kt        # Offline .bin model management via MediaPipe
-│   ├── AppSettings.kt               # DataStore preferences
-│   ├── MessageDatabase.kt           # Room DB — message history
-│   └── MemoryDatabase.kt            # Room DB — persistent per-user memory
+│   ├── ApiKeyEntry.kt
+│   ├── LlmKeyManager.kt
+│   ├── LlmRouter.kt
+│   ├── OfflineModelManager.kt
+│   ├── AppSettings.kt
+│   ├── MessageDatabase.kt
+│   └── MemoryDatabase.kt
 │
 ├── tools/
-│   ├── ToolSystem.kt                # Tool registry, dispatcher, prompt injection, call parsing
-│   ├── WebSearchTool.kt             # DuckDuckGo web search (no API key needed)
-│   ├── WebFetchTool.kt              # URL content fetching & HTML text extraction
-│   ├── MemoryTool.kt                # Persistent per-user memory store/recall/forget
-│   ├── PdfReadTool.kt               # PDF text extraction (local, URI, URL)
-│   ├── ImageAnalysisTool.kt         # Vision model image analysis
-│   ├── CronTool.kt                  # Scheduled recurring AI tasks
-│   ├── StatusTool.kt                # Service diagnostics & health reporting
-│   ├── GitHubTool.kt               # GitHub repo search, issues, READMEs
-│   ├── NotionTool.kt               # Notion workspace search, read, create, append
-│   └── EmailTool.kt                # Send emails via SendGrid or Mailgun
+│   ├── ToolSystem.kt
+│   ├── WebSearchTool.kt
+│   ├── WebFetchTool.kt
+│   ├── MemoryTool.kt
+│   ├── PdfReadTool.kt
+│   ├── ImageAnalysisTool.kt
+│   ├── CronTool.kt
+│   ├── StatusTool.kt
+│   ├── GitHubTool.kt
+│   ├── NotionTool.kt
+│   ├── EmailTool.kt
+│   ├── SummarizeTool.kt             # Phase 85
+│   ├── TranslateTool.kt             # Phase 86
+│   ├── ImageGenTool.kt              # Phase 87
+│   ├── SpeechToTextTool.kt          # Phase 88
+│   ├── TextToSpeechTool.kt          # Phase 89-90
+│   ├── CalendarTool.kt              # Phase 91
+│   ├── ContactsTool.kt              # Phase 92
+│   ├── LocationTool.kt              # Phase 93
+│   ├── CalculatorTool.kt            # Phase 94
+│   ├── RssTool.kt                   # Phase 95
+│   ├── QrCodeTool.kt                # Phase 96
+│   ├── FileManagerTool.kt           # Phase 97
+│   ├── ClipboardTool.kt             # Phase 98
+│   ├── SpotifyTool.kt               # Phase 99
+│   ├── SmartHomeTool.kt             # Phase 100
+│   ├── BraveTool.kt                 # Phase 101
+│   └── BookmarkTool.kt              # Phase 102
 │
 ├── service/
-│   ├── ZeroClawService.kt           # Foreground service — main daemon loop, live logging
-│   └── BootReceiver.kt              # Auto-start on device reboot
+│   ├── ZeroClawService.kt
+│   └── BootReceiver.kt
 │
 ├── telegram/
-│   └── TelegramBotManager.kt        # Telegram Bot API polling + reply
+│   └── TelegramBotManager.kt
 │
 ├── whatsapp/
-│   └── TwilioWhatsAppManager.kt     # Twilio WhatsApp send/receive
+│   └── TwilioWhatsAppManager.kt
 │
 ├── discord/
-│   └── DiscordBotManager.kt         # Discord Gateway WebSocket + REST
+│   └── DiscordBotManager.kt
 │
 ├── signal/
-│   └── SignalBridgeManager.kt       # Signal via signal-cli REST API
+│   └── SignalBridgeManager.kt
+│
+├── slack/
+│   └── SlackBotManager.kt           # Phase 103 — Slack Events API
+│
+├── matrix/
+│   └── MatrixBotManager.kt          # Phase 104 — Matrix protocol
+│
+├── irc/
+│   └── IrcBotManager.kt             # Phase 105 — IRC TCP bot
+│
+├── teams/
+│   └── TeamsBotManager.kt           # Phase 106 — MS Teams Bot Framework
+│
+├── twitch/
+│   └── TwitchBotManager.kt          # Phase 107 — Twitch Chat IRC/TMI
+│
+├── line/
+│   └── LineBotManager.kt            # Phase 108 — LINE Messaging API
+│
+├── webchat/
+│   └── WebChatServer.kt             # Phase 109 — Built-in WebSocket chat server
 │
 └── tunnel/
-    └── TunnelManager.kt             # Cloudflare Tunnel / ngrok integration
+    └── TunnelManager.kt
 ```
 
 ---
@@ -192,36 +252,42 @@ app/src/main/java/ai/zeroclaw/android/
 - Android Studio Hedgehog or newer
 - Android device or emulator running **Android 8.0 (API 26)+**
 - At least one LLM API key (OpenAI, Gemini, Anthropic, etc.)
+- (For webhooks) A Cloudflare Tunnel or ngrok URL
 
 ### Build & Run
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/ashokvarmamatta/ZeroClawAndroid.git
 cd ZeroClawAndroid
-
-# 2. Open in Android Studio
-#    File → Open → select the ZeroClawAndroid folder
-
-# 3. Wait for Gradle sync
-
-# 4. Connect your Android device (USB debugging ON) or start an emulator
-
-# 5. Click ▶ Run
+# Open in Android Studio → File → Open → ZeroClawAndroid
+# Wait for Gradle sync, then click ▶ Run
 ```
 
 ### First-Time Setup
 
 1. Tap **ℹ️** on the home screen for the full setup walkthrough
-2. Go to **⚙️ Settings** → **Manage API Keys** → tap **+ Add Online Key**
-3. Add your LLM provider key (or paste a cURL command)
-4. Tap **Test Key** to verify it works
-5. Run **Check All Models** to see which models work on your key
-6. Select the models you want to use (checkboxes)
-7. (Gemini) Enable **Google Search Grounding** for real-time web answers
-8. (Optional) Add your Telegram Bot token in Settings
-9. (Optional) Add Twilio credentials for WhatsApp
-10. Tap **▶ Start** on the home screen — the service is now running
+2. Go to **Settings** → **Manage API Keys** → **+ Add Online Key**
+3. Add your LLM key and tap **Test Key**
+4. Run **Check All Models** and select models to use
+5. Add credentials for your desired messaging channels in Settings
+6. Configure tunnel URL if using webhook-based channels (Teams, LINE, WebChat, Slack)
+7. Tap **▶ Start** — the daemon is now running across all configured channels
+
+### Channel-Specific Setup
+
+| Channel | Credentials Needed | Notes |
+|---|---|---|
+| Telegram | Bot token (BotFather) | Polling — no webhook needed |
+| WhatsApp | Twilio Account SID + Auth Token + number | Twilio webhook → tunnel URL |
+| Discord | Bot token + Application ID | Gateway WebSocket — no webhook |
+| Signal | signal-cli REST API URL | Self-hosted bridge required |
+| Slack | Bot token + Signing secret | Events API webhook → tunnel URL |
+| Matrix | Homeserver URL + access token | Federation-compatible |
+| IRC | Server, port, nickname, channels | TCP — no webhook |
+| Teams | App ID + password (Bot Framework) | Webhook → tunnel URL |
+| Twitch | OAuth token + channel name | IRC/TMI — no webhook |
+| LINE | Channel Access Token + Channel Secret | Webhook → tunnel URL |
+| WebChat | None | Built-in — served at tunnel URL |
 
 ---
 
@@ -247,81 +313,56 @@ cd ZeroClawAndroid
 | UI | Jetpack Compose + Material Design 3 |
 | Background | Android Foreground Service + WorkManager |
 | HTTP | OkHttp + Retrofit |
-| Storage | Room (messages) + DataStore + SharedPreferences |
-| Serialization | Gson (with serializeNulls for map persistence) |
+| WebSocket | OkHttp WebSocket (Discord Gateway, WebChat) |
+| Storage | Room (messages + memory) + DataStore + SharedPreferences |
+| Serialization | Gson |
 | Navigation | Jetpack Navigation Compose |
 | Offline AI | MediaPipe LlmInference |
-| Messaging | Telegram Bot API, Twilio API |
+| Image Gen | Pollinations.ai (free) / DALL-E 3 |
+| Speech | OpenAI Whisper (STT) + Android TTS |
+| Messaging | Telegram, Twilio, Discord, Signal, Slack, Matrix, IRC, Teams, Twitch, LINE |
 | Tunnel | Cloudflare Tunnel / ngrok |
 
 ---
 
-## 🛣️ Roadmap — What Should Be Added
+## 🛣️ Roadmap
 
-These are the planned features and improvements for future development:
+### ✅ Core Foundation
+- [x] Multi-provider API key manager with failover ✅
+- [x] Per-model testing & selection ✅
+- [x] Google Search grounding (Gemini) ✅
+- [x] Offline mode (MediaPipe) ✅
+- [x] Live log viewer ✅
+- [x] Cloudflare Tunnel / ngrok integration ✅
 
-### 🔴 High Priority
-- [x] **Per-key model selection** — model picker after Test Key for all providers ✅
-- [x] **Per-model testing** — check all models, select/deselect, persist across restarts ✅
-- [x] **Per-chat conversation history** — per-user chat context across messages ✅
-- [x] **Google Search grounding** — real-time web info for Gemini API calls ✅
-- [x] **Offline mode** — on-device AI via MediaPipe `.bin` models ✅
-- [ ] **WhatsApp direct API** — replace Twilio with WhatsApp Business Cloud API (Meta) for free messaging
-- [ ] **Custom system prompt** — let the user configure the AI's personality/instructions from the Settings screen
-- [ ] **Webhook mode** — switch Telegram from polling to webhook using the tunnel URL for lower latency and battery savings
+### ✅ Core Tools (10 tools)
+- [x] Web Search, Web Fetch, Memory, PDF Reader, Image Analysis ✅
+- [x] Cron, Status/Diagnostics, GitHub, Notion, Email ✅
 
-### 🟡 Medium Priority
-- [ ] **Voice message support** — transcribe Telegram voice notes via Whisper API, reply with text or TTS audio
-- [ ] **Image/file handling** — receive and process images sent to the bot (pass to vision-capable models)
-- [ ] **Group chat support** — handle Telegram group messages with @mention detection
-- [ ] **Rate limiting per user** — prevent abuse by limiting how many messages a user can send per hour
-- [ ] **Message queue & retry** — buffer outgoing replies if the network drops, retry on reconnect
-- [ ] **Multi-bot support** — run multiple Telegram bots on one device with different personas/keys
+### ✅ Extended Toolbox — Phases 85-102 (18 tools)
+- [x] Summarize, Translate, ImageGen, SpeechToText, TextToSpeech ✅
+- [x] Calendar, Contacts, Location, Calculator, RSS ✅
+- [x] QR Code, FileManager, Clipboard, Spotify, SmartHome ✅
+- [x] BraveTool, Bookmark ✅
 
-### 🟢 Quality of Life
-- [ ] **Dark/light theme toggle** — currently follows system theme; add manual override in Settings
-- [x] **Live log viewer** — real-time logs with mode, provider, key, and model details ✅
-- [ ] **Key usage stats** — show per-key call count, success rate, last used time
-- [ ] **Export/import config** — backup and restore all settings and keys as a JSON file
-- [ ] **Notification quick-reply** — reply to messages directly from the notification shade
-- [ ] **Home screen widget** — show service status and quick start/stop from the launcher
-- [ ] **Auto-restart on crash** — WorkManager periodic check to restart the service if it dies
+### ✅ Messaging Channels — Phases 103-109
+- [x] Telegram, WhatsApp, Discord, Signal ✅
+- [x] Slack Bot (Phase 103) ✅
+- [x] Matrix Bot (Phase 104) ✅
+- [x] IRC Bot (Phase 105) ✅
+- [x] Microsoft Teams Bot (Phase 106) ✅
+- [x] Twitch Chat Bot (Phase 107) ✅
+- [x] LINE Bot (Phase 108) ✅
+- [x] WebChat server (Phase 109) ✅
 
-### 🔵 Advanced / Future
-- [x] **Tool system** — extensible tool framework with 10 built-in tools, per-tool toggles in Settings ✅
-- [x] **Memory tool** — persistent per-user memory store/recall/forget via Room/SQLite ✅
-- [x] **PDF reader tool** — extract text from local files, content URIs, or remote URLs ✅
-- [x] **Image analysis tool** — analyze images using vision-capable models (GPT-4o, Gemini, Claude) ✅
-- [x] **Scheduled tasks (Cron)** — recurring AI prompts per user, auto-executed by the service daemon ✅
-- [x] **Status / Diagnostics tool** — AI self-checks service health, key status, connections ✅
-- [x] **GitHub tool** — search repos, read READMEs, list/create issues from chat ✅
-- [x] **Notion tool** — search, read, create, and append to Notion pages ✅
-- [x] **Email tool** — send emails via SendGrid or Mailgun with draft mode ✅
-- [ ] **RAG / document Q&A** — index local files and answer questions about them
-- [ ] **Plugin system** — user-installable plugins that add new skills to the agent
-- [ ] **Multi-device sync** — sync key list and config across multiple Android devices
-- [ ] **iOS companion app** — SwiftUI port of the Android app
-- [ ] **Web dashboard** — browser UI accessible over the tunnel URL to manage the agent remotely
-
----
-
-## ⚙️ Configuration Reference
-
-### API Keys (stored in SharedPreferences)
-All keys are stored locally on-device. Nothing is sent to any server except the LLM provider you configure.
-
-### Required for Telegram
-1. Create a bot via [@BotFather](https://t.me/BotFather) on Telegram
-2. Copy the bot token
-3. Paste in **Settings → Telegram Bot Token**
-
-### Required for WhatsApp (Twilio)
-1. Create a [Twilio](https://twilio.com) account
-2. Set up a WhatsApp Sandbox or Business number
-3. Add Account SID, Auth Token, and WhatsApp number in Settings
-
-### Custom LLM Endpoints
-Any OpenAI-compatible API works. Set the **Base URL** field to your endpoint's base (e.g. `https://api.us-west-2.modal.direct/v1`). You can also paste a full `curl` command and the app will parse out the token, URL, and model automatically.
+### 🔲 Upcoming
+- [ ] SystemPromptManager + StreamingResponse (Phase 110-111)
+- [ ] MultiAgent orchestration (Phase 112)
+- [ ] AgentProfiles + WorkflowEngine (Phase 113-114)
+- [ ] Vector memory with embeddings (Phase 118)
+- [ ] BiometricLock + DevicePairing (Phase 126-127)
+- [ ] Home screen widget (Phase 137)
+- [ ] Group chat support (Phase 140)
 
 ---
 
@@ -335,7 +376,7 @@ Contributions are welcome! Here's how to get started:
 4. Push: `git push origin feature/my-feature`
 5. Open a Pull Request
 
-Please open an issue first for large changes so we can discuss the approach.
+Please open an issue first for large changes.
 
 ---
 
@@ -348,17 +389,24 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ## 🙏 Acknowledgements
 
 ### Built on ZeroClaw
-This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends the original project into a native Android experience with offline model support, per-model testing & selection, Google Search grounding, and a full Material Design 3 UI.
+This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends it into a native Android experience spanning 11 messaging channels, 28 AI tools, and a full Material Design 3 UI.
 
 ### Libraries & Services
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [Twilio](https://www.twilio.com)
+- [Discord Gateway API](https://discord.com/developers/docs/topics/gateway)
+- [Slack API](https://api.slack.com)
+- [Matrix Spec](https://spec.matrix.org)
+- [Microsoft Bot Framework](https://dev.botframework.com)
+- [Twitch TMI](https://dev.twitch.tv)
+- [LINE Messaging API](https://developers.line.biz/en/services/messaging-api/)
 - [OpenAI API](https://platform.openai.com)
 - [Google Gemini API](https://ai.google.dev)
 - [Anthropic API](https://docs.anthropic.com)
 - [OpenRouter](https://openrouter.ai)
 - [Ollama](https://ollama.com)
 - [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference)
+- [Pollinations.ai](https://pollinations.ai)
 - [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 
 ---
