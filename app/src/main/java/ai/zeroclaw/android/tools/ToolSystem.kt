@@ -80,6 +80,9 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(ContactsTool(context))
         registerTool(LocationTool(context))
         registerTool(CalculatorTool())
+        registerTool(RssFeedTool())
+        registerTool(QrCodeTool(context))
+        registerTool(FileManagerTool(context))
     }
 
     fun registerTool(tool: Tool) {

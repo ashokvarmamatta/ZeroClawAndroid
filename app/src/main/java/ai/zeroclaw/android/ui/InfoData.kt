@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (20 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, and Calculator. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (23 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, and File Manager. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -415,7 +415,25 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(21, "⚙️", "Managing Tools",
+        GuideStep(21, "📰", "RSS Feed",
+            "The AI can read RSS and Atom feeds from any blog, news site, or podcast. Get full articles or just headlines.",
+            "How it works:\n• Fetches and parses RSS 2.0 and Atom feeds\n• Supports any public feed URL\n• No API key needed\n\nActions:\n• read — full feed with descriptions\n• headlines — titles only (more items)\n\nExample prompts:\n• \"Read the RSS feed at https://blog.example.com/feed\"\n• \"Get headlines from https://news.ycombinator.com/rss\"\n• \"What's new on this feed: https://example.com/rss.xml\"\n\nWorks with blogs, news, podcasts, YouTube channels, Reddit, and more.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(22, "📱", "QR Code",
+            "The AI can generate QR codes from text, URLs, or any data. Creates a PNG image file on the device.",
+            "How it works:\n• Built-in QR code encoder — no internet or library needed\n• Generates PNG images up to any size\n• Supports text, URLs, WiFi configs, contact cards, etc.\n\nActions:\n• generate — create QR code image from text\n\nExample prompts:\n• \"Generate a QR code for https://example.com\"\n• \"Create a QR code with my WiFi password\"\n• \"Make a QR code that says Hello World\"\n\nMax text length: 2953 characters. QR images saved to app cache.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(23, "📂", "File Manager",
+            "The AI can list, read, write, and search files on your device. Works with app storage, downloads, documents, and more.",
+            "How it works:\n• List directory contents with sizes and dates\n• Read text files (up to 1MB)\n• Write/append to files\n• Search files by name pattern\n• File info: size, modified date, permissions\n\nActions:\n• list — show directory contents\n• read — read a text file\n• write — create or overwrite a file\n• info — detailed file information\n• search — find files by name\n\nPath shortcuts:\n• 'downloads' — Downloads folder\n• 'documents' — Documents folder\n• 'internal' — App internal storage\n• 'cache' — App cache directory\n\nExample prompts:\n• \"List files in downloads\"\n• \"Read the file notes.txt\"\n• \"Write 'Hello' to internal/test.txt\"\n• \"Search downloads for .pdf files\"",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(24, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)

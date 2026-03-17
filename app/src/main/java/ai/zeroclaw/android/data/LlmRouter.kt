@@ -570,7 +570,77 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 11. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 11. RSS Feed ────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val rssKeywords = msg.contains("rss") || msg.contains("feed") || msg.contains("atom feed") ||
+                    msg.contains("blog feed") || msg.contains("news feed") || msg.contains("podcast feed")
+            if (rssKeywords) {
+                val urlMatch = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (urlMatch != null) {
+                    val url = urlMatch.groupValues[1].removeSuffix(",").removeSuffix(")").removeSuffix(".")
+                    val action = if (msg.contains("headline") || msg.contains("titles only")) "headlines" else "read"
+                    toolCalls.add(ToolCall("auto_rss", "rss_feed", mapOf("url" to url, "action" to action)))
+                }
+            }
+        }
+
+        // ── 12. QR Code ─────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val qrKeywords = msg.contains("qr code") || msg.contains("qr") && (msg.contains("generate") || msg.contains("create") || msg.contains("make"))
+            if (qrKeywords) {
+                val qrPatterns = listOf(
+                    Regex("(?:generate|create|make)\\s+(?:a )?qr\\s*code\\s+(?:for |with |saying |containing )?(.+)", RegexOption.IGNORE_CASE),
+                    Regex("qr\\s*code\\s+(?:for|of|with)\\s+(.+)", RegexOption.IGNORE_CASE)
+                )
+                for (pattern in qrPatterns) {
+                    val match = pattern.find(userMessage)
+                    if (match != null) {
+                        val text = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                        if (text.isNotBlank()) {
+                            toolCalls.add(ToolCall("auto_qr", "qr_code", mapOf("text" to text)))
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 13. File Manager ────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val fileKeywords = msg.contains("list files") || msg.contains("show files") ||
+                    msg.contains("read file") || msg.contains("write file") || msg.contains("create file") ||
+                    msg.contains("file manager") || msg.contains("search files") || msg.contains("find files") ||
+                    (msg.contains("files in") && (msg.contains("download") || msg.contains("document") || msg.contains("internal")))
+            if (fileKeywords) {
+                val isRead = msg.contains("read")
+                val isWrite = msg.contains("write") || msg.contains("create") || msg.contains("save")
+                val isSearch = msg.contains("search") || msg.contains("find")
+                val isList = msg.contains("list") || msg.contains("show") || msg.contains("what")
+
+                when {
+                    isRead -> {
+                        val pathMatch = Regex("read\\s+(?:file |the file )?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        val path = pathMatch?.groupValues?.get(1)?.trim()?.removeSuffix("?") ?: ""
+                        if (path.isNotBlank()) toolCalls.add(ToolCall("auto_file", "file_manager", mapOf("action" to "read", "path" to path)))
+                    }
+                    isSearch -> {
+                        val searchMatch = Regex("(?:search|find)\\s+(?:files? )?(?:for |named |called )?(.+?)(?:\\s+in\\s+(.+))?$", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (searchMatch != null) {
+                            val query = searchMatch.groupValues[1].trim()
+                            val path = searchMatch.groupValues[2].trim().ifBlank { "downloads" }
+                            toolCalls.add(ToolCall("auto_file", "file_manager", mapOf("action" to "search", "query" to query, "path" to path)))
+                        }
+                    }
+                    isList -> {
+                        val dirMatch = Regex("(?:list|show|what(?:'s| is) in)\\s+(?:files? (?:in )?)?(.+?)\\s*$", RegexOption.IGNORE_CASE).find(userMessage)
+                        val path = dirMatch?.groupValues?.get(1)?.trim()?.removeSuffix("?") ?: "internal"
+                        toolCalls.add(ToolCall("auto_file", "file_manager", mapOf("action" to "list", "path" to path)))
+                    }
+                }
+            }
+        }
+
+        // ── 14. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
