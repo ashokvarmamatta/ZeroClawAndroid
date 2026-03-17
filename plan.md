@@ -192,16 +192,16 @@
 | **130** | **AutoRecovery.kt — WorkManager watchdog to restart service on crash** | ✅ DONE |
 | | | |
 | | **── CONFIGURATION & UX ──** | |
-| **131** | **ExportImportConfig.kt — backup/restore all settings & keys as JSON** | 🔲 TODO |
-| **132** | **ThemeToggle — manual dark/light/system theme switch in Settings** | 🔲 TODO |
-| **133** | **PerChannelPrompt — custom system prompt per Telegram/Discord/etc** | 🔲 TODO |
-| **134** | **RateLimiting.kt — per-user message rate limits (anti-abuse)** | 🔲 TODO |
-| **135** | **UsageTracking.kt — track token usage & costs per key/model** | 🔲 TODO |
-| **136** | **ApprovalSystem.kt — require user approval for dangerous tool actions** | 🔲 TODO |
-| **137** | **ConversationLabels.kt — tag/label/pin conversations** | 🔲 TODO |
-| **138** | **HomeWidget.kt — Android home screen widget (service status + quick start)** | 🔲 TODO |
-| **139** | **VoiceInput.kt — voice message transcription from Telegram/WhatsApp** | 🔲 TODO |
-| **140** | **GroupChatSupport.kt — handle Telegram/Discord group messages with @mention** | 🔲 TODO |
+| **131** | **ExportImportConfig.kt — backup/restore all settings & keys as JSON** | ✅ DONE |
+| **132** | **ThemeToggle — manual dark/light/system theme switch in Settings** | ✅ DONE |
+| **133** | **PerChannelPrompt — custom system prompt per Telegram/Discord/etc** | ✅ DONE |
+| **134** | **RateLimiting.kt — per-user message rate limits (anti-abuse)** | ✅ DONE |
+| **135** | **UsageTracking.kt — track token usage & costs per key/model** | ✅ DONE |
+| **136** | **ApprovalSystem.kt — require user approval for dangerous tool actions** | ✅ DONE |
+| **137** | **ConversationLabels.kt — tag/label/pin conversations** | ✅ DONE |
+| **138** | **HomeWidget.kt — Android home screen widget (service status + quick start)** | ✅ DONE |
+| **139** | **VoiceInput.kt — voice message transcription from Telegram/WhatsApp** | ✅ DONE |
+| **140** | **GroupChatSupport.kt — handle Telegram/Discord group messages with @mention** | ✅ DONE |
 
 ---
 

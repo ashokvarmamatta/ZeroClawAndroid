@@ -36,11 +36,19 @@ private val LightColorScheme = lightColorScheme(
     onSurface = Color(0xFF1A1A1A)
 )
 
+/**
+ * @param themeMode "system", "dark", or "light" — overrides system setting when set.
+ */
 @Composable
 fun ZeroClawTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = "system",
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        "dark"  -> true
+        "light" -> false
+        else    -> isSystemInDarkTheme()
+    }
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val view = LocalView.current
 

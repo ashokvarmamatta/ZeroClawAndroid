@@ -79,6 +79,8 @@ val APP_FEATURES = listOf(
         "Semantic search with embeddings (OpenAI/Gemini), hybrid keyword+vector search with RRF fusion, query expansion with synonyms, temporal decay scoring, and named session management."),
     FeatureItem("🏗️", "Infrastructure & Platform (8 features)",
         "Hooks middleware, user-installable plugins, WebView browser tool, media pipeline, rich push notifications with quick reply, biometric lock, QR device pairing, and WorkManager crash watchdog."),
+    FeatureItem("⚙️", "Configuration & UX (10 features)",
+        "Export/import settings as JSON, dark/light/system theme, per-channel AI prompts, rate limiting, token usage tracking, tool approval system, conversation labels, home screen widget, voice message transcription, and group chat @mention support."),
     FeatureItem("🔋", "Battery Optimized",
         "Smart persistence with boot auto-restart, wake locks, foreground service, and WorkManager watchdog — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
@@ -668,4 +670,76 @@ val INFRA_GUIDE = GuideSection(
     )
 )
 
-val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, INFRA_GUIDE, OTHER_APPS_GUIDE)
+// ─── Configuration & UX Guide ─────────────────────────────────────────────────
+
+val CONFIG_UX_GUIDE = GuideSection(
+    id = "config_ux",
+    label = "Config & UX",
+    emoji = "⚙️",
+    accentColor = Color(0xFF4CAF50),
+    intro = "Settings backup, theme switching, rate limiting, usage tracking, approval gates, conversation labels, home widget, voice input, and group chat support.",
+    steps = listOf(
+        GuideStep(1, "💾", "Export & Import Config",
+            "Backup all settings and API keys to a JSON file. Restore on a new device or after a factory reset in one tap.",
+            "Export creates:\nDownloads/ZeroClaw/zeroclaw_backup_YYYYMMDD_HHmmss.json\n\nContains:\n• All channel tokens (Telegram, Discord, Twilio, etc.)\n• All API keys from the key manager\n• Service settings (auto-start, web chat, etc.)\n\nImport:\n• Select a backup file\n• Settings and keys are restored immediately\n• Duplicate API keys are skipped\n\nSettings → Backup → Export Config / Import Config",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(2, "🎨", "Theme Toggle",
+            "Switch between Dark, Light, and System (follow Android) themes. The change takes effect immediately — no restart needed.",
+            "Three modes:\n• 🌙 Dark — ZeroClaw's signature dark navy theme\n• ☀️ Light — Clean white/light grey theme\n• 📱 System — Follows your Android dark mode toggle\n\nThe theme preference is persisted in DataStore and observed as a Flow in MainActivity. Changing the theme in Settings triggers instant recomposition across the entire app.\n\nSettings → Appearance → Theme",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(3, "🎭", "Per-Channel Prompts",
+            "Set a different AI system prompt for each messaging channel. Telegram gets casual, Teams gets professional — automatically, with no manual switching.",
+            "Priority chain:\n1. User-specific prompt (overrides everything for that chat ID)\n2. Channel-specific prompt (e.g. all Telegram chats)\n3. Global custom prompt (overrides default for all channels)\n4. Default ZeroClaw prompt\n\nExample per-channel prompts:\n• Telegram: 'Be casual and friendly, use emojis'\n• Teams: 'Be professional and concise'\n• Discord: 'Be fun and informal'\n\nSet via Settings → AI Behavior → Channel Prompts\nOr in chat: /profile <id> to switch profile",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(4, "🚦", "Rate Limiting",
+            "Per-user message rate limits to prevent abuse. Default: 20 messages per minute. Trusted users can be whitelisted.",
+            "How it works:\n• Sliding window counter per user ID\n• Each channel tracks separately\n• When exceeded: user gets a friendly message with reset timer\n• No messages are dropped silently\n\nDefault config:\n• 20 messages per 60-second window\n• Enabled for all channels\n\nWhen a user is rate-limited:\n'Rate limit reached. You can send another message in 42s. (Limit: 20/60s)'\n\nConfigure in Settings → Behavior → Rate Limiting",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(5, "📊", "Usage Tracking",
+            "Track input/output token counts and estimated API costs per key and model. See exactly what each key is costing you.",
+            "What's tracked:\n• Input tokens per LLM call\n• Output tokens per LLM call\n• Call count per key/model combo\n• Estimated cost in USD\n\nPricing built-in for:\n• GPT-4o: \$5/\$15 per 1M tokens\n• GPT-4o-mini: \$0.15/\$0.60\n• Claude Sonnet: \$3/\$15\n• Claude Haiku: \$0.25/\$1.25\n• Gemini Flash: \$0.35/\$1.05\n• And more...\n\nData persisted in DataStore, updated every 10 calls. View the report in Settings → Usage.",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(6, "🔐", "Tool Approval System",
+            "Dangerous tool actions (delete files, send emails, control smart home) require your explicit yes/no approval before executing.",
+            "Dangerous actions that need approval:\n• file_manager: delete, write, move\n• email: send\n• smart_home: any action\n• web_fetch: POST/PUT/DELETE requests\n• calendar: create, delete, update\n\nWhen triggered:\n1. AI sends you an approval request message\n2. You reply 'yes' to allow or 'no' to deny\n3. 5-minute timeout — auto-denied if no response\n\nApproval message format:\n🔐 Approval Required\nTool: file_manager (delete)\nReason: This will modify or delete files\nReply yes or no",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(7, "🏷️", "Conversation Labels",
+            "Tag and pin conversations for easy organization. Label work chats, pin VIP users, add notes — all via simple /commands.",
+            "In-chat commands:\n• /label work — add label #work\n• /label vip — add label #vip\n• /unlabel work — remove label\n• /pin — pin this conversation\n• /unpin — unpin\n• /labels — show labels for this chat\n• /labeled work — list all chats labeled #work\n\nLabels persist across sessions and are stored in DataStore. Labels are shown in the conversation list and can be used to filter chats.\n\nExample uses:\n• /label support — tag support conversations\n• /label family — tag family group chats\n• /pin — keep VIP chats at the top",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(8, "🖼️", "Home Screen Widget",
+            "Add a ZeroClaw widget to your Android home screen. Shows service status and active connections, with a quick Start/Stop button.",
+            "Widget features:\n• 🟢 Running / 🔴 Stopped status indicator\n• Active connection count\n• Start/Stop button without opening the app\n• Tap widget to open ZeroClaw\n• Auto-updates every 30 minutes\n• Updates instantly when service status changes\n\nTo add the widget:\n1. Long-press your home screen\n2. Tap Widgets\n3. Find ZeroClaw in the list\n4. Drag to your home screen\n\nWidget size: 2×1 cells minimum, resizable",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(9, "🎤", "Voice Message Transcription",
+            "Automatically transcribe Telegram/WhatsApp voice messages to text before sending to the AI. Powered by OpenAI Whisper (or on-device STT).",
+            "How it works:\n1. User sends a voice message (OGG/OPUS format)\n2. ZeroClaw detects it's a voice message\n3. Downloads the audio file to device cache\n4. Sends to SpeechToTextTool (Whisper API)\n5. Transcription appears to AI as: 🎤 [Voice message]: <text>\n6. Cache file deleted after transcription\n\nSupported:\n• Telegram OGG/OPUS voice messages\n• WhatsApp OGG voice notes (via Twilio)\n• Any audio format supported by Whisper\n\nRequires: OpenAI API key (for Whisper) or on-device STT model",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        ),
+        GuideStep(10, "👥", "Group Chat Support",
+            "ZeroClaw only responds in group chats when @mentioned or a command is used. Prevents the bot from flooding group conversations.",
+            "Response triggers:\n• @YourBotName mention in the message\n• /ask, /ai, /zeroclaw commands\n• Any /command\n• Replying to a previous bot message\n\nIn private DMs: always responds.\nIn groups: only responds to triggers above.\n\nThe @mention is stripped before sending to the LLM:\n'@mybot what is the weather?' → 'what is the weather?'\n\nGroup context added to system prompt:\n'You are in a group chat on Telegram. Be concise.'\n\nTelegram group chat IDs are negative numbers — auto-detected.",
+            badgeColor = Color(0xFF4CAF50),
+            isNew = true
+        )
+    )
+)
+
+val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, INFRA_GUIDE, CONFIG_UX_GUIDE, OTHER_APPS_GUIDE)

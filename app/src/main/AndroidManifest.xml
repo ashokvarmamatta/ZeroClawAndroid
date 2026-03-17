@@ -79,6 +79,20 @@
             </intent-filter>
         </receiver>
 
+        <!-- Home Screen Widget (Phase 138) -->
+        <receiver
+            android:name=".service.HomeWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="ai.zeroclaw.WIDGET_START" />
+                <action android:name="ai.zeroclaw.WIDGET_STOP" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/home_widget_info" />
+        </receiver>
+
         <!-- Quick Reply Receiver — handles inline notification replies (Phase 127) -->
         <receiver
             android:name=".infra.QuickReplyReceiver"

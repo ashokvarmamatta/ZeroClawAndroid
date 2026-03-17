@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/widget_background"
+    android:gravity="center_vertical">
+
+    <!-- App title row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ZeroClaw"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/widget_toggle_btn"
+            android:layout_width="60dp"
+            android:layout_height="28dp"
+            android:text="Start"
+            android:textSize="11sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#E53935"
+            android:padding="0dp" />
+    </LinearLayout>
+
+    <!-- Status -->
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔴 Stopped"
+        android:textSize="12sp"
+        android:textColor="#E0E0E0" />
+
+    <!-- Connections -->
+    <TextView
+        android:id="@+id/widget_connections"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="11sp"
+        android:textColor="#9E9E9E" />
+
+</LinearLayout>

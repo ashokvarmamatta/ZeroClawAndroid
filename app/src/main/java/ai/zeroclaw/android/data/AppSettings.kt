@@ -25,7 +25,8 @@ data class SettingsData(
     val teamsConfig: String = "",
     val twitchConfig: String = "",
     val lineToken: String = "",
-    val webChatEnabled: Boolean = false
+    val webChatEnabled: Boolean = false,
+    val themeMode: String = "system"         // "system", "dark", "light"
 )
 
 class AppSettings(private val context: Context) {
