@@ -77,6 +77,9 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(SpeechToTextTool(context))
         registerTool(TextToSpeechTool(context))
         registerTool(CalendarTool(context))
+        registerTool(ContactsTool(context))
+        registerTool(LocationTool(context))
+        registerTool(CalculatorTool())
     }
 
     fun registerTool(tool: Tool) {

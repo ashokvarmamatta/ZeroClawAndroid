@@ -143,9 +143,9 @@
 | **89** | **SpeechToTextTool.kt — Whisper API transcription** | ✅ DONE |
 | **90** | **TextToSpeechTool.kt — Android native TTS (free, offline)** | ✅ DONE |
 | **91** | **CalendarTool.kt — read/create Android calendar events** | ✅ DONE |
-| **92** | **ContactsTool.kt — search/read Android contacts** | 🔲 TODO |
-| **93** | **LocationTool.kt — GPS location, nearby places, geocoding** | 🔲 TODO |
-| **94** | **CalculatorTool.kt — evaluate math expressions & unit conversions** | 🔲 TODO |
+| **92** | **ContactsTool.kt — search/read Android contacts** | ✅ DONE |
+| **93** | **LocationTool.kt — GPS location, nearby places, geocoding** | ✅ DONE |
+| **94** | **CalculatorTool.kt — evaluate math expressions & unit conversions** | ✅ DONE |
 | **95** | **RssFeedTool.kt — monitor RSS/Atom feeds, blog watcher** | 🔲 TODO |
 | **96** | **QrCodeTool.kt — generate & scan QR codes** | 🔲 TODO |
 | **97** | **FileManagerTool.kt — list, read, write local files on device** | 🔲 TODO |
@@ -226,9 +226,9 @@ These directly enhance what the AI can do in conversations.
 | 89 | Speech-to-Text ✅ | Transcribe voice/audio | Whisper API (OpenAI/Groq) |
 | 90 | Text-to-Speech ✅ | Read replies aloud | Android TTS (free, offline) |
 | 91 | Calendar ✅ | Read/create calendar events | Android CalendarProvider |
-| 92 | Contacts | Search device contacts | Android ContactsProvider |
-| 93 | Location | GPS, places, geocoding | Android LocationManager |
-| 94 | Calculator | Math expressions & units | Local eval (no API) |
+| 92 | Contacts ✅ | Search device contacts | Android ContactsProvider |
+| 93 | Location ✅ | GPS, places, geocoding | Android LocationManager |
+| 94 | Calculator ✅ | Math expressions & units | Local eval (no API) |
 | 95 | RSS Feed | Monitor blogs & feeds | Direct HTTP + XML parsing |
 | 96 | QR Code | Generate & scan QR codes | ZXing library |
 | 97 | File Manager | List/read/write files | Android SAF |
