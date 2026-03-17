@@ -152,8 +152,8 @@
 | **98** | **ClipboardTool.kt — read/write device clipboard** | ✅ DONE |
 | **99** | **SpotifyTool.kt — Spotify playback control (play, pause, next, search)** | ✅ DONE |
 | **100** | **SmartHomeTool.kt — Philips Hue / generic IoT device control** | ✅ DONE |
-| **101** | **BraveTool.kt — Brave Search API (alternative to DuckDuckGo)** | 🔲 TODO |
-| **102** | **BookmarkTool.kt — save, list, search bookmarks per user** | 🔲 TODO |
+| **101** | **BraveTool.kt — Brave Search API (alternative to DuckDuckGo)** | ✅ DONE |
+| **102** | **BookmarkTool.kt — save, list, search bookmarks per user** | ✅ DONE |
 | | | |
 | | **── MESSAGING CHANNELS ──** | |
 | **103** | **SlackBotManager.kt — Slack workspace bot (RTM or Events API)** | 🔲 TODO |
@@ -235,8 +235,8 @@ These directly enhance what the AI can do in conversations.
 | 98 | Clipboard ✅ | Read/write clipboard | Android ClipboardManager |
 | 99 | Spotify ✅ | Music playback control | Spotify Web API |
 | 100 | Smart Home ✅ | Control Hue/IoT devices | Hue REST API |
-| 101 | Brave Search | Alternative web search | Brave Search API |
-| 102 | Bookmarks | Save/search bookmarks | Room DB per user |
+| 101 | Brave Search ✅ | Alternative web search | Brave Search API |
+| 102 | Bookmarks ✅ | Save/search bookmarks | Room DB per user |
 
 **🟡 MEDIUM PRIORITY (Phases 103-117) — Channels & AI**
 New messaging channels and smarter AI behavior.

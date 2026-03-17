@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (26 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, and Smart Home. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (28 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, and Bookmarks. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -451,7 +451,19 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(27, "⚙️", "Managing Tools",
+        GuideStep(27, "🦁", "Brave Search",
+            "The AI can search the web using the Brave Search API — an alternative to DuckDuckGo with richer results and info boxes.",
+            "How it works:\n• Uses Brave Search REST API\n• Returns titles, URLs, descriptions, info boxes\n• Supports web search and news search\n• Free tier: 2000 queries/month\n\nActions:\n• web — general web search\n• news — news-specific search\n\nExample prompts:\n• \"Brave search for Kotlin coroutines\"\n• \"Search Brave for latest tech news\"\n• \"Brave news about AI\"\n\nRequires a Brave Search API key — get one free at api.search.brave.com",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(28, "🔖", "Bookmarks",
+            "The AI can save, list, search, and delete bookmarks for each user. Stored locally on the device with Room database.",
+            "How it works:\n• Per-user bookmark storage using Room/SQLite\n• Save URLs with titles and tags\n• Search bookmarks by keyword\n• Duplicate URL detection (updates existing)\n\nActions:\n• save — add a bookmark (url + title + tags)\n• list — show all bookmarks\n• search — find by keyword\n• delete — remove by ID\n\nExample prompts:\n• \"Bookmark https://example.com as My Site\"\n• \"Save this URL: https://docs.kotlin.org tagged kotlin,docs\"\n• \"Show my bookmarks\"\n• \"Search bookmarks for kotlin\"\n• \"Delete bookmark 3\"",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(29, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
