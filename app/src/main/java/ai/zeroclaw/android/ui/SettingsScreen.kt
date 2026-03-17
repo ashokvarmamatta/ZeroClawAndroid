@@ -45,6 +45,13 @@ fun SettingsScreen(
     var twilioFrom by remember { mutableStateOf("whatsapp:+14155238886") }
     var discordToken by remember { mutableStateOf("") }
     var signalApiUrl by remember { mutableStateOf("") }
+    var slackToken by remember { mutableStateOf("") }
+    var matrixConfig by remember { mutableStateOf("") }
+    var ircConfig by remember { mutableStateOf("") }
+    var teamsConfig by remember { mutableStateOf("") }
+    var twitchConfig by remember { mutableStateOf("") }
+    var lineToken by remember { mutableStateOf("") }
+    var webChatEnabled by remember { mutableStateOf(false) }
     var autoStart by remember { mutableStateOf(true) }
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
@@ -68,6 +75,13 @@ fun SettingsScreen(
             twilioFrom = s.twilioFrom
             discordToken = s.discordToken
             signalApiUrl = s.signalApiUrl
+            slackToken = s.slackToken
+            matrixConfig = s.matrixConfig
+            ircConfig = s.ircConfig
+            teamsConfig = s.teamsConfig
+            twitchConfig = s.twitchConfig
+            lineToken = s.lineToken
+            webChatEnabled = s.webChatEnabled
             autoStart = s.autoStart
         }
         val keys = keyManager.loadKeys()
@@ -90,7 +104,9 @@ fun SettingsScreen(
                         scope.launch {
                             settings.save(
                                 zeroClawUrl, telegramToken, twilioSid,
-                                twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl
+                                twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl,
+                                slackToken, matrixConfig, ircConfig, teamsConfig, twitchConfig,
+                                lineToken, webChatEnabled
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -207,6 +223,43 @@ fun SettingsScreen(
             item { SettingsTextField("Twilio Account SID", twilioSid, false) { twilioSid = it } }
             item { SettingsTextField("Twilio Auth Token", twilioToken, true) { twilioToken = it } }
             item { SettingsTextField("WhatsApp From Number", twilioFrom, false) { twilioFrom = it } }
+            item { SectionHeader("💼 Slack Bot") }
+            item {
+                SettingsTextField("Bot + App Token (xoxb-...|xapp-...)", slackToken, true) { slackToken = it }
+            }
+            item { SectionHeader("🟣 Matrix Bot") }
+            item {
+                SettingsTextField("Config (https://homeserver|access_token)", matrixConfig, true) { matrixConfig = it }
+            }
+            item { SectionHeader("📡 IRC Bot") }
+            item {
+                SettingsTextField("Config (server:port|nickname|#channel1,#channel2)", ircConfig, false) { ircConfig = it }
+            }
+            item { SectionHeader("💼 Microsoft Teams Bot") }
+            item {
+                SettingsTextField("Config (botId|botSecret)", teamsConfig, true) { teamsConfig = it }
+            }
+            item { SectionHeader("🎮 Twitch Bot") }
+            item {
+                SettingsTextField("Config (oauth:token|botname|#channel1,#channel2)", twitchConfig, true) { twitchConfig = it }
+            }
+            item { SectionHeader("💚 LINE Bot") }
+            item {
+                SettingsTextField("Channel Access Token", lineToken, true) { lineToken = it }
+            }
+            item { SectionHeader("🌐 Web Chat") }
+            item {
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Enable Web Chat Server", fontWeight = FontWeight.Medium)
+                        Text("Serves a chat UI on port 8088", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = webChatEnabled, onCheckedChange = { webChatEnabled = it })
+                }
+            }
             item { SectionHeader("🔧 Behavior") }
             item {
                 Row(modifier = Modifier.fillMaxWidth(),
