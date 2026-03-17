@@ -738,7 +738,59 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 17. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 17. Brave Search ─────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val braveKeywords = msg.contains("brave search") || msg.contains("search brave") ||
+                    msg.contains("brave") && (msg.contains("search") || msg.contains("look up") || msg.contains("find"))
+            if (braveKeywords) {
+                val braveMatch = Regex("(?:brave search|search brave)\\s+(?:for )?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                    ?: Regex("brave\\s+(?:search|look up|find)\\s+(?:for )?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (braveMatch != null) {
+                    val query = braveMatch.groupValues[1].trim().removeSuffix("?").removeSuffix(".")
+                    val action = if (msg.contains("news")) "news" else "web"
+                    if (query.isNotBlank()) {
+                        toolCalls.add(ToolCall("auto_brave", "brave_search", mapOf("query" to query, "action" to action)))
+                    }
+                }
+            }
+        }
+
+        // ── 18. Bookmarks ───────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val bookmarkKeywords = msg.contains("bookmark") || msg.contains("bookmarks") ||
+                    msg.contains("save this url") || msg.contains("save this link")
+            if (bookmarkKeywords) {
+                when {
+                    msg.contains("save") || msg.contains("add") -> {
+                        val urlMatch = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        val titleMatch = Regex("(?:as|titled|called|named)\\s+(.+?)(?:\\s+tagged|$)", RegexOption.IGNORE_CASE).find(userMessage)
+                        val tagsMatch = Regex("tagged?\\s+(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        val args = mutableMapOf("action" to "save")
+                        if (urlMatch != null) args["url"] = urlMatch.groupValues[1].removeSuffix(",").removeSuffix(")")
+                        if (titleMatch != null) args["title"] = titleMatch.groupValues[1].trim()
+                        if (tagsMatch != null) args["tags"] = tagsMatch.groupValues[1].trim()
+                        if (args.containsKey("url") || args.containsKey("title")) {
+                            toolCalls.add(ToolCall("auto_bookmark", "bookmark", args))
+                        }
+                    }
+                    msg.contains("search") || msg.contains("find") -> {
+                        val queryMatch = Regex("(?:search|find)\\s+bookmarks?\\s+(?:for )?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (queryMatch != null) {
+                            toolCalls.add(ToolCall("auto_bookmark", "bookmark", mapOf("action" to "search", "query" to queryMatch.groupValues[1].trim().removeSuffix("?"))))
+                        }
+                    }
+                    msg.contains("delete") || msg.contains("remove") -> {
+                        val idMatch = Regex("(?:delete|remove)\\s+bookmark\\s+(?:#)?(\\d+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (idMatch != null) {
+                            toolCalls.add(ToolCall("auto_bookmark", "bookmark", mapOf("action" to "delete", "id" to idMatch.groupValues[1])))
+                        }
+                    }
+                    else -> toolCalls.add(ToolCall("auto_bookmark", "bookmark", mapOf("action" to "list")))
+                }
+            }
+        }
+
+        // ── 19. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
