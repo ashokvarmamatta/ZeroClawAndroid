@@ -1,6 +1,11 @@
 package ai.zeroclaw.android.data
 
 import android.content.Context
+import ai.zeroclaw.android.ai.AgentProfileManager
+import ai.zeroclaw.android.ai.ConversationSummarizer
+import ai.zeroclaw.android.ai.SystemPromptManager
+import ai.zeroclaw.android.ai.ThinkingMode
+import ai.zeroclaw.android.ai.ToolLoopDetector
 import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolCall
 import ai.zeroclaw.android.tools.ToolSystem
@@ -81,6 +86,24 @@ class LlmRouter(private val context: Context) {
             return "🔄 Chat history cleared. Starting fresh!"
         }
 
+        // Handle /profile command — show or switch agent profiles
+        if (userMessage.trim().startsWith("/profile", ignoreCase = true)) {
+            val arg = userMessage.trim().removePrefix("/profile").trim()
+            val pm = AgentProfileManager.getInstance(context)
+            return if (arg.isBlank()) {
+                val profiles = kotlinx.coroutines.runBlocking { pm.getAllProfiles() }
+                val activeId = kotlinx.coroutines.runBlocking { pm.getActiveProfileId() }
+                "🤖 Agent Profiles:\n" + profiles.joinToString("\n") { p ->
+                    val active = if (p.id == activeId) " ← active" else ""
+                    "• ${p.emoji} ${p.name} (${p.id})$active"
+                } + "\n\nSwitch: /profile <id>"
+            } else {
+                kotlinx.coroutines.runBlocking { pm.setActiveProfile(arg) }
+                val profile = kotlinx.coroutines.runBlocking { pm.resolveProfile(chatId) }
+                "✅ Switched to ${profile.emoji} ${profile.name}"
+            }
+        }
+
         // Handle /tools command — list available tools
         if (userMessage.trim().equals("/tools", ignoreCase = true)) {
             val toolSystem = ToolSystem.getInstance(context)
@@ -91,6 +114,32 @@ class LlmRouter(private val context: Context) {
 
         // Record user message in history
         addToHistory(chatId, "user", userMessage)
+
+        // ── Phase 117: Auto-compact long conversation histories ──────────
+        val summarizer = ConversationSummarizer.getInstance(context)
+        val currentHistory = getHistory(chatId)
+        if (summarizer.needsCompaction(currentHistory)) {
+            val compacted = summarizer.compact(currentHistory, chatId)
+            chatHistories[chatId] = compacted.toMutableList()
+            ZeroClawService.log("LLM: compacted history for $chatId (${currentHistory.size} → ${compacted.size} messages)")
+        }
+
+        // ── Phase 110+113: Resolve system prompt from profile/channel/user ──
+        val promptManager = SystemPromptManager.getInstance(context)
+        val profileManager = AgentProfileManager.getInstance(context)
+        val profile = profileManager.resolveProfile(chatId)
+        val basePrompt = if (profile.systemPrompt.isNotBlank()) {
+            profile.systemPrompt
+        } else {
+            promptManager.resolvePrompt(chatId)
+        }
+
+        // ── Phase 116: Thinking mode for complex questions ──────────────
+        val thinkingMode = ThinkingMode.getInstance(context)
+        val thinkingAddition = if (thinkingMode.shouldThink(userMessage)) {
+            ZeroClawService.log("LLM: thinking mode activated (complexity=${thinkingMode.complexityScore(userMessage)})")
+            thinkingMode.buildThinkingPromptAddition()
+        } else ""
 
         // Build system prompt with tools
         val toolSystem = ToolSystem.getInstance(context)
@@ -151,8 +200,8 @@ class LlmRouter(private val context: Context) {
             for (model in modelsToTry) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
-                // Build the effective system prompt (base + tools)
-                val effectiveSystemPrompt = SYSTEM_PROMPT + toolsPrompt
+                // Build the effective system prompt (base + tools + thinking)
+                val effectiveSystemPrompt = basePrompt + toolsPrompt + thinkingAddition
 
                 val result = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
 
@@ -162,6 +211,15 @@ class LlmRouter(private val context: Context) {
                         if (reply.isNotBlank()) {
                             // ── Tool call loop ──────────────────────────────
                             reply = handleToolCalls(reply, entry, chatId, model, effectiveSystemPrompt, toolSystem)
+
+                            // ── Phase 116: Extract answer from thinking mode ──
+                            if (thinkingAddition.isNotBlank()) {
+                                val thinking = thinkingMode.extractThinking(reply)
+                                if (thinking != null) {
+                                    ZeroClawService.log("LLM: thinking mode — ${thinking.length} chars of reasoning")
+                                }
+                                reply = thinkingMode.extractAnswer(reply)
+                            }
 
                             ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${entry.safeLabel}\" model=\"$model\" ($provider)")
                             addToHistory(chatId, "assistant", reply)
@@ -218,6 +276,7 @@ class LlmRouter(private val context: Context) {
     ): String {
         var reply = initialReply
         var round = 0
+        val loopDetector = ToolLoopDetector()  // Phase 115
 
         while (round < ToolSystem.MAX_TOOL_ROUNDS) {
             val toolCalls = toolSystem.parseToolCalls(reply)
@@ -228,7 +287,18 @@ class LlmRouter(private val context: Context) {
 
             // Execute each tool call and collect results
             val results = StringBuilder()
+            var loopDetected = false
             for (call in toolCalls) {
+                // ── Phase 115: Check for tool loops ──────────────────────
+                val argsHash = call.args.hashCode()
+                val detection = loopDetector.recordCall(call.name, argsHash, round)
+                if (detection != null) {
+                    ZeroClawService.log("TOOL: ⚠ ${detection.message}")
+                    results.appendLine("[Loop detected: ${detection.message}]")
+                    loopDetected = true
+                    break
+                }
+
                 // Auto-inject user_id for memory tool if not provided by LLM
                 val enrichedCall = if (call.name == "memory" && call.args["user_id"].isNullOrBlank()) {
                     call.copy(args = call.args + ("user_id" to chatId))
@@ -237,6 +307,21 @@ class LlmRouter(private val context: Context) {
                 results.appendLine("Tool result for ${call.name}:")
                 results.appendLine(if (result.success) result.content else "Error: ${result.error}")
                 results.appendLine()
+
+                // ── Phase 115: Check for stalls ──────────────────────────
+                val resultHash = results.toString().hashCode()
+                val stallDetection = loopDetector.recordResult(resultHash)
+                if (stallDetection != null) {
+                    ZeroClawService.log("TOOL: ⚠ ${stallDetection.message}")
+                    loopDetected = true
+                    break
+                }
+            }
+
+            // ── Phase 115: Break out if loop detected ────────────────
+            if (loopDetected) {
+                ZeroClawService.log("TOOL: breaking tool loop at round $round (${loopDetector.summary()})")
+                break
             }
 
             // Strip tool_call blocks from the reply to get the text parts
