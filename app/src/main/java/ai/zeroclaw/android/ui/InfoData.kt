@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (16 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, and Text-to-Speech. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (17 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, and Calendar. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -391,7 +391,13 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(17, "⚙️", "Managing Tools",
+        GuideStep(17, "📅", "Calendar",
+            "The AI can read and create events on your Android calendar. View today's schedule, search events, or create new ones — all through natural language.",
+            "How it works:\n• Reads events from Android's built-in CalendarProvider\n• Can create new events with title, date, time, location\n• Search events by keyword (past 30 days + next 90 days)\n• Supports all-day and timed events\n• Works with Google Calendar, Samsung Calendar, etc.\n\nActions:\n• today — show today's events\n• week — show this week's events\n• list — events for a specific date\n• create — add a new event\n• search — find events by keyword\n\nExample prompts:\n• \"What's on my calendar today?\"\n• \"Show my schedule this week\"\n• \"Create a meeting tomorrow at 3pm called Team Standup\"\n• \"Search calendar for dentist\"\n• \"Add event on 2026-04-01 at 10:00 — Project Review\"\n\nRequires calendar permission — grant when prompted.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(18, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
