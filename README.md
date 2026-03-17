@@ -4,7 +4,7 @@
 
 # ZeroClaw Android
 
-**A 24/7 AI agent daemon for Android — 11 messaging channels, 30 built-in AI tools, advanced AI orchestration, vector memory, full infrastructure, and polished configuration & UX. Runs entirely on your phone.**
+**A 24/7 AI agent daemon for Android — 11 messaging channels, 35 built-in AI tools, advanced AI orchestration, vector memory, full infrastructure, polished configuration & UX, and NullClaw-inspired advanced features (Composio, MCP, A2A, MMR, hint routing, agent identity). Runs entirely on your phone.**
 
 [![Android](https://img.shields.io/badge/Platform-Android%2026%2B-green?logo=android)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple?logo=kotlin)](https://kotlinlang.org)
@@ -17,7 +17,7 @@
 
 ## 📖 What is ZeroClaw?
 
-ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service across **11 messaging channels**, with **30 built-in AI tools**, **advanced AI orchestration** (streaming, multi-agent, workflows, thinking mode), **vector memory with RAG**, a **complete infrastructure platform** (hooks, plugins, biometric lock, device pairing, auto-recovery), and a fully polished **configuration & UX layer** — export/import config, custom themes, per-channel prompts, rate limiting, usage tracking, an approval system, conversation labels, a home screen widget, voice input, and group chat support.
+ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service across **11 messaging channels**, with **35 built-in AI tools**, **advanced AI orchestration** (streaming, multi-agent, delegate/spawn, workflows, thinking mode), **vector memory with RAG + MMR diversity**, a **complete infrastructure platform** (hooks, plugins, biometric lock, MCP client, A2A protocol, audit log), and a **NullClaw-inspired advanced layer** — Composio 1000+ app integrations, hint-based provider routing, agent identity (AIEOS v1.1), semantic cache, memory hygiene, and Pushover notifications.
 
 No cloud subscription. No always-on PC. Just your Android device.
 
@@ -26,15 +26,17 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
               ↓
     ZeroClaw Service (background daemon)
               ↓
+    NullClaw Layer: ProviderRouter (hints) → ComposioTool → McpClient → A2AServer
+              ↓
     Config & UX: ThemeManager → RateLimiting → ApprovalSystem → ConversationLabels
               ↓
-    Infrastructure: HooksSystem → PluginSystem → BiometricLock → AutoRecovery
+    Infrastructure: HooksSystem → PluginSystem → BiometricLock → AutoRecovery → AuditLog
               ↓
-    Advanced AI: SystemPromptManager → MultiAgent → WorkflowEngine → ThinkingMode
+    Advanced AI: AgentIdentity → SystemPromptManager → MultiAgent+Delegate/Spawn → WorkflowEngine
               ↓
-    Vector Memory: VectorMemory → HybridSearch+RRF → QueryExpansion → SessionManager
+    Vector Memory: VectorMemory → HybridSearch+RRF → MMR Reranker → AdaptiveRetrieval → SemanticCache
               ↓
-    Tool System (30 tools) → LLM Router → Reply
+    Tool System (35 tools) → LLM Router → Reply
 ```
 
 ---
@@ -452,6 +454,102 @@ All phases are implemented on this branch.
 
 ---
 
+## 🚀 NullClaw-Inspired Advanced Features (Phases 141-157)
+
+### Phase 141 — ComposioTool
+- **1000+ OAuth app integrations** via Composio API v3/v2 — GitHub, Gmail, Jira, Notion, Salesforce, Slack, and 250+ more
+- No per-app OAuth setup — Composio handles all authentication server-side
+- Actions: `list_apps`, `list_actions` per app, `execute` any action with parameters
+- Free tier: 100 actions/month. Disabled by default (requires Composio API key)
+
+### Phase 142 — DelegateTool + SpawnTool
+- **DelegateTool** — delegate a task to a named AI persona (coder, analyst, creative, tutor, brief) and wait for the result. Integrates with existing AgentProfileManager profiles
+- **SpawnTool** — fire-off background agents asynchronously, get a `task_id` immediately. Collect results later with `spawn collect task_id=agent_1`
+- Both restricted to depth=1 to prevent infinite agent chains
+- Disabled by default — enable in Settings → AI Tools
+
+### Phase 143 — MessageTool
+- **Proactive messaging** — send messages to Telegram/Discord/Slack channels from cron jobs or agents without waiting for user input
+- Perfect for: morning news digests, price alerts, scheduled summaries
+- Uses `ZeroClawService.sendProactive()` to route through the connected channel manager
+- Disabled by default — enable when you want agents to initiate conversations
+
+### Phase 144 — McpClient (Model Context Protocol)
+- **MCP JSON-RPC 2.0 HTTP client** — connect to any MCP server and auto-discover its tools
+- Discovered tools appear as `mcp_{server}_{tool_name}` in the tool list
+- Compatible with any MCP server: GitHub, filesystem, databases, APIs
+- Disabled by default — requires MCP server URL in Settings → Advanced
+
+### Phase 145 — MMR Reranker + Adaptive Retrieval
+- **MmrReranker** — Maximal Marginal Relevance post-processing after RRF fusion. Filters redundant results using Jaccard token similarity so you get diverse, non-repetitive memory results
+- **AdaptiveRetrieval** — auto-selects keyword-only (technical/short queries), vector-only (long natural language questions), or hybrid (default) based on query analysis
+- No user action needed — both run automatically on every memory search
+
+### Phase 146 — SemanticCache + MemoryHygiene
+- **SemanticCache** — LRU response cache with 80% cosine similarity threshold. Avoids re-calling the LLM for semantically similar questions. Up to 100 entries, 30-minute TTL
+- **MemoryHygiene** — WorkManager 12-hour periodic cycle: archives memories >7 days old, permanently purges archived memories >30 days old. Pinned memories are never deleted
+
+### Phase 147 — Context Compaction (enhanced)
+- Existing ConversationSummarizer enhanced with three modes: auto (75% threshold), force (drops messages, no LLM), trim (hard cap at 50 messages)
+
+### Phase 148 — A2AServer (Agent-to-Agent Protocol)
+- **Google A2A spec** implementation — exposes `GET /a2a/agent-card.json` (capabilities) and `POST /a2a` (JSON-RPC 2.0 task endpoint)
+- Task state machine: `SUBMITTED → WORKING → COMPLETED/FAILED`
+- Other AI agents can discover and delegate tasks to your ZeroClaw agent
+- Disabled by default — requires Web Chat enabled
+
+### Phase 149 — ProviderRouter (Hint-Based Routing)
+- **Hint prefixes** route messages to the best provider for that task:
+  - `hint:reasoning` → Claude Sonnet/Opus or o1
+  - `hint:vision` → GPT-4o or Gemini Vision
+  - `hint:fast` → Haiku or GPT-4o-mini
+  - `hint:code` → Claude or GPT-4
+  - `hint:creative` → GPT-4o or Claude Sonnet
+  - `hint:long` → Gemini (long context)
+- Per-model fallback chains (GPT-4o → GPT-4o-mini → GPT-3.5 etc.)
+
+### Phase 150 — AgentIdentity (AIEOS v1.1)
+- **Structured agent identity**: MBTI personality type, OCEAN big-five trait scores (0-100), catchphrases, forbidden words, core values, communication style
+- Default: INTJ Mastermind — strategic, direct, precise
+- Identity compiled into system prompt prefix for every LLM call
+
+### Phase 151 — PushoverTool
+- **Push notifications to any device** via Pushover API (iOS, Android, desktop)
+- Priority levels: quiet (−1), normal (0), high (1), emergency (2, requires acknowledgment)
+- Optional URL attachment, custom title
+- Free tier: 10,000 messages/month. Disabled by default (requires Pushover token + user key)
+
+### Phase 156 — AuditLog
+- **Tamper-evident JSONL log** of every tool execution: timestamp, tool name, args, result summary, duration, and hash chain
+- Daily log rotation, 30 days retained
+- Enabled by default (passive, negligible overhead)
+
+### Settings Redirect Buttons
+- Every Settings section now has an **ⓘ info button** that opens the relevant Info guide tab
+- No more guessing what a feature does — tap ⓘ to read a plain-language explanation before enabling
+
+---
+
+## ✅ NullClaw Features Checklist
+
+- [x] ComposioTool — 1000+ app integrations ✅
+- [x] DelegateTool — named agent delegation ✅
+- [x] SpawnTool — async background agents ✅
+- [x] MessageTool — proactive cross-channel messaging ✅
+- [x] McpClient — MCP JSON-RPC 2.0 HTTP client ✅
+- [x] MmrReranker — Jaccard diversity reranking ✅
+- [x] AdaptiveRetrieval — auto keyword/vector/hybrid ✅
+- [x] SemanticCache — LRU cosine similarity cache ✅
+- [x] MemoryHygiene — 12h archive/purge WorkManager ✅
+- [x] A2AServer — Google A2A agent protocol ✅
+- [x] ProviderRouter — hint-based model routing ✅
+- [x] AgentIdentity — AIEOS v1.1 MBTI/OCEAN ✅
+- [x] PushoverTool — push notifications ✅
+- [x] AuditLog — tamper-evident JSONL log ✅
+- [x] Settings ⓘ redirect buttons to Info guide ✅
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! Here's how to get started:
@@ -487,6 +585,10 @@ This Android app is built on top of the [**ZeroClaw**](https://github.com/zerocl
 - [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference)
 - [Pollinations.ai](https://pollinations.ai) — free AI image generation
 - [Brave Search API](https://brave.com/search/api/) — [MyMemory Translation](https://mymemory.translated.net)
+- [Composio](https://composio.dev) — 1000+ OAuth app integrations
+- [Pushover](https://pushover.net) — push notifications API
+- [Model Context Protocol](https://modelcontextprotocol.io) — MCP tool server standard
+- [NullClaw](https://github.com/nullclaw/nullclaw) — advanced agent patterns (MMR, A2A, AIEOS, hint routing)
 - [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
 - [Android BiometricPrompt](https://developer.android.com/training/sign-in/biometric-auth)
 - [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager)
