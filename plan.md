@@ -149,9 +149,9 @@
 | **95** | **RssFeedTool.kt — monitor RSS/Atom feeds, blog watcher** | ✅ DONE |
 | **96** | **QrCodeTool.kt — generate & scan QR codes** | ✅ DONE |
 | **97** | **FileManagerTool.kt — list, read, write local files on device** | ✅ DONE |
-| **98** | **ClipboardTool.kt — read/write device clipboard** | 🔲 TODO |
-| **99** | **SpotifyTool.kt — Spotify playback control (play, pause, next, search)** | 🔲 TODO |
-| **100** | **SmartHomeTool.kt — Philips Hue / generic IoT device control** | 🔲 TODO |
+| **98** | **ClipboardTool.kt — read/write device clipboard** | ✅ DONE |
+| **99** | **SpotifyTool.kt — Spotify playback control (play, pause, next, search)** | ✅ DONE |
+| **100** | **SmartHomeTool.kt — Philips Hue / generic IoT device control** | ✅ DONE |
 | **101** | **BraveTool.kt — Brave Search API (alternative to DuckDuckGo)** | 🔲 TODO |
 | **102** | **BookmarkTool.kt — save, list, search bookmarks per user** | 🔲 TODO |
 | | | |
@@ -232,9 +232,9 @@ These directly enhance what the AI can do in conversations.
 | 95 | RSS Feed ✅ | Monitor blogs & feeds | Direct HTTP + XML parsing |
 | 96 | QR Code ✅ | Generate & scan QR codes | Built-in encoder (no library) |
 | 97 | File Manager ✅ | List/read/write files | Android File API |
-| 98 | Clipboard | Read/write clipboard | Android ClipboardManager |
-| 99 | Spotify | Music playback control | Spotify Web API |
-| 100 | Smart Home | Control Hue/IoT devices | Hue REST API / mDNS |
+| 98 | Clipboard ✅ | Read/write clipboard | Android ClipboardManager |
+| 99 | Spotify ✅ | Music playback control | Spotify Web API |
+| 100 | Smart Home ✅ | Control Hue/IoT devices | Hue REST API |
 | 101 | Brave Search | Alternative web search | Brave Search API |
 | 102 | Bookmarks | Save/search bookmarks | Room DB per user |
 

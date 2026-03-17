@@ -640,7 +640,105 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 14. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 14. Clipboard ───────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val clipKeywords = msg.contains("clipboard") || msg.contains("copy to clipboard") ||
+                    msg.contains("paste") && msg.contains("clipboard") || msg.contains("what's copied") ||
+                    msg.contains("clear clipboard")
+            if (clipKeywords) {
+                when {
+                    msg.contains("copy") || msg.contains("write") || msg.contains("set") -> {
+                        val textMatch = Regex("(?:copy|write|set)\\s+(?:this )?(?:to )?clipboard\\s*:?\\s*(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                            ?: Regex("(?:copy|clipboard)\\s*:?\\s*(.{3,})", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (textMatch != null) {
+                            toolCalls.add(ToolCall("auto_clip", "clipboard", mapOf("action" to "write", "text" to textMatch.groupValues[1].trim())))
+                        }
+                    }
+                    msg.contains("clear") -> toolCalls.add(ToolCall("auto_clip", "clipboard", mapOf("action" to "clear")))
+                    else -> toolCalls.add(ToolCall("auto_clip", "clipboard", mapOf("action" to "read")))
+                }
+            }
+        }
+
+        // ── 15. Spotify ─────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val spotifyKeywords = msg.contains("spotify") || (msg.contains("play") && msg.contains("music")) ||
+                    msg.contains("now playing") || msg.contains("what's playing") ||
+                    msg.contains("skip track") || msg.contains("next track") || msg.contains("pause music")
+            if (spotifyKeywords) {
+                when {
+                    msg.contains("search") -> {
+                        val queryMatch = Regex("(?:search|find)\\s+(?:on )?spotify\\s+(?:for )?(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (queryMatch != null) {
+                            toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "search", "query" to queryMatch.groupValues[1].trim())))
+                        }
+                    }
+                    msg.contains("play") -> {
+                        val playMatch = Regex("play\\s+(.+?)(?:\\s+on spotify)?\\s*$", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (playMatch != null) {
+                            toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "play", "query" to playMatch.groupValues[1].trim())))
+                        } else {
+                            toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "play")))
+                        }
+                    }
+                    msg.contains("pause") || msg.contains("stop") -> toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "pause")))
+                    msg.contains("next") || msg.contains("skip") -> toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "next")))
+                    msg.contains("previous") || msg.contains("back") -> toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "previous")))
+                    msg.contains("queue") -> {
+                        val queueMatch = Regex("(?:add|queue)\\s+(.+?)(?:\\s+(?:to|on) (?:queue|spotify))?\\s*$", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (queueMatch != null) {
+                            toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "queue", "query" to queueMatch.groupValues[1].trim())))
+                        }
+                    }
+                    else -> toolCalls.add(ToolCall("auto_spotify", "spotify", mapOf("action" to "now_playing")))
+                }
+            }
+        }
+
+        // ── 16. Smart Home ──────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val homeKeywords = msg.contains("hue") || msg.contains("smart light") || msg.contains("smart home") ||
+                    (msg.contains("light") && (msg.contains("turn on") || msg.contains("turn off") ||
+                            msg.contains("brightness") || msg.contains("color") || msg.contains("dim")))
+            if (homeKeywords) {
+                when {
+                    msg.contains("list") || msg.contains("all lights") || msg.contains("my lights") ->
+                        toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "lights")))
+                    msg.contains("turn on") || msg.contains("switch on") -> {
+                        val lightMatch = Regex("(?:turn|switch)\\s+on\\s+(?:the )?(.+?)(?:\\s+light)?\\s*$", RegexOption.IGNORE_CASE).find(userMessage)
+                        val light = lightMatch?.groupValues?.get(1)?.trim() ?: "1"
+                        toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "on", "light" to light)))
+                    }
+                    msg.contains("turn off") || msg.contains("switch off") -> {
+                        val lightMatch = Regex("(?:turn|switch)\\s+off\\s+(?:the )?(.+?)(?:\\s+light)?\\s*$", RegexOption.IGNORE_CASE).find(userMessage)
+                        val light = lightMatch?.groupValues?.get(1)?.trim() ?: "1"
+                        toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "off", "light" to light)))
+                    }
+                    msg.contains("brightness") || msg.contains("dim") -> {
+                        val briMatch = Regex("(?:set |change )?(?:the )?(.+?)\\s+(?:brightness |to )?(\\d+)\\s*%?", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (briMatch != null) {
+                            toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "brightness", "light" to briMatch.groupValues[1].trim(), "value" to briMatch.groupValues[2])))
+                        }
+                    }
+                    msg.contains("color") -> {
+                        val colorMatch = Regex("(?:set |change )?(?:the )?(.+?)\\s+(?:color |to )(\\w+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (colorMatch != null) {
+                            toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "color", "light" to colorMatch.groupValues[1].trim(), "value" to colorMatch.groupValues[2])))
+                        }
+                    }
+                    msg.contains("scene") -> {
+                        val sceneMatch = Regex("(?:activate|set|use)\\s+(?:the )?(.+?)\\s+scene", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (sceneMatch != null) {
+                            toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "scenes", "scene" to sceneMatch.groupValues[1].trim())))
+                        } else {
+                            toolCalls.add(ToolCall("auto_home", "smart_home", mapOf("action" to "scenes")))
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 17. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)

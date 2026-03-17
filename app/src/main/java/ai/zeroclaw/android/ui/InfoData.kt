@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (23 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, and File Manager. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (26 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, and Smart Home. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -433,7 +433,25 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(24, "⚙️", "Managing Tools",
+        GuideStep(24, "📋", "Clipboard",
+            "The AI can read from and write to your device clipboard. Copy text for quick sharing or check what's currently copied.",
+            "How it works:\n• Read current clipboard content\n• Copy text to clipboard for pasting elsewhere\n• Clear clipboard when needed\n\nActions:\n• read — get current clipboard content\n• write — copy text to clipboard\n• clear — clear the clipboard\n\nExample prompts:\n• \"What's on my clipboard?\"\n• \"Copy this to clipboard: Hello World\"\n• \"Clear my clipboard\"\n• \"Read clipboard\"",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(25, "🎵", "Spotify",
+            "The AI can control Spotify playback — search music, play/pause, skip tracks, check what's playing, and add to queue.",
+            "How it works:\n• Uses Spotify Web API\n• Requires a Spotify access token\n• Controls your active Spotify session\n\nActions:\n• search — find tracks, artists, albums\n• play — play a track or resume\n• pause — pause playback\n• next/previous — skip tracks\n• now_playing — what's currently playing\n• queue — add a track to queue\n\nExample prompts:\n• \"What's playing on Spotify?\"\n• \"Play Bohemian Rhapsody on Spotify\"\n• \"Search Spotify for Taylor Swift\"\n• \"Skip to next track\"\n• \"Add Imagine by John Lennon to queue\"\n\nRequires Spotify Premium for playback control.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(26, "🏠", "Smart Home",
+            "The AI can control Philips Hue smart lights — turn on/off, set brightness, change colors, and activate scenes.",
+            "How it works:\n• Connects to Philips Hue Bridge on local network\n• Requires Bridge IP address and API username\n• Controls individual lights or groups\n\nActions:\n• lights — list all connected lights\n• on/off — turn light on or off\n• brightness — set brightness (0-100%)\n• color — change light color\n• status — check light details\n• scenes — list or activate scenes\n\nSupported colors:\nred, orange, yellow, green, cyan, blue, purple, pink, white, warm, cool\n\nExample prompts:\n• \"List my Hue lights\"\n• \"Turn on the living room light\"\n• \"Set bedroom to 50% brightness\"\n• \"Change kitchen light to blue\"\n• \"Activate the Relax scene\"",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(27, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
