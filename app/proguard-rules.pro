@@ -7,3 +7,7 @@
 -keepattributes *Annotation*
 -dontwarn okhttp3.**
 -dontwarn retrofit2.**
+
+# MediaPipe / AutoValue — classes referenced but not bundled in the AAR
+-dontwarn com.google.auto.value.AutoValue
+-dontwarn com.google.auto.value.AutoValue$Builder
