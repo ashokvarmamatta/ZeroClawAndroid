@@ -62,5 +62,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
     implementation(libs.mediapipe.genai)
+    implementation(libs.biometric)
+    implementation(libs.webkit)
     debugImplementation(libs.androidx.ui.tooling)
 }

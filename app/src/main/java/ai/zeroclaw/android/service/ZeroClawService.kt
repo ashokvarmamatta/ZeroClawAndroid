@@ -65,6 +65,17 @@ class ZeroClawService : Service() {
         @Volatile var webChatRunning    = false
         val recentLogs = ArrayDeque<String>(50)
 
+        /** Route a quick-reply from the notification shade to the correct channel. */
+        @Volatile var instance: ZeroClawService? = null
+
+        suspend fun routeQuickReply(channel: String, chatId: String, text: String) {
+            val svc = instance ?: run {
+                log("QUICK_REPLY: service not running, cannot route reply")
+                return
+            }
+            svc.routeReply(channel, chatId, text)
+        }
+
         fun log(msg: String) {
             val entry = "[${timeStr()}] $msg"
             synchronized(recentLogs) {
@@ -85,6 +96,7 @@ class ZeroClawService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannel()
         telegramManager = TelegramBotManager(this)
         whatsappManager = TwilioWhatsAppManager(this)
@@ -342,6 +354,7 @@ class ZeroClawService : Service() {
     }
 
     override fun onDestroy() {
+        instance         = null
         isRunning        = false
         telegramConnected = false
         whatsappConnected = false
@@ -372,6 +385,15 @@ class ZeroClawService : Service() {
         wakeLock?.release()
         log("Service stopped")
         super.onDestroy()
+    }
+
+    /** Route a quick-reply text back through the originating channel manager. */
+    suspend fun routeReply(channel: String, chatId: String, text: String) {
+        // Process the quick-reply text as a new message through the agent pipeline.
+        log("QUICK_REPLY: routing [$channel] chatId=$chatId text=${text.take(40)}")
+        val llmRouter = ai.zeroclaw.android.data.LlmRouter.getInstance(this)
+        llmRouter.call(text, chatId)
+        log("QUICK_REPLY: processed [$channel] chatId=$chatId")
     }
 
     private fun acquireWakeLock() {

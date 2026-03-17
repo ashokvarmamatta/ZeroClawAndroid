@@ -88,6 +88,8 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(SmartHomeTool())
         registerTool(BraveTool())
         registerTool(BookmarkTool(context))
+        registerTool(WebViewTool(context))
+        registerTool(MediaPipelineTool(context))
     }
 
     fun registerTool(tool: Tool) {
