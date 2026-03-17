@@ -473,7 +473,104 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 8. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 8. Contacts ─────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val contactsKeywords = msg.contains("contact") || msg.contains("phone number") ||
+                    msg.contains("phone book") || msg.contains("address book") ||
+                    msg.contains("who is") && (msg.contains("number") || msg.contains("email") || msg.contains("phone"))
+            if (contactsKeywords) {
+                val contactPatterns = listOf(
+                    Regex("(?:find|search|look up|get)\\s+(?:contact|phone|number|email)\\s+(?:for |of )?(.+)", RegexOption.IGNORE_CASE),
+                    Regex("(?:what(?:'s| is))\\s+(.+?)(?:'s)?\\s+(?:phone|number|email|address)", RegexOption.IGNORE_CASE),
+                    Regex("(?:contact|phone|number|email)\\s+(?:for|of)\\s+(.+)", RegexOption.IGNORE_CASE),
+                    Regex("(?:find|search|look up)\\s+(.+?)\\s+(?:in )?(?:my )?contacts?", RegexOption.IGNORE_CASE)
+                )
+                for (pattern in contactPatterns) {
+                    val match = pattern.find(userMessage)
+                    if (match != null) {
+                        val query = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                        if (query.isNotBlank() && query.length >= 2) {
+                            toolCalls.add(ToolCall("auto_contacts", "contacts", mapOf("action" to "search", "query" to query)))
+                            break
+                        }
+                    }
+                }
+                if (toolCalls.isEmpty() && (msg.contains("list") || msg.contains("show") || msg.contains("all")) && msg.contains("contact")) {
+                    toolCalls.add(ToolCall("auto_contacts", "contacts", mapOf("action" to "list")))
+                }
+            }
+        }
+
+        // ── 9. Location ─────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val locationKeywords = msg.contains("where am i") || msg.contains("my location") ||
+                    msg.contains("gps") || msg.contains("current location") ||
+                    msg.contains("geocode") || msg.contains("coordinates") ||
+                    (msg.contains("near me") || msg.contains("nearby") || msg.contains("close to me")) ||
+                    (msg.contains("find") && (msg.contains("restaurant") || msg.contains("hospital") ||
+                            msg.contains("pharmacy") || msg.contains("gas station") || msg.contains("atm") ||
+                            msg.contains("hotel") || msg.contains("cafe") || msg.contains("store")))
+            if (locationKeywords) {
+                when {
+                    msg.contains("where am i") || msg.contains("my location") || msg.contains("gps") || msg.contains("current location") -> {
+                        toolCalls.add(ToolCall("auto_location", "location", mapOf("action" to "current")))
+                    }
+                    msg.contains("geocode") || (msg.contains("coordinates") && msg.contains("of")) -> {
+                        val addrMatch = Regex("(?:geocode|coordinates of|coordinates for)\\s+(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (addrMatch != null) {
+                            toolCalls.add(ToolCall("auto_location", "location", mapOf("action" to "geocode", "address" to addrMatch.groupValues[1].trim().removeSuffix("?"))))
+                        }
+                    }
+                    msg.contains("near me") || msg.contains("nearby") || msg.contains("close to me") -> {
+                        val nearbyMatch = Regex("(?:find|search|show|list|any)\\s+(.+?)\\s+(?:near|close|around|nearby)", RegexOption.IGNORE_CASE).find(userMessage)
+                            ?: Regex("(?:near(?:by)?|close to me)\\s+(.+)", RegexOption.IGNORE_CASE).find(userMessage)
+                        val query = nearbyMatch?.groupValues?.get(1)?.trim()?.removeSuffix("?")?.removeSuffix(".")
+                            ?: Regex("(restaurants?|hospitals?|pharmacies|gas stations?|atms?|hotels?|cafes?|stores?|banks?|parks?|schools?)").find(msg)?.groupValues?.get(1)
+                            ?: "places"
+                        toolCalls.add(ToolCall("auto_location", "location", mapOf("action" to "nearby", "query" to query)))
+                    }
+                    else -> {
+                        // Generic "find X" for places
+                        val placeMatch = Regex("find\\s+(?:a |the |an )?(.+?)(?:\\s+near| close| around|$)", RegexOption.IGNORE_CASE).find(userMessage)
+                        if (placeMatch != null) {
+                            toolCalls.add(ToolCall("auto_location", "location", mapOf("action" to "nearby", "query" to placeMatch.groupValues[1].trim())))
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 10. Calculator ──────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val calcKeywords = msg.contains("calculate") || msg.contains("compute") || msg.contains("evaluate") ||
+                    msg.contains("what is") && msg.contains(Regex("[+\\-*/^%]|\\d+\\s*[×÷]")) ||
+                    msg.contains("convert") && (msg.contains(" to ") && Regex("\\d").containsMatchIn(msg)) ||
+                    msg.contains("how many") && msg.contains(" in ") && Regex("\\d").containsMatchIn(msg) ||
+                    msg.contains("sqrt") || msg.contains("factorial") || msg.contains("sin(") || msg.contains("cos(") || msg.contains("log(")
+            if (calcKeywords) {
+                // Unit conversion
+                val convertMatch = Regex("(?:convert|how many \\w+ in)\\s+([\\d.]+)\\s+(\\w+)\\s+(?:to|in|into)\\s+(\\w+)", RegexOption.IGNORE_CASE).find(userMessage)
+                if (convertMatch != null) {
+                    toolCalls.add(ToolCall("auto_calc", "calculator", mapOf(
+                        "action" to "convert",
+                        "value" to convertMatch.groupValues[1],
+                        "from" to convertMatch.groupValues[2],
+                        "to" to convertMatch.groupValues[3]
+                    )))
+                } else {
+                    // Math expression
+                    val exprMatch = Regex("(?:calculate|compute|evaluate|what is|what's)\\s+(.+?)\\s*\\??$", RegexOption.IGNORE_CASE).find(userMessage)
+                    if (exprMatch != null) {
+                        val expr = exprMatch.groupValues[1].trim()
+                        if (expr.isNotBlank() && Regex("[\\d+\\-*/^%().]").containsMatchIn(expr)) {
+                            toolCalls.add(ToolCall("auto_calc", "calculator", mapOf("action" to "eval", "expression" to expr)))
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 11. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)

@@ -71,8 +71,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (17 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, and Calendar. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (20 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, and Calculator. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🔋", "Battery Optimized",
@@ -397,7 +397,25 @@ val AI_TOOLS_GUIDE = GuideSection(
             badgeColor = Color(0xFFFF6F00),
             isNew = true
         ),
-        GuideStep(18, "⚙️", "Managing Tools",
+        GuideStep(18, "👥", "Contacts",
+            "The AI can search and read contacts from your device. Find people by name, list contacts, or get full details — phone, email, address, and more.",
+            "How it works:\n• Reads from Android's built-in ContactsProvider\n• Search by name (partial match)\n• Shows phone numbers, emails, organization\n• Detailed view includes address and notes\n\nActions:\n• search — find contacts by name\n• list — show contacts (starred first)\n• details — full info for a contact\n\nExample prompts:\n• \"Find contact John\"\n• \"Look up Sarah's phone number\"\n• \"Show my contacts\"\n• \"What's the email for Dr. Smith?\"\n\nRequires contacts permission — grant when prompted.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(19, "📍", "Location",
+            "The AI can get your GPS location, geocode addresses to coordinates, reverse geocode, and find nearby places — all on device or via free APIs.",
+            "How it works:\n• GPS — reads device location (last known fix)\n• Geocode — converts address to coordinates\n• Reverse — converts coordinates to address\n• Nearby — search places near you via OpenStreetMap\n• Distance calculated with haversine formula\n\nActions:\n• current — get device GPS location\n• geocode — address to coordinates\n• reverse — coordinates to address\n• nearby — find nearby places by type\n\nExample prompts:\n• \"Where am I?\"\n• \"Get my current location\"\n• \"Geocode 1600 Pennsylvania Ave, Washington DC\"\n• \"Find restaurants near me\"\n• \"What's at coordinates 40.7128, -74.0060?\"\n\nRequires location permission for GPS; geocoding works without permission.",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(20, "🔢", "Calculator",
+            "The AI can evaluate math expressions and convert between units. Supports arithmetic, trig, logarithms, factorials, and 60+ unit conversions — all offline.",
+            "How it works:\n• Recursive descent parser — no internet needed\n• Supports: +, -, *, /, **, %, parentheses\n• Functions: sqrt, sin, cos, tan, log, ln, abs, ceil, floor, round, exp\n• Constants: pi, e\n• Factorials: 5!\n• Unit conversions: length, weight, volume, temperature, speed, time, data\n\nActions:\n• eval — evaluate math expression\n• convert — convert between units\n\nExample prompts:\n• \"Calculate sqrt(144) + 5**2\"\n• \"What is sin(45)?\"\n• \"Convert 100 kg to pounds\"\n• \"How many miles is 10 km?\"\n• \"Convert 72°F to celsius\"\n• \"What is 15! (factorial)?\"",
+            badgeColor = Color(0xFFFF6F00),
+            isNew = true
+        ),
+        GuideStep(21, "⚙️", "Managing Tools",
             "Toggle each tool on/off in Settings. Disabled tools won't be offered to the AI. Use /tools in chat to see which tools are currently enabled.",
             "How to manage:\n1. Go to Settings (gear icon)\n2. Scroll to 'AI Tools' section\n3. Toggle each tool on or off\n4. Changes take effect immediately\n\nIn chat:\n• Send /tools to list all enabled tools\n• The AI only uses tools when your question genuinely needs them\n• Tools work with ALL providers — OpenAI, Anthropic, Gemini, OpenRouter, Ollama\n\nTool calls are shown in Live Logs:\n  TOOL: executing web_search({query=...})\n  TOOL: ✓ web_search returned 1200 chars",
             badgeColor = Color(0xFFFF6F00)
