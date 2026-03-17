@@ -1,0 +1,144 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Custom release name (optional)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Sign APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. Java 17 (matches project compile options) ─────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # ── 3. Gradle permission ─────────────────────────────────────────────────
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # ── 4. Build debug APK ────────────────────────────────────────────────────
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      # ── 5. Build & sign release APK (only when keystore secrets are set) ──────
+      - name: Decode keystore
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > $GITHUB_WORKSPACE/release.jks
+
+      - name: Build Release APK (signed)
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.jks \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD
+
+      - name: Build Release APK (unsigned fallback)
+        if: ${{ env.KEYSTORE_BASE64 == '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      # ── 6. Extract version & rename APKs ──────────────────────────────────────
+      - name: Extract version & rename APKs
+        id: version
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Debug APK
+          DEBUG_SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          DEBUG_DST="ZeroClaw-v${VERSION}-debug.apk"
+          cp "$DEBUG_SRC" "$DEBUG_DST"
+          echo "debug_apk=$DEBUG_DST" >> $GITHUB_OUTPUT
+
+          # Release APK (signed or unsigned)
+          RELEASE_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          RELEASE_DST="ZeroClaw-v${VERSION}-release.apk"
+          cp "$RELEASE_SRC" "$RELEASE_DST"
+          echo "release_apk=$RELEASE_DST" >> $GITHUB_OUTPUT
+
+      # ── 7. Upload as workflow artifacts (90-day retention) ─────────────────────
+      - name: Upload Debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZeroClaw-debug-${{ steps.version.outputs.version }}
+          path: ${{ steps.version.outputs.debug_apk }}
+          retention-days: 90
+
+      - name: Upload Release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZeroClaw-release-${{ steps.version.outputs.version }}
+          path: ${{ steps.version.outputs.release_apk }}
+          retention-days: 90
+
+      # ── 8. Create Git tag ──────────────────────────────────────────────────────
+      - name: Create release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.release_name }}" ]; then
+            TAG="${{ github.event.inputs.release_name }}"
+          else
+            TAG="v${{ steps.version.outputs.version }}-build.${{ github.run_number }}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG" || echo "Tag already exists, continuing"
+          git push origin "$TAG" || echo "Tag push skipped"
+
+      # ── 9. Publish GitHub Release ──────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "ZeroClaw ${{ steps.tag.outputs.tag }}"
+          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
+          generate_release_notes: true
+          body: |
+            ## ZeroClaw Android ${{ steps.tag.outputs.tag }}
+
+            ### Install
+            1. Download `ZeroClaw-v${{ steps.version.outputs.version }}-release.apk`
+            2. Enable **Install from unknown sources** in Android Settings
+            3. Open the APK and install
+
+            ### What's in this build
+            - Commit: `${{ github.sha }}`
+            - Triggered by push to `master`
+            - Build: #${{ github.run_number }}
+
+            > Debug APK also attached for testing (has `.debug` app-id suffix).
+          files: |
+            ${{ steps.version.outputs.debug_apk }}
+            ${{ steps.version.outputs.release_apk }}
