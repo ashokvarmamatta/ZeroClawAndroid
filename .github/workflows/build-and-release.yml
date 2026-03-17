@@ -51,12 +51,24 @@ jobs:
       # ── 5. Build Release APK ──────────────────────────────────────────────
       #   Signed  → when keystore secrets are configured in repo settings
       #   Unsigned → fallback (still installable via sideload / adb)
+      #
+      #   NOTE: secrets context is NOT allowed directly in if: expressions —
+      #   GitHub blocks it at parse time. We resolve it via a run step first.
+      - name: Check keystore availability
+        id: keystore_check
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "has_keystore=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_keystore=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Decode keystore (signed build)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: steps.keystore_check.outputs.has_keystore == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/release.jks
 
       - name: Build Release APK (signed)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: steps.keystore_check.outputs.has_keystore == 'true'
         run: |
           ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.jks \
@@ -65,7 +77,7 @@ jobs:
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
       - name: Build Release APK (unsigned fallback)
-        if: ${{ secrets.KEYSTORE_BASE64 == '' }}
+        if: steps.keystore_check.outputs.has_keystore == 'false'
         run: ./gradlew assembleRelease --no-daemon
 
       # ── 6. Extract version & rename APKs ─────────────────────────────────
