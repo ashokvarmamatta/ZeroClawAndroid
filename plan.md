@@ -146,9 +146,9 @@
 | **92** | **ContactsTool.kt — search/read Android contacts** | ✅ DONE |
 | **93** | **LocationTool.kt — GPS location, nearby places, geocoding** | ✅ DONE |
 | **94** | **CalculatorTool.kt — evaluate math expressions & unit conversions** | ✅ DONE |
-| **95** | **RssFeedTool.kt — monitor RSS/Atom feeds, blog watcher** | 🔲 TODO |
-| **96** | **QrCodeTool.kt — generate & scan QR codes** | 🔲 TODO |
-| **97** | **FileManagerTool.kt — list, read, write local files on device** | 🔲 TODO |
+| **95** | **RssFeedTool.kt — monitor RSS/Atom feeds, blog watcher** | ✅ DONE |
+| **96** | **QrCodeTool.kt — generate & scan QR codes** | ✅ DONE |
+| **97** | **FileManagerTool.kt — list, read, write local files on device** | ✅ DONE |
 | **98** | **ClipboardTool.kt — read/write device clipboard** | 🔲 TODO |
 | **99** | **SpotifyTool.kt — Spotify playback control (play, pause, next, search)** | 🔲 TODO |
 | **100** | **SmartHomeTool.kt — Philips Hue / generic IoT device control** | 🔲 TODO |
@@ -229,9 +229,9 @@ These directly enhance what the AI can do in conversations.
 | 92 | Contacts ✅ | Search device contacts | Android ContactsProvider |
 | 93 | Location ✅ | GPS, places, geocoding | Android LocationManager |
 | 94 | Calculator ✅ | Math expressions & units | Local eval (no API) |
-| 95 | RSS Feed | Monitor blogs & feeds | Direct HTTP + XML parsing |
-| 96 | QR Code | Generate & scan QR codes | ZXing library |
-| 97 | File Manager | List/read/write files | Android SAF |
+| 95 | RSS Feed ✅ | Monitor blogs & feeds | Direct HTTP + XML parsing |
+| 96 | QR Code ✅ | Generate & scan QR codes | Built-in encoder (no library) |
+| 97 | File Manager ✅ | List/read/write files | Android File API |
 | 98 | Clipboard | Read/write clipboard | Android ClipboardManager |
 | 99 | Spotify | Music playback control | Spotify Web API |
 | 100 | Smart Home | Control Hue/IoT devices | Hue REST API / mDNS |
