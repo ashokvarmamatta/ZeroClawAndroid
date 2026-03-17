@@ -9,6 +9,9 @@ data class MemoryEntity(
     val userId: String,          // chat/user ID (e.g. telegram user ID)
     val key: String,             // memory key/label
     val value: String,           // memory content
+    val embedding: String = "",  // JSON float array for vector search (Phase 118)
+    val sessionId: String = "",  // named session (Phase 122)
+    val tags: String = "",       // comma-separated tags for filtering
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -35,9 +38,18 @@ interface MemoryDao {
 
     @Query("SELECT COUNT(*) FROM memories WHERE userId = :userId")
     suspend fun countForUser(userId: String): Int
+
+    @Query("SELECT * FROM memories WHERE userId = :userId AND sessionId = :sessionId ORDER BY updatedAt DESC")
+    suspend fun getAllForSession(userId: String, sessionId: String): List<MemoryEntity>
+
+    @Query("SELECT * FROM memories WHERE userId = :userId AND embedding != '' ORDER BY updatedAt DESC")
+    suspend fun getAllWithEmbeddings(userId: String): List<MemoryEntity>
+
+    @Query("SELECT DISTINCT sessionId FROM memories WHERE userId = :userId AND sessionId != ''")
+    suspend fun getSessionIds(userId: String): List<String>
 }
 
-@Database(entities = [MemoryEntity::class], version = 1, exportSchema = false)
+@Database(entities = [MemoryEntity::class], version = 2, exportSchema = false)
 abstract class MemoryDatabase : RoomDatabase() {
     abstract fun memoryDao(): MemoryDao
 
