@@ -75,6 +75,8 @@ val APP_FEATURES = listOf(
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🧠", "Advanced AI (8 features)",
         "Custom prompts, streaming responses, multi-agent system, agent profiles (6 personas), workflow engine, tool loop detection, thinking mode, and auto-summarization of long conversations."),
+    FeatureItem("🔮", "Vector Memory & RAG (5 features)",
+        "Semantic search with embeddings (OpenAI/Gemini), hybrid keyword+vector search with RRF fusion, query expansion with synonyms, temporal decay scoring, and named session management."),
     FeatureItem("🔋", "Battery Optimized",
         "Smart persistence with boot auto-restart, wake locks, and foreground service — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
@@ -562,4 +564,46 @@ val ADVANCED_AI_GUIDE = GuideSection(
 
 // ─── All sections list ─────────────────────────────────────────────────────────
 
-val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, OTHER_APPS_GUIDE)
+// ─── Memory & Vector Guide ────────────────────────────────────────────────────
+
+val MEMORY_GUIDE = GuideSection(
+    id = "memory_rag",
+    label = "Memory & RAG",
+    emoji = "🔮",
+    accentColor = Color(0xFF00BCD4),
+    intro = "ZeroClaw's memory system goes beyond simple key-value storage. It uses semantic embeddings, hybrid search, and temporal decay to find the most relevant memories.",
+    steps = listOf(
+        GuideStep(1, "🧠", "Vector Memory (Semantic Search)",
+            "Memories are encoded as embedding vectors. Semantic search finds relevant memories even when keywords don't match — by meaning, not just words.",
+            "How it works:\n• When storing a memory, an embedding vector is generated via OpenAI text-embedding-3-small or Gemini text-embedding-004\n• Vectors stored as JSON in SQLite alongside the memory text\n• On recall, the query is also embedded and cosine similarity is computed\n• Results above 35% similarity threshold are returned, ranked by score\n\nProviders tried in order:\n1. OpenAI text-embedding-3-small (1536 dims, best quality)\n2. Gemini text-embedding-004 (768 dims)\n3. TF-IDF fallback (256 dims, offline, no API key needed)\n\nExample: Storing 'I enjoy Italian food' allows finding it when asking 'what cuisine do I like?' — without exact keyword match.",
+            badgeColor = Color(0xFF00BCD4),
+            isNew = true
+        ),
+        GuideStep(2, "🔀", "Hybrid Search (Vector + Keyword)",
+            "Combines semantic vector search with keyword LIKE search using Reciprocal Rank Fusion (RRF). Gets the best of both worlds.",
+            "How it works:\n• Both search methods run in parallel\n• Results merged using RRF (Reciprocal Rank Fusion) algorithm\n• Weights: 60% vector similarity + 40% keyword overlap\n• Deduplication and score normalization applied\n• Temporal decay applied to final ranked list\n\nRRF formula: score = 1/(k+rank_vector) × 0.6 + 1/(k+rank_keyword) × 0.4\nwhere k=60 (Cormack et al. constant)\n\nThis means a memory that ranks #2 in both keyword AND vector search will score higher than one that ranks #1 in only one method.",
+            badgeColor = Color(0xFF00BCD4),
+            isNew = true
+        ),
+        GuideStep(3, "🔍", "Query Expansion",
+            "The search query is automatically expanded with synonyms and related terms before searching, catching memories stored with different vocabulary.",
+            "How it works:\n• Stop words removed (the, is, a, for...)\n• Keywords extracted from the query\n• Synonyms looked up in built-in synonym groups\n• Expanded queries searched separately\n• Best scores merged\n\nExample expansions:\n• 'remember my job' → also searches: work, career, profession, occupation\n• 'my birthday' → also searches: birth date, born, date of birth, dob\n• 'phone number' → also searches: mobile, cell, telephone, contact\n\nResult: recalling 'what's my profession?' finds 'job: software engineer' even though 'profession' ≠ 'job'.",
+            badgeColor = Color(0xFF00BCD4),
+            isNew = true
+        ),
+        GuideStep(4, "⏳", "Temporal Decay",
+            "Recent memories score higher than old ones. A 30-day-old memory gets 50% of its original score. Pinned memories never decay.",
+            "How it works:\n• Decay formula: score × e^(-λ × age_days)\n• Default half-life: 30 days (score halves every 30 days)\n• < 1 day old: +15% recency bonus\n• Pinned memories (tag: 'pinned'): +50% score, no decay\n\nDecay schedule:\n• 1 day: 97% of original score\n• 7 days: 86%\n• 30 days: 50% (half-life)\n• 90 days: 12.5%\n• 180 days: 1.6%\n\nPin important memories: 'remember my name is John' + tag: pinned\nPinned memories always appear at top of recall results.",
+            badgeColor = Color(0xFF00BCD4),
+            isNew = true
+        ),
+        GuideStep(5, "📁", "Named Sessions",
+            "Create separate memory + conversation sessions for different contexts. Switch between Work, Personal, Projects without mixing histories.",
+            "How it works:\n• Each session has isolated conversation history in LlmRouter\n• Memories can be tagged with session IDs\n• Switching sessions changes the chat context used\n• Sessions can be exported as JSON (conversation + memories)\n\nIn chat:\n• 'create session Work' — new work session\n• 'switch to session Work' — activate it\n• 'list sessions' — show all sessions\n• 'export session Work' — download as JSON\n\nSession chat IDs: userId_session_sessionId\nThis ensures conversation history is fully isolated per session.",
+            badgeColor = Color(0xFF00BCD4),
+            isNew = true
+        )
+    )
+)
+
+val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, OTHER_APPS_GUIDE)

@@ -3,6 +3,9 @@ package ai.zeroclaw.android.tools
 import android.content.Context
 import ai.zeroclaw.android.data.MemoryDatabase
 import ai.zeroclaw.android.data.MemoryEntity
+import ai.zeroclaw.android.memory.HybridSearch
+import ai.zeroclaw.android.memory.VectorMemory
+import ai.zeroclaw.android.memory.TemporalDecay
 
 /**
  * MemoryTool — persistent memory store/recall/forget per user.
@@ -32,6 +35,8 @@ class MemoryTool(private val context: Context) : Tool {
 
     private val db by lazy { MemoryDatabase.getInstance(context) }
     private val dao by lazy { db.memoryDao() }
+    private val hybridSearch by lazy { HybridSearch.getInstance(context) }
+    private val vectorMemory by lazy { VectorMemory.getInstance(context) }
 
     override suspend fun execute(args: Map<String, String>): ToolResult {
         val action = args["action"]?.trim()?.lowercase()
@@ -59,11 +64,17 @@ class MemoryTool(private val context: Context) : Tool {
         val existing = dao.getByKey(userId, key)
         val now = System.currentTimeMillis()
 
+        val tags = args["tags"]?.trim() ?: ""
+        val sessionId = args["session_id"]?.trim() ?: ""
         if (existing != null) {
-            dao.upsert(existing.copy(value = value, updatedAt = now))
+            val updated = existing.copy(value = value, tags = tags, sessionId = sessionId, updatedAt = now)
+            // Generate embedding in background (Phase 118)
+            vectorMemory.storeWithEmbedding(updated)
             return ToolResult(true, "Updated memory '$key' for user $userId.")
         } else {
-            dao.upsert(MemoryEntity(userId = userId, key = key, value = value, createdAt = now, updatedAt = now))
+            val entity = MemoryEntity(userId = userId, key = key, value = value, tags = tags, sessionId = sessionId, createdAt = now, updatedAt = now)
+            // Generate embedding in background (Phase 118)
+            vectorMemory.storeWithEmbedding(entity)
             return ToolResult(true, "Stored new memory '$key' for user $userId.")
         }
     }
@@ -79,13 +90,13 @@ class MemoryTool(private val context: Context) : Tool {
             return ToolResult(true, formatMemory(memory))
         }
 
-        // Search by query
+        // Hybrid semantic + keyword search (Phase 118-120)
         if (!query.isNullOrBlank()) {
-            val results = dao.search(userId, query)
+            val results = hybridSearch.search(userId, query)
             if (results.isEmpty()) {
                 return ToolResult(true, "No memories matching '$query' for user $userId.")
             }
-            return ToolResult(true, formatMemories(results, "Memories matching '$query'"))
+            return ToolResult(true, hybridSearch.formatResults(results, query))
         }
 
         // List all
@@ -116,7 +127,9 @@ class MemoryTool(private val context: Context) : Tool {
     }
 
     private fun formatMemory(m: MemoryEntity): String {
-        return "[${ m.key }]: ${m.value}"
+        val recency = TemporalDecay.recencyLabel(m.updatedAt)
+        val tags = if (m.tags.isNotBlank()) " [${m.tags}]" else ""
+        return "[${m.key}]$tags ($recency): ${m.value}"
     }
 
     private fun formatMemories(memories: List<MemoryEntity>, header: String): String {

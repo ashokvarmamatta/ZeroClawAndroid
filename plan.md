@@ -175,11 +175,11 @@
 | **117** | **ConversationSummarizer.kt — auto-compress long chat histories** | ✅ DONE |
 | | | |
 | | **── MEMORY & CONTEXT (Vector Search) ──** | |
-| **118** | **VectorMemory.kt — semantic search with embeddings (OpenAI/Gemini)** | 🔲 TODO |
-| **119** | **HybridSearch.kt — combine semantic + keyword search for recall** | 🔲 TODO |
-| **120** | **QueryExpansion.kt — auto-generate related queries for better memory retrieval** | 🔲 TODO |
-| **121** | **TemporalDecay.kt — weight recent memories higher in search results** | 🔲 TODO |
-| **122** | **SessionManager.kt — named sessions, session switching, session export** | 🔲 TODO |
+| **118** | **VectorMemory.kt — semantic embeddings (OpenAI/Gemini/TF-IDF fallback)** | ✅ DONE |
+| **119** | **HybridSearch.kt — RRF fusion of vector + keyword search (60/40 weights)** | ✅ DONE |
+| **120** | **QueryExpansion.kt — synonym expansion + stop-word filtering** | ✅ DONE |
+| **121** | **TemporalDecay.kt — exponential decay, 30-day half-life, pinned tags** | ✅ DONE |
+| **122** | **SessionManager.kt — named sessions, switching, export as JSON** | ✅ DONE |
 | | | |
 | | **── INFRASTRUCTURE & PLATFORM ──** | |
 | **123** | **HooksSystem.kt — before/after tool call middleware (request/response transform)** | 🔲 TODO |
