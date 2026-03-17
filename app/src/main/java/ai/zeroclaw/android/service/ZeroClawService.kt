@@ -387,6 +387,28 @@ class ZeroClawService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * Proactively send a message to a specific chat on a specific channel.
+     * Used by MessageTool to deliver notifications from agents/crons.
+     */
+    suspend fun sendProactive(channel: String, chatId: String, text: String) {
+        log("PROACTIVE: sending to $channel/$chatId — ${text.take(60)}")
+        when (channel.lowercase()) {
+            "telegram" -> {
+                // Delegate to telegram manager via direct API call using stored token
+                val settings = ai.zeroclaw.android.data.AppSettings(this).getAll()
+                if (settings.telegramToken.isBlank()) {
+                    log("PROACTIVE: Telegram token not configured")
+                    return
+                }
+                telegramManager.sendProactiveMessage(settings.telegramToken, chatId, text)
+            }
+            "discord" -> discordManager.sendProactiveMessage(chatId, text)
+            "slack" -> slackManager.sendProactiveMessage(chatId, text)
+            else -> log("PROACTIVE: unknown channel $channel")
+        }
+    }
+
     /** Route a quick-reply text back through the originating channel manager. */
     suspend fun routeReply(channel: String, chatId: String, text: String) {
         // Process the quick-reply text as a new message through the agent pipeline.

@@ -57,11 +57,19 @@ object SeenStepsTracker {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InfoScreen(onBack: () -> Unit) {
+fun InfoScreen(onBack: () -> Unit, startSectionId: String? = null) {
     val context = LocalContext.current
     // Tab 0 = About, tabs 1+ = guide sections
     var selectedTabIndex by remember { mutableStateOf(0) }
     val guideSections = ALL_GUIDE_SECTIONS
+
+    // If a specific section is requested (e.g. from Settings redirect button), jump to it
+    LaunchedEffect(startSectionId) {
+        if (startSectionId != null) {
+            val idx = guideSections.indexOfFirst { it.id == startSectionId }
+            if (idx >= 0) selectedTabIndex = idx + 1  // +1 because tab 0 is "About"
+        }
+    }
 
     // Track seen state so UI recomposes when steps are marked seen
     var seenVersion by remember { mutableIntStateOf(0) }

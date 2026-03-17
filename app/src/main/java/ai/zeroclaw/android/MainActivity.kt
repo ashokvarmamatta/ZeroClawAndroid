@@ -54,13 +54,21 @@ fun ZeroClawNavHost() {
 
         composable("settings") {
             SettingsScreen(
-                onBack               = { navController.popBackStack() },
-                onNavigateToApiKeys  = { navController.navigate("api_keys") }
+                onBack              = { navController.popBackStack() },
+                onNavigateToApiKeys = { navController.navigate("api_keys") },
+                onNavigateToInfo    = { sectionId -> navController.navigate("info/$sectionId") }
             )
         }
 
         composable("info") {
             InfoScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("info/{sectionId}") { backStackEntry ->
+            InfoScreen(
+                onBack = { navController.popBackStack() },
+                startSectionId = backStackEntry.arguments?.getString("sectionId")
+            )
         }
 
         composable("api_keys") {

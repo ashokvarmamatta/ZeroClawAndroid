@@ -202,6 +202,25 @@
 | **138** | **HomeWidget.kt — Android home screen widget (service status + quick start)** | ✅ DONE |
 | **139** | **VoiceInput.kt — voice message transcription from Telegram/WhatsApp** | ✅ DONE |
 | **140** | **GroupChatSupport.kt — handle Telegram/Discord group messages with @mention** | ✅ DONE |
+| | | |
+| | **── NULLCLAW-INSPIRED FEATURES (Phase 141+) ──** | |
+| **141** | **ComposioTool.kt — 1000+ OAuth integrations via Composio API v3/v2** | ✅ DONE |
+| **142** | **DelegateTool.kt + SpawnTool.kt — named agent delegation + async task spawn** | ✅ DONE |
+| **143** | **MessageTool.kt — proactive cross-channel messaging from agents/crons** | ✅ DONE |
+| **144** | **McpClient.kt — MCP JSON-RPC 2.0 stdio+HTTP client, tool discovery** | ✅ DONE |
+| **145** | **MmrReranker.kt + AdaptiveRetrieval.kt — MMR diversity + auto strategy** | ✅ DONE |
+| **146** | **MemoryHygiene.kt + SemanticCache.kt — archive/purge lifecycle + LRU cache** | ✅ DONE |
+| **147** | **Context Compaction — auto/force/trim modes in ConversationSummarizer** | ✅ DONE |
+| **148** | **A2AServer.kt — Agent-to-Agent protocol (Google A2A JSON-RPC 2.0)** | ✅ DONE |
+| **149** | **ProviderRouter.kt — hint-based routing + per-model fallback chains** | ✅ DONE |
+| **150** | **AgentIdentity.kt — AIEOS v1.1 identity (MBTI/OCEAN/catchphrases)** | ✅ DONE |
+| **151** | **PushoverTool.kt — push notifications to any device via Pushover API** | ✅ DONE |
+| **152** | **NostrTool.kt — publish/subscribe on Nostr decentralized protocol** | ✅ DONE |
+| **153** | **MattermostManager.kt — Mattermost self-hosted team chat integration** | ✅ DONE |
+| **154** | **DingTalkLarkManager.kt — DingTalk + Lark/Feishu webhook integration** | ✅ DONE |
+| **155** | **SkillForge.kt — runtime skill creation from LLM output (save & run)** | ✅ DONE |
+| **156** | **AuditLog.kt — tamper-evident JSON Lines log of all tool actions** | ✅ DONE |
+| **157** | **OpenTelemetry.kt — OTLP span export for tracing + metrics** | ✅ DONE |
 
 ---
 

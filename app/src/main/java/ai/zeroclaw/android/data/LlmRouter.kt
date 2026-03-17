@@ -112,8 +112,12 @@ class LlmRouter(private val context: Context) {
             else "🔧 Enabled tools:\n" + enabled.joinToString("\n") { "• ${it.name} — ${it.description.take(60)}" }
         }
 
-        // Record user message in history
-        addToHistory(chatId, "user", userMessage)
+        // ── Phase 149: Extract routing hint and clean message ─────────────
+        val (routingHint, cleanMessage) = ProviderRouter.extractHint(userMessage)
+        val effectiveMessage = cleanMessage
+
+        // Record user message in history (use cleaned message without hint prefix)
+        addToHistory(chatId, "user", effectiveMessage)
 
         // ── Phase 117: Auto-compact long conversation histories ──────────
         val summarizer = ConversationSummarizer.getInstance(context)
@@ -136,8 +140,8 @@ class LlmRouter(private val context: Context) {
 
         // ── Phase 116: Thinking mode for complex questions ──────────────
         val thinkingMode = ThinkingMode.getInstance(context)
-        val thinkingAddition = if (thinkingMode.shouldThink(userMessage)) {
-            ZeroClawService.log("LLM: thinking mode activated (complexity=${thinkingMode.complexityScore(userMessage)})")
+        val thinkingAddition = if (thinkingMode.shouldThink(effectiveMessage)) {
+            ZeroClawService.log("LLM: thinking mode activated (complexity=${thinkingMode.complexityScore(effectiveMessage)})")
             thinkingMode.buildThinkingPromptAddition()
         } else ""
 
@@ -149,8 +153,9 @@ class LlmRouter(private val context: Context) {
         val onlineKeys = allKeys.filter { it.safeProvider != "offline" }
         val offlineKeys = allKeys.filter { it.safeProvider == "offline" }
 
-        // Build ordered list: all online keys first, then offline as fallback
-        val orderedKeys = onlineKeys + offlineKeys
+        // Build ordered list: hint-sorted online keys first, then offline as fallback
+        val sortedOnline = ProviderRouter.sortKeysByHint(onlineKeys, routingHint)
+        val orderedKeys = sortedOnline + offlineKeys
 
         if (onlineKeys.isNotEmpty() && offlineKeys.isNotEmpty()) {
             ZeroClawService.log("LLM: ${onlineKeys.size} online key(s) + ${offlineKeys.size} offline key(s) — online first, offline fallback")
@@ -192,9 +197,9 @@ class LlmRouter(private val context: Context) {
 
             // For offline models, auto-enrich with tool results (lazy, runs once)
             if (entry.safeProvider == "offline" && enrichedMessage == null) {
-                enrichedMessage = autoToolEnrich(userMessage, chatId, toolSystem)
+                enrichedMessage = autoToolEnrich(effectiveMessage, chatId, toolSystem)
             }
-            val messageForModel = if (entry.safeProvider == "offline") enrichedMessage!! else userMessage
+            val messageForModel = if (entry.safeProvider == "offline") enrichedMessage!! else effectiveMessage
 
             var keyWorked = false
             for (model in modelsToTry) {
