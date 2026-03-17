@@ -156,13 +156,13 @@
 | **102** | **BookmarkTool.kt — save, list, search bookmarks per user** | ✅ DONE |
 | | | |
 | | **── MESSAGING CHANNELS ──** | |
-| **103** | **SlackBotManager.kt — Slack workspace bot (RTM or Events API)** | 🔲 TODO |
-| **104** | **MatrixBotManager.kt — Matrix/Element protocol integration** | 🔲 TODO |
-| **105** | **IrcBotManager.kt — IRC protocol bot** | 🔲 TODO |
-| **106** | **TeamsBotManager.kt — Microsoft Teams bot integration** | 🔲 TODO |
-| **107** | **TwitchBotManager.kt — Twitch chat bot** | 🔲 TODO |
-| **108** | **LineBotManager.kt — LINE messaging integration** | 🔲 TODO |
-| **109** | **WebChatServer.kt — built-in web chat UI served via tunnel** | 🔲 TODO |
+| **103** | **SlackBotManager.kt — Slack workspace bot (Socket Mode WebSocket)** | ✅ DONE |
+| **104** | **MatrixBotManager.kt — Matrix/Element protocol integration** | ✅ DONE |
+| **105** | **IrcBotManager.kt — IRC protocol bot (raw TCP)** | ✅ DONE |
+| **106** | **TeamsBotManager.kt — Microsoft Teams bot (Bot Framework webhook)** | ✅ DONE |
+| **107** | **TwitchBotManager.kt — Twitch chat bot (IRC over SSL/TMI)** | ✅ DONE |
+| **108** | **LineBotManager.kt — LINE messaging integration (webhook)** | ✅ DONE |
+| **109** | **WebChatServer.kt — built-in web chat UI served on :8088** | ✅ DONE |
 | | | |
 | | **── ADVANCED AI FEATURES ──** | |
 | **110** | **Custom system prompts — per-channel/per-user configurable persona** | 🔲 TODO |

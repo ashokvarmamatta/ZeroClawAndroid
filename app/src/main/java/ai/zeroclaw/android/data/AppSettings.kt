@@ -18,7 +18,14 @@ data class SettingsData(
     val llmProvider: String = "openai",
     val autoStart: Boolean = true,
     val discordToken: String = "",
-    val signalApiUrl: String = ""
+    val signalApiUrl: String = "",
+    val slackToken: String = "",
+    val matrixConfig: String = "",
+    val ircConfig: String = "",
+    val teamsConfig: String = "",
+    val twitchConfig: String = "",
+    val lineToken: String = "",
+    val webChatEnabled: Boolean = false
 )
 
 class AppSettings(private val context: Context) {
@@ -37,6 +44,13 @@ class AppSettings(private val context: Context) {
         val KEY_AUTO_START = booleanPreferencesKey("auto_start")
         val KEY_DISCORD_TOKEN = stringPreferencesKey("discord_token")
         val KEY_SIGNAL_API_URL = stringPreferencesKey("signal_api_url")
+        val KEY_SLACK_TOKEN = stringPreferencesKey("slack_token")
+        val KEY_MATRIX_CONFIG = stringPreferencesKey("matrix_config")
+        val KEY_IRC_CONFIG = stringPreferencesKey("irc_config")
+        val KEY_TEAMS_CONFIG = stringPreferencesKey("teams_config")
+        val KEY_TWITCH_CONFIG = stringPreferencesKey("twitch_config")
+        val KEY_LINE_TOKEN = stringPreferencesKey("line_token")
+        val KEY_WEB_CHAT_ENABLED = booleanPreferencesKey("web_chat_enabled")
     }
 
     suspend fun getAll(): SettingsData {
@@ -51,7 +65,14 @@ class AppSettings(private val context: Context) {
             llmProvider = prefs[KEY_LLM_PROVIDER] ?: "openai",
             autoStart = prefs[KEY_AUTO_START] ?: true,
             discordToken = prefs[KEY_DISCORD_TOKEN] ?: "",
-            signalApiUrl = prefs[KEY_SIGNAL_API_URL] ?: ""
+            signalApiUrl = prefs[KEY_SIGNAL_API_URL] ?: "",
+            slackToken = prefs[KEY_SLACK_TOKEN] ?: "",
+            matrixConfig = prefs[KEY_MATRIX_CONFIG] ?: "",
+            ircConfig = prefs[KEY_IRC_CONFIG] ?: "",
+            teamsConfig = prefs[KEY_TEAMS_CONFIG] ?: "",
+            twitchConfig = prefs[KEY_TWITCH_CONFIG] ?: "",
+            lineToken = prefs[KEY_LINE_TOKEN] ?: "",
+            webChatEnabled = prefs[KEY_WEB_CHAT_ENABLED] ?: false
         )
     }
 
@@ -59,7 +80,10 @@ class AppSettings(private val context: Context) {
         zeroClawUrl: String, telegramToken: String, twilioSid: String,
         twilioToken: String, twilioFrom: String, llmApiKey: String,
         llmProvider: String, autoStart: Boolean, discordToken: String = "",
-        signalApiUrl: String = ""
+        signalApiUrl: String = "", slackToken: String = "",
+        matrixConfig: String = "", ircConfig: String = "",
+        teamsConfig: String = "", twitchConfig: String = "",
+        lineToken: String = "", webChatEnabled: Boolean = false
     ) {
         context.appDataStore.edit { prefs ->
             prefs[KEY_ZEROCLAW_URL] = zeroClawUrl
@@ -72,6 +96,13 @@ class AppSettings(private val context: Context) {
             prefs[KEY_AUTO_START] = autoStart
             prefs[KEY_DISCORD_TOKEN] = discordToken
             prefs[KEY_SIGNAL_API_URL] = signalApiUrl
+            prefs[KEY_SLACK_TOKEN] = slackToken
+            prefs[KEY_MATRIX_CONFIG] = matrixConfig
+            prefs[KEY_IRC_CONFIG] = ircConfig
+            prefs[KEY_TEAMS_CONFIG] = teamsConfig
+            prefs[KEY_TWITCH_CONFIG] = twitchConfig
+            prefs[KEY_LINE_TOKEN] = lineToken
+            prefs[KEY_WEB_CHAT_ENABLED] = webChatEnabled
         }
         // Also save auto_start to legacy SharedPreferences for BootReceiver
         context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)

@@ -15,6 +15,13 @@ import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.whatsapp.TwilioWhatsAppManager
 import ai.zeroclaw.android.discord.DiscordBotManager
 import ai.zeroclaw.android.signal.SignalBridgeManager
+import ai.zeroclaw.android.slack.SlackBotManager
+import ai.zeroclaw.android.matrix.MatrixBotManager
+import ai.zeroclaw.android.irc.IrcBotManager
+import ai.zeroclaw.android.teams.TeamsBotManager
+import ai.zeroclaw.android.twitch.TwitchBotManager
+import ai.zeroclaw.android.line.LineBotManager
+import ai.zeroclaw.android.webchat.WebChatServer
 import ai.zeroclaw.android.tunnel.TunnelManager
 import ai.zeroclaw.android.tools.CronTool
 import ai.zeroclaw.android.tools.ToolSystem
@@ -28,6 +35,13 @@ class ZeroClawService : Service() {
     private lateinit var whatsappManager: TwilioWhatsAppManager
     private lateinit var discordManager: DiscordBotManager
     private lateinit var signalManager: SignalBridgeManager
+    private lateinit var slackManager: SlackBotManager
+    private lateinit var matrixManager: MatrixBotManager
+    private lateinit var ircManager: IrcBotManager
+    private lateinit var teamsManager: TeamsBotManager
+    private lateinit var twitchManager: TwitchBotManager
+    private lateinit var lineManager: LineBotManager
+    private lateinit var webChatServer: WebChatServer
     private lateinit var tunnelManager: TunnelManager
 
     companion object {
@@ -42,6 +56,13 @@ class ZeroClawService : Service() {
         @Volatile var whatsappConnected = false
         @Volatile var discordConnected  = false
         @Volatile var signalConnected   = false
+        @Volatile var slackConnected    = false
+        @Volatile var matrixConnected   = false
+        @Volatile var ircConnected      = false
+        @Volatile var teamsConnected    = false
+        @Volatile var twitchConnected   = false
+        @Volatile var lineConnected     = false
+        @Volatile var webChatRunning    = false
         val recentLogs = ArrayDeque<String>(50)
 
         fun log(msg: String) {
@@ -69,6 +90,13 @@ class ZeroClawService : Service() {
         whatsappManager = TwilioWhatsAppManager(this)
         discordManager  = DiscordBotManager(this)
         signalManager   = SignalBridgeManager(this)
+        slackManager    = SlackBotManager(this)
+        matrixManager   = MatrixBotManager(this)
+        ircManager      = IrcBotManager(this)
+        teamsManager    = TeamsBotManager(this)
+        twitchManager   = TwitchBotManager(this)
+        lineManager     = LineBotManager(this)
+        webChatServer   = WebChatServer(this)
         tunnelManager   = TunnelManager(this)
     }
 
@@ -183,6 +211,111 @@ class ZeroClawService : Service() {
                 log("Signal: no API URL set — go to Settings")
             }
 
+            // Slack
+            if (settings.slackToken.isNotBlank()) {
+                launch {
+                    try {
+                        slackManager.start(settings.slackToken)
+                        slackConnected = true
+                        log("Slack bot connected")
+                    } catch (e: Exception) {
+                        log("Slack error: ${e.message}")
+                    }
+                }
+            } else {
+                log("Slack: no token set — go to Settings")
+            }
+
+            // Matrix
+            if (settings.matrixConfig.isNotBlank()) {
+                launch {
+                    try {
+                        matrixManager.start(settings.matrixConfig)
+                        matrixConnected = true
+                        log("Matrix bot connected")
+                    } catch (e: Exception) {
+                        log("Matrix error: ${e.message}")
+                    }
+                }
+            } else {
+                log("Matrix: not configured — go to Settings")
+            }
+
+            // IRC
+            if (settings.ircConfig.isNotBlank()) {
+                launch {
+                    try {
+                        ircManager.start(settings.ircConfig)
+                        ircConnected = true
+                        log("IRC bot connected")
+                    } catch (e: Exception) {
+                        log("IRC error: ${e.message}")
+                    }
+                }
+            } else {
+                log("IRC: not configured — go to Settings")
+            }
+
+            // Microsoft Teams
+            if (settings.teamsConfig.isNotBlank()) {
+                launch {
+                    try {
+                        teamsManager.start(settings.teamsConfig)
+                        teamsConnected = true
+                        log("Teams bot connected")
+                    } catch (e: Exception) {
+                        log("Teams error: ${e.message}")
+                    }
+                }
+            } else {
+                log("Teams: not configured — go to Settings")
+            }
+
+            // Twitch
+            if (settings.twitchConfig.isNotBlank()) {
+                launch {
+                    try {
+                        twitchManager.start(settings.twitchConfig)
+                        twitchConnected = true
+                        log("Twitch bot connected")
+                    } catch (e: Exception) {
+                        log("Twitch error: ${e.message}")
+                    }
+                }
+            } else {
+                log("Twitch: not configured — go to Settings")
+            }
+
+            // LINE
+            if (settings.lineToken.isNotBlank()) {
+                launch {
+                    try {
+                        lineManager.start(settings.lineToken)
+                        lineConnected = true
+                        log("LINE bot connected")
+                    } catch (e: Exception) {
+                        log("LINE error: ${e.message}")
+                    }
+                }
+            } else {
+                log("LINE: no token set — go to Settings")
+            }
+
+            // Web Chat
+            if (settings.webChatEnabled) {
+                launch {
+                    try {
+                        webChatServer.start()
+                        webChatRunning = true
+                        log("WebChat: server started on :8088")
+                    } catch (e: Exception) {
+                        log("WebChat error: ${e.message}")
+                    }
+                }
+            } else {
+                log("WebChat: disabled — enable in Settings")
+            }
+
             // Cron task checker — runs every 60 seconds
             launch {
                 val cronTool = ToolSystem.getInstance(this@ZeroClawService)
@@ -214,11 +347,25 @@ class ZeroClawService : Service() {
         whatsappConnected = false
         discordConnected  = false
         signalConnected   = false
+        slackConnected    = false
+        matrixConnected   = false
+        ircConnected      = false
+        teamsConnected    = false
+        twitchConnected   = false
+        lineConnected     = false
+        webChatRunning    = false
         tunnelUrl         = null
         serviceScope.cancel()
         telegramManager.stop()
         discordManager.stop()
         signalManager.stop()
+        slackManager.stop()
+        matrixManager.stop()
+        ircManager.stop()
+        teamsManager.stop()
+        twitchManager.stop()
+        lineManager.stop()
+        webChatServer.stop()
         tunnelManager.stop()
         // Release offline model to free memory
         try { OfflineModelManager.getInstance(this).destroyEngine() } catch (_: Exception) {}
