@@ -30,7 +30,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigateToApiKeys: () -> Unit
+    onNavigateToApiKeys: () -> Unit,
+    onNavigateToInfo: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val settings = remember { AppSettings(context) }
@@ -119,7 +120,7 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { SectionHeader("🧠 AI / LLM Provider") }
+            item { SectionHeaderWithInfo("🧠 AI / LLM Provider", "how") { onNavigateToInfo("how") } }
             item {
                 ApiKeysButton(keyCount = keyCount, activeKeyLabel = activeKeyLabel,
                     onClick = onNavigateToApiKeys)
@@ -127,7 +128,7 @@ fun SettingsScreen(
             item { OfflineModelSourcesSection() }
             item { ApiKeyProvidersSection() }
             // ── AI TOOLS SECTION ──────────────────────────────────────
-            item { SectionHeader("🔧 AI Tools") }
+            item { SectionHeaderWithInfo("🔧 AI Tools", "tools") { onNavigateToInfo("tools") } }
             item {
                 Card(
                     shape = RoundedCornerShape(14.dp),
@@ -207,11 +208,11 @@ fun SettingsScreen(
 
             item { SectionHeader("⚙️ ZeroClaw Configuration") }
             item { SettingsTextField("ZeroClaw API URL", zeroClawUrl, false) { zeroClawUrl = it } }
-            item { SectionHeader("✈️ Telegram Bot") }
+            item { SectionHeaderWithInfo("✈️ Telegram Bot", "telegram") { onNavigateToInfo("telegram") } }
             item {
                 SettingsTextField("Bot Token (from @BotFather)", telegramToken, true) { telegramToken = it }
             }
-            item { SectionHeader("🎮 Discord Bot") }
+            item { SectionHeaderWithInfo("🎮 Discord Bot", "how") { onNavigateToInfo("how") } }
             item {
                 SettingsTextField("Bot Token (from Discord Developer Portal)", discordToken, true) { discordToken = it }
             }
@@ -219,7 +220,7 @@ fun SettingsScreen(
             item {
                 SettingsTextField("signal-cli REST API URL (e.g. http://192.168.1.100:8080)", signalApiUrl, false) { signalApiUrl = it }
             }
-            item { SectionHeader("💬 WhatsApp (Twilio)") }
+            item { SectionHeaderWithInfo("💬 WhatsApp (Twilio)", "whatsapp") { onNavigateToInfo("whatsapp") } }
             item { SettingsTextField("Twilio Account SID", twilioSid, false) { twilioSid = it } }
             item { SettingsTextField("Twilio Auth Token", twilioToken, true) { twilioToken = it } }
             item { SettingsTextField("WhatsApp From Number", twilioFrom, false) { twilioFrom = it } }
@@ -260,7 +261,7 @@ fun SettingsScreen(
                     Switch(checked = webChatEnabled, onCheckedChange = { webChatEnabled = it })
                 }
             }
-            item { SectionHeader("🔧 Behavior") }
+            item { SectionHeaderWithInfo("🔧 Behavior", "config_ux") { onNavigateToInfo("config_ux") } }
             item {
                 Row(modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -271,6 +272,31 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = autoStart, onCheckedChange = { autoStart = it })
+                }
+            }
+            item { SectionHeaderWithInfo("🚀 Advanced Features", "nullclaw") { onNavigateToInfo("nullclaw") } }
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Composio, MCP, A2A, Delegate, Spawn, MessageTool, and more — tap ⓘ above to learn about each feature before enabling it.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 17.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Most advanced features are disabled by default and require API keys or server setup. Enable them in the AI Tools section above once configured.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            lineHeight = 16.sp
+                        )
+                    }
                 }
             }
         }
@@ -315,6 +341,34 @@ fun ApiKeysButton(keyCount: Int, activeKeyLabel: String, onClick: () -> Unit) {
 fun SectionHeader(title: String) {
     Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp,
         color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+}
+
+/**
+ * Section header with an ⓘ button that opens the InfoScreen to a specific section.
+ * The button helps users understand how a feature works before configuring it.
+ */
+@Composable
+fun SectionHeaderWithInfo(title: String, sectionId: String, onInfoClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f))
+        IconButton(
+            onClick = onInfoClick,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                Icons.Default.Info,
+                contentDescription = "Learn more about $title",
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
 }
 
 @Composable

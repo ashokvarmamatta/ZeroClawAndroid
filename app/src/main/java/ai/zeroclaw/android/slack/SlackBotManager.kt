@@ -176,6 +176,9 @@ class SlackBotManager(private val context: Context) {
         }
     }
 
+    /** Public API for proactive messaging from MessageTool/agents/crons. */
+    fun sendProactiveMessage(channel: String, text: String) = sendMessage(channel, text)
+
     private fun sendMessage(channel: String, text: String) {
         // Slack message limit is ~40000 chars, but chunk at 4000 for readability
         val chunks = text.chunked(4000)

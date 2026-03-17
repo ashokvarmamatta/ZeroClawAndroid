@@ -135,4 +135,13 @@ class TelegramBotManager(private val context: Context) {
     }
 
     fun stop() { running = false }
+
+    /** Public API for proactive messaging from MessageTool/agents/crons. */
+    suspend fun sendProactiveMessage(token: String, chatId: String, text: String) {
+        val chatIdLong = chatId.toLongOrNull() ?: run {
+            ZeroClawService.log("Telegram: invalid chatId '$chatId' for proactive message")
+            return
+        }
+        sendMessage(token, chatIdLong, text)
+    }
 }

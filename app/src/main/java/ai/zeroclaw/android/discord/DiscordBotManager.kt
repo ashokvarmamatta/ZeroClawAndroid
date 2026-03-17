@@ -224,6 +224,9 @@ class DiscordBotManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    /** Public API for proactive messaging from MessageTool/agents/crons. */
+    fun sendProactiveMessage(channelId: String, text: String) = sendChannelMessage(channelId, text)
+
     private fun sendChannelMessage(channelId: String, text: String) {
         // Discord has a 2000 char limit per message
         val chunks = text.chunked(1990)

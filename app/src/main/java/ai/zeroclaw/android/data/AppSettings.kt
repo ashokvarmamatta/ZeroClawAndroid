@@ -26,7 +26,20 @@ data class SettingsData(
     val twitchConfig: String = "",
     val lineToken: String = "",
     val webChatEnabled: Boolean = false,
-    val themeMode: String = "system"         // "system", "dark", "light"
+    val themeMode: String = "system",        // "system", "dark", "light"
+    // NullClaw feature flags — only enable core features by default
+    val composioEnabled: Boolean = false,    // needs API key
+    val mcpEnabled: Boolean = false,         // needs server setup
+    val a2aEnabled: Boolean = false,         // needs web chat enabled
+    val delegateEnabled: Boolean = false,    // advanced — user enables manually
+    val auditLogEnabled: Boolean = true,     // on by default (passive)
+    val pushoverEnabled: Boolean = false,    // needs API key
+    val composioApiKey: String = "",
+    val mcpServerUrl: String = "",
+    val pushoverToken: String = "",
+    val pushoverUserKey: String = "",
+    val mattermostConfig: String = "",
+    val dingtalkConfig: String = ""
 )
 
 class AppSettings(private val context: Context) {
@@ -52,6 +65,18 @@ class AppSettings(private val context: Context) {
         val KEY_TWITCH_CONFIG = stringPreferencesKey("twitch_config")
         val KEY_LINE_TOKEN = stringPreferencesKey("line_token")
         val KEY_WEB_CHAT_ENABLED = booleanPreferencesKey("web_chat_enabled")
+        val KEY_COMPOSIO_ENABLED = booleanPreferencesKey("composio_enabled")
+        val KEY_MCP_ENABLED = booleanPreferencesKey("mcp_enabled")
+        val KEY_A2A_ENABLED = booleanPreferencesKey("a2a_enabled")
+        val KEY_DELEGATE_ENABLED = booleanPreferencesKey("delegate_enabled")
+        val KEY_AUDIT_LOG_ENABLED = booleanPreferencesKey("audit_log_enabled")
+        val KEY_PUSHOVER_ENABLED = booleanPreferencesKey("pushover_enabled")
+        val KEY_COMPOSIO_API_KEY = stringPreferencesKey("composio_api_key")
+        val KEY_MCP_SERVER_URL = stringPreferencesKey("mcp_server_url")
+        val KEY_PUSHOVER_TOKEN = stringPreferencesKey("pushover_token")
+        val KEY_PUSHOVER_USER_KEY = stringPreferencesKey("pushover_user_key")
+        val KEY_MATTERMOST_CONFIG = stringPreferencesKey("mattermost_config")
+        val KEY_DINGTALK_CONFIG = stringPreferencesKey("dingtalk_config")
     }
 
     suspend fun getAll(): SettingsData {
@@ -73,7 +98,19 @@ class AppSettings(private val context: Context) {
             teamsConfig = prefs[KEY_TEAMS_CONFIG] ?: "",
             twitchConfig = prefs[KEY_TWITCH_CONFIG] ?: "",
             lineToken = prefs[KEY_LINE_TOKEN] ?: "",
-            webChatEnabled = prefs[KEY_WEB_CHAT_ENABLED] ?: false
+            webChatEnabled = prefs[KEY_WEB_CHAT_ENABLED] ?: false,
+            composioEnabled = prefs[KEY_COMPOSIO_ENABLED] ?: false,
+            mcpEnabled = prefs[KEY_MCP_ENABLED] ?: false,
+            a2aEnabled = prefs[KEY_A2A_ENABLED] ?: false,
+            delegateEnabled = prefs[KEY_DELEGATE_ENABLED] ?: false,
+            auditLogEnabled = prefs[KEY_AUDIT_LOG_ENABLED] ?: true,
+            pushoverEnabled = prefs[KEY_PUSHOVER_ENABLED] ?: false,
+            composioApiKey = prefs[KEY_COMPOSIO_API_KEY] ?: "",
+            mcpServerUrl = prefs[KEY_MCP_SERVER_URL] ?: "",
+            pushoverToken = prefs[KEY_PUSHOVER_TOKEN] ?: "",
+            pushoverUserKey = prefs[KEY_PUSHOVER_USER_KEY] ?: "",
+            mattermostConfig = prefs[KEY_MATTERMOST_CONFIG] ?: "",
+            dingtalkConfig = prefs[KEY_DINGTALK_CONFIG] ?: ""
         )
     }
 

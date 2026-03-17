@@ -69,8 +69,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (30 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, Bookmarks, WebView Browser, and Media Pipeline. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (35 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, Bookmarks, WebView Browser, Media Pipeline, Composio (1000+ apps), Delegate, Spawn, MessageTool, and Pushover. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🧠", "Advanced AI (8 features)",
@@ -81,6 +81,8 @@ val APP_FEATURES = listOf(
         "Hooks middleware, user-installable plugins, WebView browser tool, media pipeline, rich push notifications with quick reply, biometric lock, QR device pairing, and WorkManager crash watchdog."),
     FeatureItem("⚙️", "Configuration & UX (10 features)",
         "Export/import settings as JSON, dark/light/system theme, per-channel AI prompts, rate limiting, token usage tracking, tool approval system, conversation labels, home screen widget, voice message transcription, and group chat @mention support."),
+    FeatureItem("🚀", "NullClaw Advanced (12 features)",
+        "Composio 1000+ app integrations, Delegate/Spawn multi-agent tools, proactive MessageTool, MCP server client, MMR diversity reranking, Adaptive Retrieval, semantic cache, memory hygiene, A2A agent protocol, hint-based routing, AIEOS identity, Pushover notifications, and audit log."),
     FeatureItem("🔋", "Battery Optimized",
         "Smart persistence with boot auto-restart, wake locks, foreground service, and WorkManager watchdog — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
@@ -742,4 +744,77 @@ val CONFIG_UX_GUIDE = GuideSection(
     )
 )
 
-val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, INFRA_GUIDE, CONFIG_UX_GUIDE, OTHER_APPS_GUIDE)
+// ─── NullClaw-Inspired Features Guide ────────────────────────────────────────
+
+val NULLCLAW_GUIDE = GuideSection(
+    id = "nullclaw",
+    label = "Advanced Features",
+    emoji = "🚀",
+    accentColor = Color(0xFFFF6D00),
+    intro = "Advanced features from NullClaw: 1000+ app integrations, multi-agent tools, MCP servers, memory diversity, A2A protocol, and more. Most require setup — enable them in Settings when ready.",
+    steps = listOf(
+        GuideStep(1, "🔗", "Composio — 1000+ App Integrations",
+            "Connect to GitHub, Gmail, Jira, Notion, Salesforce, and 250+ other apps with one API key. No need to set up OAuth per-app — Composio handles it all.",
+            "How to use:\n1. Go to composio.dev and create a free account\n2. Get your API key from the dashboard\n3. In ZeroClaw Settings → Advanced → Composio API Key, paste it\n4. Enable the Composio tool in Settings → AI Tools\n5. In chat: 'list apps' → 'list actions for github' → 'execute create issue'\n\nExample commands:\n• 'Create a GitHub issue titled Bug Report'\n• 'Send me an email via Gmail'\n• 'Create a Jira ticket'\n\nFree tier: 100 actions/month. Upgrade for more.",
+            "composio.dev",
+            isNew = true
+        ),
+        GuideStep(2, "🤖", "Delegate Tool — Ask a Specialist Agent",
+            "Delegate a task to a named AI persona. Say 'delegate to coder: write a Python function'. The specialist agent handles it and returns the answer.",
+            "Built-in agents you can delegate to:\n• coder — senior engineer, clean code, tests\n• analyst — data-driven, precise, structured\n• creative — vivid writing, storytelling\n• tutor — step-by-step, patient explanations\n• brief — ultra-concise bullet points\n\nHow to use:\n1. Enable 'Delegate Tool' in Settings → AI Tools\n2. In chat: 'delegate to coder: write a function to...'\n\nThe delegate tool blocks until the specialist completes (max 2 minutes).\nNote: Sub-agents cannot delegate further to prevent loops.",
+            isNew = true
+        ),
+        GuideStep(3, "⚡", "Spawn Tool — Background Parallel Agents",
+            "Spawn agents for background tasks and get results later. Unlike delegate (which waits), spawn returns a task ID immediately so you can do other things.",
+            "How to use:\n1. Enable 'Spawn Tool' in Settings → AI Tools\n2. In chat: 'spawn task: research quantum computing'\n   → Returns: 'Task ID: agent_1 — RUNNING'\n3. Later: 'spawn status task_id=agent_1'\n   → Shows status + result when done\n4. 'spawn collect task_id=agent_1'\n   → Returns full result\n\nUse spawn for:\n• Long research tasks you don't want to wait for\n• Running multiple tasks in parallel ('spawn 3 agents to research...')\n• Background monitoring or analysis",
+            isNew = true
+        ),
+        GuideStep(4, "📨", "Message Tool — Proactive Notifications",
+            "Send messages to any connected channel from cron jobs or agents — without waiting for user input. Perfect for morning digests, alerts, and scheduled reports.",
+            "How to use:\n1. Enable 'Message Tool' in Settings → AI Tools\n2. Create a cron job that uses message tool:\n   • 'every morning at 8am, search news and send me a summary on telegram'\n   • ZeroClaw will find your chat ID automatically from recent messages\n\nExamples:\n• Morning news digest to Telegram\n• Stock price alert to Discord\n• Daily weather to Slack\n\nRequires: Message Tool enabled + target channel connected + correct chat ID.",
+            isNew = true
+        ),
+        GuideStep(5, "🔌", "MCP Client — External Tool Servers",
+            "Connect to any MCP (Model Context Protocol) server to gain extra tools. MCP is an open standard — hundreds of servers exist for GitHub, databases, file systems, and more.",
+            "What is MCP?\nMCP is a protocol that lets AI models call external tools via JSON-RPC 2.0. Think of it as a plugin system for AI.\n\nHow to set up:\n1. Run an MCP server (e.g. npx @modelcontextprotocol/server-github)\n2. Expose it with ngrok or Cloudflare: ngrok http 3001\n3. In Settings → Advanced → MCP Server URL, paste the public URL\n4. Enable MCP in Settings → Advanced\n5. ZeroClaw auto-discovers tools from the server\n\nDiscovered tools show up as 'mcp_[server]_[tool]' in the tools list.",
+            isNew = true
+        ),
+        GuideStep(6, "🎯", "Smart Memory Search",
+            "Memory search now uses two improvements: MMR diversity (avoids showing 5 near-identical results) and Adaptive Retrieval (auto-picks keyword/vector/hybrid based on your query).",
+            "MMR (Maximal Marginal Relevance):\n• After finding the top results, MMR filters out redundant ones\n• You get a diverse set of relevant memories, not 5 near-duplicates\n• Diversity vs relevance balance: configurable (default 50/50)\n\nAdaptive Retrieval:\n• Short technical queries → keyword search (faster)\n• Long natural language questions → vector search (semantic)\n• Mixed queries → hybrid search (both)\n• Auto-selected based on query analysis — no user action needed\n\nResult: Better memory recall, faster responses for short queries.",
+            isNew = true
+        ),
+        GuideStep(7, "💾", "Memory Cache & Hygiene",
+            "Semantic cache avoids redundant LLM calls for similar questions. Memory hygiene auto-archives old memories to keep the database fast.",
+            "Semantic Cache:\n• Before calling the AI, checks if a similar question was asked recently\n• 80% similarity threshold (cosine) for cache hit\n• Saves API costs for repeated or similar questions\n• Cache holds up to 100 entries, 30-minute TTL\n\nMemory Hygiene (runs every 12 hours):\n• Memories > 7 days old → archived\n• Archived memories > 30 days old → permanently deleted\n• Pinned memories are NEVER deleted\n• Low battery → hygiene run is postponed",
+            isNew = true
+        ),
+        GuideStep(8, "🌐", "A2A Protocol — Agent Networks",
+            "A2A (Agent-to-Agent) lets other AI agents call your ZeroClaw agent as a service. Your agent gets a public address that other agents can discover and send tasks to.",
+            "What is A2A?\nGoogle's open standard for AI agents to communicate. Your agent exposes:\n• GET /a2a/agent-card.json — describes capabilities\n• POST /a2a — receives task requests, returns results async\n\nHow to enable:\n1. Enable Web Chat in Settings (required for the HTTP server)\n2. Enable A2A in Settings → Advanced → A2A Protocol\n3. Start the service — your agent is now discoverable\n4. Other agents find you via: [your-tunnel-url]/a2a/agent-card.json\n\nDisabled by default — only enable if you want external agent access.",
+            isNew = true
+        ),
+        GuideStep(9, "🧭", "Hint-Based Provider Routing",
+            "Prefix your message with a hint to route to the best model for that task. The AI automatically uses the most capable model for what you need.",
+            "Available hints (just add to start of message):\n• hint:reasoning → Claude Sonnet/Opus or o1 for complex analysis\n• hint:vision → GPT-4o or Gemini Vision for images\n• hint:fast → Haiku or GPT-4o-mini for quick answers\n• hint:code → Claude or GPT-4 for programming\n• hint:creative → GPT-4o or Claude for writing/art\n• hint:long → Gemini for very long documents\n\nExamples:\n• 'hint:reasoning Explain the proof of the Riemann hypothesis'\n• 'hint:code Write a React hook for infinite scroll'\n• 'hint:fast What's 15% of 240?'\n\nHints only work when you have keys from multiple providers.",
+            isNew = true
+        ),
+        GuideStep(10, "🎭", "Agent Identity (AIEOS v1.1)",
+            "Give your AI agent a defined personality: MBTI type, OCEAN traits, catchphrases, and forbidden phrases. The identity shapes every response automatically.",
+            "Identity components:\n• MBTI: 16 personality types (default: INTJ — strategic, direct)\n• OCEAN: 5 personality dimensions (0-100 sliders)\n  - Openness: curiosity and creativity\n  - Conscientiousness: organization and reliability\n  - Extraversion: chattiness vs. brevity\n  - Agreeableness: helpfulness vs. bluntness\n  - Neuroticism: calm vs. anxious\n• Catchphrases: phrases the agent uses naturally\n• Forbidden words: phrases the agent never says\n\nDefault: INTJ (Mastermind) — direct, precise, analytical.\nCustomize via agent profile settings.",
+            isNew = true
+        ),
+        GuideStep(11, "📲", "Pushover Notifications",
+            "Send push notifications from ZeroClaw to any of your devices (iOS, Android, desktop) via Pushover. Great for alerts from cron jobs.",
+            "Setup (one-time):\n1. Create account at pushover.net (free tier: 10,000 messages/month)\n2. Download Pushover app on your target device\n3. Get your User Key from pushover.net/dashboard\n4. Create an Application at pushover.net/apps — get the API Token\n5. In Settings → Pushover → paste both keys\n6. Enable Pushover Tool in Settings → AI Tools\n\nUsage:\n• 'send me a pushover notification when task completes'\n• In cron: 'notify me via pushover: your daily summary is ready'\n\nPriority levels: quiet (−1), normal (0), high (1), emergency (2, requires ack)",
+            isNew = true
+        ),
+        GuideStep(12, "📋", "Audit Log",
+            "Every tool action is logged to a tamper-evident JSON Lines file. Review exactly what tools ran, when, and what they returned.",
+            "Audit log location:\n Files/zeroclaw/audit_YYYY-MM-DD.jsonl\n\nEach entry includes:\n• Timestamp (UTC)\n• Tool name\n• Arguments used\n• Success/failure\n• Result summary (first 200 chars)\n• Duration in milliseconds\n• Hash chain for tamper detection\n\nLog rotation: one file per day, 30 days retained.\n\nEnabled by default (low overhead).\nUse in Settings → Behavior → Audit Log to disable.\n\nRead log in chat: 'show me today's tool audit log'",
+            isNew = true
+        )
+    )
+)
+
+val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, INFRA_GUIDE, CONFIG_UX_GUIDE, NULLCLAW_GUIDE, OTHER_APPS_GUIDE)

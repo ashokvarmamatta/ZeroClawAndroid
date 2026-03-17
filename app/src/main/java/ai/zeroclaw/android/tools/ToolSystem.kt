@@ -58,6 +58,40 @@ class ToolSystem private constructor(private val context: Context) {
     private val tools = mutableMapOf<String, Tool>()
     private val dataStore = AppSettings.dataStore(context)
 
+    companion object {
+        const val MAX_TOOL_ROUNDS = 3
+
+        /**
+         * Tools disabled by default — require API keys, special setup, or are
+         * advanced features the user should opt into consciously.
+         */
+        val DISABLED_BY_DEFAULT = setOf(
+            "image_analysis",   // needs vision-capable LLM key
+            "image_gen",        // needs OpenAI key for DALL-E; Pollinations is free but heavy
+            "speech_to_text",   // needs OpenAI Whisper key
+            "spotify",          // needs Spotify developer app + OAuth
+            "smart_home",       // needs Hue bridge IP/token
+            "brave_search",     // needs Brave Search API key
+            "notion",           // needs Notion integration token
+            "email",            // needs SendGrid/Mailgun key
+            "composio",         // needs Composio API key
+            "mcp",              // needs MCP server configured
+            "delegate",         // advanced multi-agent — user opts in
+            "spawn",            // advanced multi-agent — user opts in
+            "message",          // proactive messaging — user opts in
+            "pushover",         // needs Pushover API key
+            "nostr",            // needs Nostr key pair
+            "a2a"               // needs web chat enabled + setup
+        )
+
+        @Volatile private var INSTANCE: ToolSystem? = null
+        fun getInstance(context: Context): ToolSystem {
+            return INSTANCE ?: synchronized(this) {
+                ToolSystem(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+    }
+
     init {
         // Auto-register all built-in tools
         registerTool(WebSearchTool())
@@ -90,6 +124,13 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(BookmarkTool(context))
         registerTool(WebViewTool(context))
         registerTool(MediaPipelineTool(context))
+        // Phase 141-143: NullClaw tools
+        registerTool(ComposioTool(context))
+        registerTool(DelegateTool(context))
+        registerTool(SpawnTool(context))
+        registerTool(MessageTool(context))
+        // Phase 151: Pushover notifications
+        registerTool(PushoverTool(context))
     }
 
     fun registerTool(tool: Tool) {
@@ -103,8 +144,9 @@ class ToolSystem private constructor(private val context: Context) {
     private fun prefKey(toolName: String) = booleanPreferencesKey("tool_enabled_$toolName")
 
     suspend fun isEnabled(toolName: String): Boolean {
+        val defaultEnabled = toolName !in DISABLED_BY_DEFAULT
         return dataStore.data.map { prefs ->
-            prefs[prefKey(toolName)] ?: true  // enabled by default
+            prefs[prefKey(toolName)] ?: defaultEnabled
         }.first()
     }
 
@@ -321,14 +363,4 @@ class ToolSystem private constructor(private val context: Context) {
         }
     }
 
-    companion object {
-        const val MAX_TOOL_ROUNDS = 3
-
-        @Volatile private var INSTANCE: ToolSystem? = null
-        fun getInstance(context: Context): ToolSystem {
-            return INSTANCE ?: synchronized(this) {
-                ToolSystem(context.applicationContext).also { INSTANCE = it }
-            }
-        }
-    }
 }
