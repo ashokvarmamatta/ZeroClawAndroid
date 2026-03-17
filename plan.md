@@ -182,14 +182,14 @@
 | **122** | **SessionManager.kt — named sessions, switching, export as JSON** | ✅ DONE |
 | | | |
 | | **── INFRASTRUCTURE & PLATFORM ──** | |
-| **123** | **HooksSystem.kt — before/after tool call middleware (request/response transform)** | 🔲 TODO |
-| **124** | **PluginSystem.kt — user-installable plugin packages (.zip skills)** | 🔲 TODO |
-| **125** | **WebViewTool.kt — browser automation via Android WebView** | 🔲 TODO |
-| **126** | **MediaPipeline.kt — image resize, audio convert, video frame extraction** | 🔲 TODO |
-| **127** | **RichNotifications.kt — per-channel push notifications with quick reply** | 🔲 TODO |
-| **128** | **BiometricLock.kt — fingerprint/face auth to protect the app** | 🔲 TODO |
-| **129** | **DevicePairing.kt — pair with desktop/other devices via QR code** | 🔲 TODO |
-| **130** | **AutoRecovery.kt — WorkManager watchdog to restart service on crash** | 🔲 TODO |
+| **123** | **HooksSystem.kt — before/after tool call middleware (request/response transform)** | ✅ DONE |
+| **124** | **PluginSystem.kt — user-installable plugin packages (.zip skills)** | ✅ DONE |
+| **125** | **WebViewTool.kt — browser automation via Android WebView** | ✅ DONE |
+| **126** | **MediaPipeline.kt — image resize, audio convert, video frame extraction** | ✅ DONE |
+| **127** | **RichNotifications.kt — per-channel push notifications with quick reply** | ✅ DONE |
+| **128** | **BiometricLock.kt — fingerprint/face auth to protect the app** | ✅ DONE |
+| **129** | **DevicePairing.kt — pair with desktop/other devices via QR code** | ✅ DONE |
+| **130** | **AutoRecovery.kt — WorkManager watchdog to restart service on crash** | ✅ DONE |
 | | | |
 | | **── CONFIGURATION & UX ──** | |
 | **131** | **ExportImportConfig.kt — backup/restore all settings & keys as JSON** | 🔲 TODO |

@@ -69,16 +69,18 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (28 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, and Bookmarks. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (30 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, Bookmarks, WebView Browser, and Media Pipeline. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🧠", "Advanced AI (8 features)",
         "Custom prompts, streaming responses, multi-agent system, agent profiles (6 personas), workflow engine, tool loop detection, thinking mode, and auto-summarization of long conversations."),
     FeatureItem("🔮", "Vector Memory & RAG (5 features)",
         "Semantic search with embeddings (OpenAI/Gemini), hybrid keyword+vector search with RRF fusion, query expansion with synonyms, temporal decay scoring, and named session management."),
+    FeatureItem("🏗️", "Infrastructure & Platform (8 features)",
+        "Hooks middleware, user-installable plugins, WebView browser tool, media pipeline, rich push notifications with quick reply, biometric lock, QR device pairing, and WorkManager crash watchdog."),
     FeatureItem("🔋", "Battery Optimized",
-        "Smart persistence with boot auto-restart, wake locks, and foreground service — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
+        "Smart persistence with boot auto-restart, wake locks, foreground service, and WorkManager watchdog — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
 
 val SUPPORTED_PROVIDERS = listOf(
@@ -606,4 +608,64 @@ val MEMORY_GUIDE = GuideSection(
     )
 )
 
-val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, OTHER_APPS_GUIDE)
+// ─── Infrastructure & Platform Guide ──────────────────────────────────────────
+
+val INFRA_GUIDE = GuideSection(
+    id = "infra",
+    label = "Infrastructure",
+    emoji = "🏗️",
+    accentColor = Color(0xFF607D8B),
+    intro = "ZeroClaw's infrastructure layer: plugin system, browser automation, media processing, secure notifications, biometric lock, device pairing, and crash recovery.",
+    steps = listOf(
+        GuideStep(1, "🪝", "Hooks System",
+            "Lifecycle middleware that fires before/after every tool call, LLM call, message, and session event. Intercept and transform any data in the pipeline.",
+            "Hook points:\n• BEFORE_TOOL_CALL — modify args or cancel before a tool runs\n• AFTER_TOOL_CALL — transform the tool result\n• BEFORE_LLM_CALL — modify the prompt before sending to the LLM\n• AFTER_LLM_CALL — transform the LLM reply\n• MESSAGE_RECEIVED — intercept incoming messages from any channel\n• MESSAGE_SENDING — sanitize or transform outgoing messages\n• SESSION_START / SESSION_END — lifecycle events\n\nBuilt-in hooks:\n• LOG_TOOL_CALLS — logs every tool invocation\n• SANITIZE_OUTPUT — strips <thinking> tags from sent messages\n\nPlugins can register additional hooks from their manifest.",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(2, "🔌", "Plugin System",
+            "Install custom skill packages as .zip files. Plugins add new tools and hook handlers without recompiling the app.",
+            "Plugin .zip structure:\n• manifest.json — metadata, tool definitions, hook registrations\n• tools/*.json — per-tool configs (name, description, params, endpoint)\n• README.md — optional documentation\n\nPlugin tools call a user-defined HTTP endpoint with tool args and return the response.\n\nTo install a plugin:\n1. Download a .zip plugin file to your device\n2. Open Settings → Plugins → Install from file\n3. Select the .zip — it's extracted and activated immediately\n\nPlugins can be enabled/disabled or uninstalled at any time.",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(3, "🌐", "WebView Browser Tool",
+            "Load and interact with web pages using a real browser engine. Renders JavaScript-heavy sites, fills forms, and extracts structured content.",
+            "Actions:\n• fetch — load URL, wait for JS to execute, return visible text\n• scrape — extract structured data (title, headings, content preview)\n• js — execute custom JavaScript on a loaded page and return result\n\nExample uses:\n• Render React/Vue SPAs that regular fetch can't handle\n• Fill login forms and click buttons via JS injection\n• Extract dynamic content that requires JavaScript to render\n• Scrape paginated data after JS navigation\n\nTool name: webview\nParameters: url, action, script (optional), wait_ms (optional)",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(4, "🎬", "Media Pipeline Tool",
+            "Process images, audio, and video files on-device. No API key or internet needed — uses Android's built-in media APIs.",
+            "Actions:\n• image_resize — resize to target dimensions, save as JPEG\n• image_info — get dimensions, format, file size\n• audio_info — duration, bitrate, title, artist metadata\n• video_info — duration, resolution, frame rate, bitrate\n• video_frame — extract a frame from a video at a given timestamp\n\nAll processing runs locally using:\n• Android BitmapFactory for image decoding\n• MediaMetadataRetriever for audio/video metadata\n• Bitmap.createScaledBitmap for resize operations\n\nTool name: media_pipeline\nOutput files saved to app cache or a specified output_path.",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(5, "🔔", "Rich Notifications",
+            "Per-channel push notifications with inline Quick Reply. Reply to Telegram or Discord messages directly from the notification shade.",
+            "Features:\n• 5 separate notification channels (Telegram, Discord, Slack, WhatsApp, General)\n• Each channel can have distinct sounds and vibration patterns\n• Quick Reply action — type and send a reply without opening the app\n• BigText style for long messages\n• Message grouping by channel (bundled notifications)\n• Reply is routed back through the correct messaging channel\n\nPermissions required:\n• POST_NOTIFICATIONS (Android 13+)\n• VIBRATE\n\nNotification channels are created automatically on first launch.",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(6, "🔐", "Biometric Lock",
+            "Protect the ZeroClaw app with fingerprint or face recognition. Uses Android BiometricPrompt API with device credential fallback.",
+            "Supported authentication:\n• Fingerprint sensor\n• Face recognition (device-dependent)\n• Iris scanner (device-dependent)\n• Device PIN/pattern/password as fallback\n\nHow it works:\n• BiometricPrompt shows the system authentication UI\n• Result is returned as a Kotlin suspend function\n• On success: access granted to protected screens\n• On failure/cancel: access denied\n\nEnable in Settings → Security → Biometric Lock.\n\nNote: Biometric lock only protects the app UI — the AI service continues running in the background regardless.",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(7, "📱", "Device Pairing (QR Code)",
+            "Pair a desktop browser or another phone to your ZeroClaw agent via QR code. Generates a one-time token embedded in a QR code for secure local access.",
+            "How it works:\n1. Open the Pairing screen — a QR code is generated\n2. The QR encodes your device's local IP + port + a 32-byte random token\n3. Scan with any device on the same WiFi network\n4. The connecting device sends the token to authenticate\n5. Paired session lasts 24 hours\n\nQR payload example:\n{\"host\": \"192.168.1.42:8080\", \"token\": \"a3f8...\", \"name\": \"ZeroClaw\", \"version\": 1}\n\nSessions are revoked when the service stops or via Settings → Security → Revoke All Pairings.",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        ),
+        GuideStep(8, "🔄", "Auto Recovery (Watchdog)",
+            "WorkManager watchdog that checks every 15 minutes if ZeroClawService is running. Automatically restarts it if the OS killed the process.",
+            "Why this is needed:\n• Aggressive OEMs (Samsung, Xiaomi) may kill background services\n• Memory pressure can terminate the service\n• Uncaught exceptions can crash the process\n\nHow it works:\n• WorkManager schedules a periodic job every 15 minutes\n• The job checks if ZeroClawService is in the running processes list\n• If not found: calls startForegroundService() to restart it\n• WorkManager jobs survive reboots and Doze mode\n\nThis is a safety net on top of:\n• Boot Receiver (restarts after reboot)\n• Foreground Service (harder to kill)\n• Wake Lock (keeps CPU awake during processing)",
+            badgeColor = Color(0xFF607D8B),
+            isNew = true
+        )
+    )
+)
+
+val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, MEMORY_GUIDE, INFRA_GUIDE, OTHER_APPS_GUIDE)
