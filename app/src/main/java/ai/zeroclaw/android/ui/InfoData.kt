@@ -73,6 +73,8 @@ val APP_FEATURES = listOf(
         "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, and Bookmarks. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
+    FeatureItem("🧠", "Advanced AI (8 features)",
+        "Custom prompts, streaming responses, multi-agent system, agent profiles (6 personas), workflow engine, tool loop detection, thinking mode, and auto-summarization of long conversations."),
     FeatureItem("🔋", "Battery Optimized",
         "Smart persistence with boot auto-restart, wake locks, and foreground service — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
@@ -498,6 +500,66 @@ val AI_TOOLS_GUIDE = GuideSection(
     )
 )
 
+// ─── Advanced AI Features Guide ──────────────────────────────────────────────
+
+val ADVANCED_AI_GUIDE = GuideSection(
+    id = "advanced_ai",
+    label = "Advanced AI",
+    emoji = "🧠",
+    accentColor = Color(0xFF9C27B0),
+    intro = "ZeroClaw's advanced AI features: custom personas, streaming, multi-agent orchestration, workflows, thinking mode, and automatic conversation management.",
+    steps = listOf(
+        GuideStep(1, "🎭", "Custom System Prompts",
+            "Configure different AI personas per-channel and per-user. Telegram gets casual, Teams gets professional — automatically.",
+            "How it works:\n• Per-channel prompts: set a different system prompt for Telegram vs Discord vs Slack etc.\n• Per-user prompts: override for specific users/chats\n• Global prompt: override the default for all channels\n• Priority: user-specific > channel-specific > global > default\n\nSet via agent profiles or programmatically. The AI automatically uses the right persona based on where the message comes from.\n\nIn chat:\n• /profile — list available profiles\n• /profile <id> — switch to a profile",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(2, "⚡", "Streaming Responses",
+            "Stream LLM output to Telegram/Discord in real-time. See the AI typing its response word by word — like ChatGPT.",
+            "How it works:\n• Uses Server-Sent Events (SSE) for OpenAI and Anthropic APIs\n• Text chunks emitted as they arrive from the model\n• Channels can edit messages in-place as chunks arrive\n• Rate-limited updates (every 1.5s) to avoid API spam\n\nSupported providers:\n• OpenAI-compatible (GPT-4o, etc.)\n• Anthropic Claude (Haiku, Sonnet, Opus)\n\nThe streaming experience depends on the channel's edit capabilities. Telegram and Discord support message editing for progressive display.",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(3, "🤖", "Multi-Agent System",
+            "Spawn sub-agents for parallel tasks. The main AI can delegate work to specialized sub-agents that run concurrently.",
+            "How it works:\n• Main agent spawns sub-agents for parallel tasks\n• Each sub-agent gets its own chat context\n• Max 5 concurrent agents, 3 depth levels\n• 2-minute timeout per sub-agent\n• Results collected and merged\n\nCapabilities:\n• spawn — create a new sub-agent with a task\n• spawnAndWait — spawn multiple agents, wait for all\n• cancel — stop a running agent\n• list — see all active agents\n• sweep — clean up completed agents\n\nExample: \"Research 3 topics simultaneously\" → spawns 3 sub-agents, merges findings.",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(4, "🎭", "Agent Profiles (Personas)",
+            "Named AI personas with different prompts, models, and personalities. Switch instantly between Coder, Creative Writer, Analyst, and more.",
+            "Built-in profiles:\n• 🦀 ZeroClaw — default helpful assistant\n• 💻 Code Assistant — senior engineer, clean code\n• ✨ Creative Writer — vivid imagination, literary style\n• 📊 Data Analyst — precise, data-driven, structured\n• 📚 Patient Tutor — step-by-step, encouraging\n• ⚡ Brief Mode — ultra-concise, bullet points\n\nCreate custom profiles with:\n• Custom system prompt\n• Preferred model/provider\n• Enabled tools subset\n• Temperature and max tokens\n\nIn chat:\n• /profile — list all profiles\n• /profile coder — switch to Code Assistant\n• /profile creative — switch to Creative Writer",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(5, "🔄", "Workflow Engine",
+            "Multi-step automated pipelines where each step's output feeds into the next. Research → Summarize → Translate → Email.",
+            "How it works:\n• Define workflows as chains of LLM calls and tool calls\n• {input} placeholder for user input\n• {prev_result} placeholder for previous step output\n• Conditional steps: skip based on content/length\n• Max 10 steps per workflow\n\nBuilt-in templates:\n• Research & Summarize — search web, then summarize\n• Translate & Email — translate text, draft email\n• Analyze & Report — analyze data, create structured report\n\nCreate custom workflows with any combination of LLM prompts and tool invocations.",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(6, "🛡️", "Tool Loop Detection",
+            "Automatically detects and breaks infinite tool call chains. Prevents the AI from getting stuck calling the same tools repeatedly.",
+            "Detection methods:\n• Repeat detection — same tool+args called 3 times → break\n• Circuit breaker — 15 total tool calls per turn → stop\n• Ping-pong — A→B→A→B oscillation pattern → break\n• Stall detection — 3 rounds with identical results → stop\n\nWhen a loop is detected:\n• The tool chain is interrupted\n• The AI is given accumulated results so far\n• A warning is logged for debugging\n\nThis prevents runaway API costs and stuck conversations.",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(7, "💭", "Thinking Mode",
+            "Extended reasoning for complex problems. The AI breaks down hard questions step by step before answering.",
+            "How it works:\n• Auto-detects complex questions (comparison, analysis, debugging, design)\n• Wraps the query in a chain-of-thought prompt\n• AI produces <thinking> reasoning + <answer> final response\n• Only the polished answer is shown to the user\n• Reasoning logged for debugging\n\nTriggers:\n• Automatic: 2+ complexity indicators detected\n• Explicit: \"think step by step\", \"reason through\", \"show your work\"\n\nComplexity detection:\n• Comparison/contrast questions\n• Why/how analysis\n• Design/architecture problems\n• Multi-step math/logic\n• Long, multi-part questions",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        ),
+        GuideStep(8, "📝", "Conversation Summarization",
+            "Automatically compresses long chat histories to stay within context limits. Old messages are summarized, recent ones kept intact.",
+            "How it works:\n• Monitors conversation length (~3000 token threshold)\n• When exceeded, older messages are summarized\n• Last 6 messages always kept intact\n• Extractive summarization — no extra LLM call needed\n• Preserves: topics, key facts, URLs, decisions\n• Summary replaces old messages in history\n\nWhat's preserved:\n• User questions and requests\n• Key AI response points\n• URLs, emails, identifiers\n• Active tasks and decisions\n\nThis allows unlimited-length conversations without hitting context window limits or losing important context.",
+            badgeColor = Color(0xFF9C27B0),
+            isNew = true
+        )
+    )
+)
+
 // ─── All sections list ─────────────────────────────────────────────────────────
 
-val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, OTHER_APPS_GUIDE)
+val ALL_GUIDE_SECTIONS = listOf(HOW_IT_WORKS, TELEGRAM_GUIDE, WHATSAPP_GUIDE, AI_TOOLS_GUIDE, ADVANCED_AI_GUIDE, OTHER_APPS_GUIDE)

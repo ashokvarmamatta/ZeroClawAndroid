@@ -165,14 +165,14 @@
 | **109** | **WebChatServer.kt — built-in web chat UI served on :8088** | ✅ DONE |
 | | | |
 | | **── ADVANCED AI FEATURES ──** | |
-| **110** | **Custom system prompts — per-channel/per-user configurable persona** | 🔲 TODO |
-| **111** | **Streaming responses — stream LLM output to Telegram/Discord in real-time** | 🔲 TODO |
-| **112** | **Multi-agent system — spawn sub-agents for parallel tasks** | 🔲 TODO |
-| **113** | **Agent profiles — named AI personas with different prompts/tools/models** | 🔲 TODO |
-| **114** | **Workflow engine — multi-step automated pipelines (lobster-inspired)** | 🔲 TODO |
-| **115** | **Tool loop detection — prevent infinite tool call chains** | 🔲 TODO |
-| **116** | **Thinking/reasoning mode — extended thinking for complex problems** | 🔲 TODO |
-| **117** | **Conversation summarization — auto-compress long chat histories** | 🔲 TODO |
+| **110** | **SystemPromptManager.kt — per-channel/per-user configurable persona** | ✅ DONE |
+| **111** | **StreamingResponseManager.kt — stream LLM output via SSE (OpenAI/Anthropic)** | ✅ DONE |
+| **112** | **MultiAgentManager.kt — spawn sub-agents for parallel tasks** | ✅ DONE |
+| **113** | **AgentProfileManager.kt — named AI personas (6 built-in + custom)** | ✅ DONE |
+| **114** | **WorkflowEngine.kt — multi-step automated pipelines with conditions** | ✅ DONE |
+| **115** | **ToolLoopDetector.kt — prevent infinite tool call chains (4 detection methods)** | ✅ DONE |
+| **116** | **ThinkingMode.kt — extended chain-of-thought reasoning for complex problems** | ✅ DONE |
+| **117** | **ConversationSummarizer.kt — auto-compress long chat histories** | ✅ DONE |
 | | | |
 | | **── MEMORY & CONTEXT (Vector Search) ──** | |
 | **118** | **VectorMemory.kt — semantic search with embeddings (OpenAI/Gemini)** | 🔲 TODO |
