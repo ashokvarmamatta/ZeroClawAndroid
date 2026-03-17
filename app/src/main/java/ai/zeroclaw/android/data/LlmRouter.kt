@@ -418,7 +418,62 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 7. Web Fetch (URL without summary keyword) ──────────────────────
+        // ── 7. Calendar ─────────────────────────────────────────────────────
+        if (toolCalls.isEmpty()) {
+            val calendarKeywords = msg.contains("calendar") || msg.contains("schedule") ||
+                    msg.contains("appointment") || msg.contains("meeting") ||
+                    msg.contains("event") || msg.contains("agenda") ||
+                    msg.contains("what's on") || msg.contains("what is on") ||
+                    msg.contains("my day") || msg.contains("free time")
+            if (calendarKeywords) {
+                val calendarPatterns = listOf(
+                    // "create/add/schedule event/meeting/appointment ..."
+                    Regex("(?:create|add|schedule|set up|book|make)\\s+(?:an? )?(?:event|meeting|appointment|reminder)\\s+(?:called |named |titled )?(.+)", RegexOption.IGNORE_CASE),
+                    // "what's on my calendar/schedule"
+                    Regex("(?:what(?:'s| is) on|show|check)\\s+(?:my )?(?:calendar|schedule|agenda)(?:\\s+(?:for|on|this)\\s+(.+))?", RegexOption.IGNORE_CASE),
+                    // "my schedule/calendar today/this week/tomorrow"
+                    Regex("(?:my )(?:schedule|calendar|agenda|events?)(?:\\s+(?:for|on))?\\s+(today|tomorrow|this week|next week)", RegexOption.IGNORE_CASE),
+                    // "search calendar for X"
+                    Regex("(?:search|find|look for)\\s+(?:in )?(?:my )?(?:calendar|events?)\\s+(?:for )?(.+)", RegexOption.IGNORE_CASE),
+                    // "do I have any meetings/events ..."
+                    Regex("do I have (?:any )?(?:meetings?|events?|appointments?)\\s*(.+)?", RegexOption.IGNORE_CASE)
+                )
+
+                for (pattern in calendarPatterns) {
+                    val match = pattern.find(userMessage)
+                    if (match != null) {
+                        val detail = match.groupValues[1].trim().removeSuffix("?").removeSuffix(".").trim()
+                        // Determine action
+                        val isCreate = msg.contains("create") || msg.contains("add") || msg.contains("schedule") ||
+                                msg.contains("set up") || msg.contains("book")
+                        val isSearch = msg.contains("search") || msg.contains("find") || msg.contains("look for")
+
+                        when {
+                            isCreate && detail.isNotBlank() -> {
+                                toolCalls.add(ToolCall("auto_calendar", "calendar", mapOf("action" to "create", "title" to detail)))
+                            }
+                            isSearch && detail.isNotBlank() -> {
+                                toolCalls.add(ToolCall("auto_calendar", "calendar", mapOf("action" to "search", "query" to detail)))
+                            }
+                            detail.contains("week", ignoreCase = true) -> {
+                                toolCalls.add(ToolCall("auto_calendar", "calendar", mapOf("action" to "week")))
+                            }
+                            else -> {
+                                toolCalls.add(ToolCall("auto_calendar", "calendar", mapOf("action" to "today")))
+                            }
+                        }
+                        break
+                    }
+                }
+
+                // Fallback: if keywords matched but no pattern, just show today
+                if (toolCalls.isEmpty() && calendarKeywords) {
+                    toolCalls.add(ToolCall("auto_calendar", "calendar", mapOf("action" to "today")))
+                }
+            }
+        }
+
+        // ── 8. Web Fetch (URL without summary keyword) ──────────────────────
         if (toolCalls.isEmpty()) {
             val urlPattern = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE)
             val urlMatch = urlPattern.find(userMessage)
