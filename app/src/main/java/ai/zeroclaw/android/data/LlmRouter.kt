@@ -377,19 +377,40 @@ class LlmRouter(private val context: Context) {
         val currentDateTime = fmt.format(now)
 
         val query = userMessage.take(200)
-        ZeroClawService.log("OFFLINE-CTX: fetching context — date=$currentDateTime, query=\"${query.take(60)}\"")
-
-        val searchResult = toolSystem.executeToolDirect(
-            ToolCall("auto_search", "web_search", mapOf("query" to query))
-        )
+        val webSearchEnabled = toolSystem.isEnabled("web_search")
+        ZeroClawService.log("OFFLINE-CTX: date=$currentDateTime, web_search enabled=$webSearchEnabled")
 
         return buildString {
             appendLine("Today is $currentDateTime.")
-            if (searchResult.success && searchResult.content.isNotBlank()) {
-                ZeroClawService.log("OFFLINE-CTX: ✓ web_search ${searchResult.content.length} chars")
-                appendLine("Web search results:\n${searchResult.content.take(2000)}")
+
+            if (webSearchEnabled) {
+                // Step 1: web search
+                ZeroClawService.log("OFFLINE-CTX: searching \"${query.take(60)}\"")
+                val searchResult = toolSystem.executeTool(
+                    ToolCall("auto_search", "web_search", mapOf("query" to query))
+                )
+
+                if (searchResult.success && searchResult.content.isNotBlank()) {
+                    ZeroClawService.log("OFFLINE-CTX: ✓ web_search ${searchResult.content.length} chars")
+                    appendLine("Web search results:\n${searchResult.content.take(1500)}")
+
+                    // Step 2: web_fetch the first URL from search results for deeper content
+                    val firstUrl = Regex("""URL:\s*(https?://\S+)""").find(searchResult.content)?.groupValues?.get(1)
+                    if (firstUrl != null && toolSystem.isEnabled("web_fetch")) {
+                        ZeroClawService.log("OFFLINE-CTX: fetching top result: $firstUrl")
+                        val fetchResult = toolSystem.executeTool(
+                            ToolCall("auto_fetch", "web_fetch", mapOf("url" to firstUrl))
+                        )
+                        if (fetchResult.success && fetchResult.content.isNotBlank()) {
+                            ZeroClawService.log("OFFLINE-CTX: ✓ web_fetch ${fetchResult.content.length} chars")
+                            appendLine("\nTop result full content:\n${fetchResult.content.take(1500)}")
+                        }
+                    }
+                } else {
+                    ZeroClawService.log("OFFLINE-CTX: web_search failed — ${searchResult.error}")
+                }
             } else {
-                ZeroClawService.log("OFFLINE-CTX: web_search failed — date only")
+                ZeroClawService.log("OFFLINE-CTX: web_search disabled — date only")
             }
         }.trim()
     }
@@ -1711,7 +1732,7 @@ class LlmRouter(private val context: Context) {
             "anthropic" -> callAnthropic(message, entry.safeApiKey, useModel, history, systemPrompt)
             "gemini"    -> callGemini(message, entry.safeApiKey, useModel, history, entry.safeGoogleSearch, systemPrompt)
             "ollama"    -> callOllama(message, useModel, history, systemPrompt)
-            "offline"   -> callOffline(message, useModel, history)
+            "offline"   -> callOffline(message, useModel, history, systemPrompt)
             else        -> callOpenAICompatible(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, useModel, history, systemPrompt)
         }
     }
@@ -1851,7 +1872,7 @@ class LlmRouter(private val context: Context) {
 
     // ── Offline model (MediaPipe LlmInference) ──────────────────────────────
 
-    private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList()): String {
+    private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT): String {
         val manager = OfflineModelManager.getInstance(context)
         if (preferredModel.isNotBlank()) {
             val models = manager.listAppModels()
@@ -1869,7 +1890,7 @@ class LlmRouter(private val context: Context) {
                 if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
             } + "\n"
         } else ""
-        val fullPrompt = "$SYSTEM_PROMPT\n\n${historyText}User: $message\nAssistant:"
+        val fullPrompt = "$systemPrompt\n\n${historyText}User: $message\nAssistant:"
         return manager.generateResponse(fullPrompt)
     }
 
