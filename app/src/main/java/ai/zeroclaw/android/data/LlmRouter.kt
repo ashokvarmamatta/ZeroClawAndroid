@@ -199,7 +199,16 @@ class LlmRouter(private val context: Context) {
             val provider = LlmProvider.fromId(entry.safeProvider).displayName
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
-            val messageForModel = effectiveMessage
+            // For offline models: summarize the user message if it's long to avoid token overflow
+            val messageForModel = if (entry.safeProvider == "offline" && effectiveMessage.length > 300) {
+                val sumResult = toolSystem.executeTool(
+                    ToolCall("p1_prompt_sum", "summarize", mapOf("text" to effectiveMessage, "sentences" to "3"))
+                )
+                if (sumResult.success && sumResult.content.isNotBlank()) {
+                    ZeroClawService.logDetail("Prompt summarized: ${effectiveMessage.length} → ${sumResult.content.length} chars")
+                    sumResult.content
+                } else effectiveMessage
+            } else effectiveMessage
 
             var keyWorked = false
             for (model in modelsToTry) {
@@ -429,7 +438,19 @@ class LlmRouter(private val context: Context) {
                r.contains("my knowledge cutoff") ||
                r.contains("my training data") ||
                r.contains("as of my last update") ||
-               r.contains("as of my knowledge")
+               r.contains("as of my knowledge") ||
+               r.contains("i don't have specific") ||
+               r.contains("i do not have specific") ||
+               r.contains("cannot provide a list") ||
+               r.contains("can't provide a list") ||
+               r.contains("don't have information about") ||
+               r.contains("do not have information about") ||
+               r.contains("no information available") ||
+               r.contains("not aware of any") ||
+               r.contains("my information may be") ||
+               r.contains("information may be outdated") ||
+               r.contains("i cannot confirm") ||
+               r.contains("unable to confirm")
     }
 
     /**
@@ -534,36 +555,38 @@ class LlmRouter(private val context: Context) {
         }
 
         // Always summarize — extract the most relevant sentences for the user's question.
-        // This distills raw news text into clear facts that even a small 2B model can use.
+        // More sentences for list-type queries (top 10, list movies, etc.)
         val rawContext = sb.toString()
+        val isListQuery = Regex("(list|top\\s*\\d+|give me \\d+|show \\d+|\\d+ movies|\\d+ songs|\\d+ results)",
+            RegexOption.IGNORE_CASE).containsMatchIn(userMessage)
+        val sentenceCount = if (isListQuery) "12" else "6"
+
         val finalContext = if (rawContext.isNotBlank() && toolSystem.isEnabled("summarize")) {
-            ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars → key facts")
-            ZeroClawService.logDetail("Tool: summarize | Input: ${rawContext.length} chars | Topic: $userMessage")
-            // Include user question in text so summarizer picks the most relevant sentences
+            ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars → $sentenceCount sentences")
+            ZeroClawService.logDetail("Tool: summarize | sentences=$sentenceCount | listQuery=$isListQuery")
             val textForSummary = "Topic: $userMessage\n\n$rawContext"
             val sumResult = toolSystem.executeTool(
-                ToolCall("2p_sum", "summarize", mapOf("text" to textForSummary, "sentences" to "7"))
+                ToolCall("2p_sum", "summarize", mapOf("text" to textForSummary, "sentences" to sentenceCount))
             )
             if (sumResult.success && sumResult.content.isNotBlank()) {
                 ZeroClawService.log("OFFLINE-2P: ✓ summarized to ${sumResult.content.length} chars")
-                ZeroClawService.logDetail("Summarized facts: ${sumResult.content}")
+                ZeroClawService.logDetail("Summarized context: ${sumResult.content}")
                 sumResult.content
             } else {
-                ZeroClawService.logDetail("summarize failed — using raw context")
-                rawContext.take(2000)
+                ZeroClawService.logDetail("summarize failed — using raw context trimmed")
+                rawContext.take(1500)
             }
         } else {
-            rawContext.take(2000)
+            rawContext.take(1500)
         }
 
-        // Format as confirmed facts so even small models can't ignore the data
+        // Natural RAG-style prompt — no robotic "Based on facts given" forcing
         return buildString {
-            appendLine("CONFIRMED FACTS from live web search (as of $currentDateTime):")
+            appendLine("Here is current information retrieved from the web (as of $currentDateTime):")
+            appendLine()
             appendLine(finalContext)
             appendLine()
-            appendLine("Using ONLY the confirmed facts above, answer this question: $userMessage")
-            appendLine("Start your answer by directly stating what the facts say. Do not say you lack real-time access.")
-            append("Assistant:")
+            append("$userMessage")
         }
     }
 
