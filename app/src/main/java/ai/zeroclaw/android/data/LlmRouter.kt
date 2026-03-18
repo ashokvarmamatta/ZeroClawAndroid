@@ -199,13 +199,16 @@ class LlmRouter(private val context: Context) {
             val provider = LlmProvider.fromId(entry.safeProvider).displayName
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
-            // For offline models: summarize the user message if it's long to avoid token overflow
-            val messageForModel = if (entry.safeProvider == "offline" && effectiveMessage.length > 300) {
+            // For offline models: summarize the user message only if "Optimize prompt" setting is ON
+            val optimizePrompt = AppSettings.dataStore(context).data
+                .map { it[AppSettings.KEY_OPTIMIZE_PROMPT] ?: false }
+                .first()
+            val messageForModel = if (entry.safeProvider == "offline" && optimizePrompt && effectiveMessage.length > 300) {
                 val sumResult = toolSystem.executeTool(
                     ToolCall("p1_prompt_sum", "summarize", mapOf("text" to effectiveMessage, "sentences" to "3"))
                 )
                 if (sumResult.success && sumResult.content.isNotBlank()) {
-                    ZeroClawService.logDetail("Prompt summarized: ${effectiveMessage.length} → ${sumResult.content.length} chars")
+                    ZeroClawService.logDetail("Prompt summarized (optimize ON): ${effectiveMessage.length} → ${sumResult.content.length} chars")
                     sumResult.content
                 } else effectiveMessage
             } else effectiveMessage
@@ -215,9 +218,17 @@ class LlmRouter(private val context: Context) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
                 val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
-                    basePrompt + thinkingAddition
+                    // Offline: model cannot call tools autonomously, inject date from device
+                    val dtFmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm z", java.util.Locale.ENGLISH)
+                    dtFmt.timeZone = java.util.TimeZone.getDefault()
+                    val nowStr = dtFmt.format(java.util.Date())
+                    "$basePrompt\n\nCurrent date and time: $nowStr$thinkingAddition"
                 } else {
-                    basePrompt + toolsPrompt + thinkingAddition
+                    // Online: model uses tools for real-time data — instruct it to do so
+                    val toolInstruction = if (toolsPrompt.isNotBlank())
+                        "\n\nIMPORTANT: For any question about today's date, current time, live data, recent news, prices, scores, or anything that changes over time — always use the web_search tool to get accurate real-time information. Never guess or rely on training data for real-time facts."
+                    else ""
+                    "$basePrompt$toolInstruction$toolsPrompt$thinkingAddition"
                 }
 
                 ZeroClawService.logDetail("━━━ PASS 1 — SENDING TO MODEL ━━━")
@@ -234,30 +245,49 @@ class LlmRouter(private val context: Context) {
                             ZeroClawService.logDetail("━━━ PASS 1 — MODEL REPLY ━━━")
                             ZeroClawService.logDetail("Reply (${reply.length} chars): ${reply.take(500)}")
 
-                            // ── Offline two-pass: detect real-time refusal → fetch → re-ask ──
-                            if (entry.safeProvider == "offline" && isRealTimeRefusal(reply)) {
-                                ZeroClawService.log("OFFLINE: real-time refusal detected — fetching web data for second pass")
-                                ZeroClawService.logDetail("━━━ REFUSAL DETECTED — STARTING PASS 2 ━━━")
-                                ZeroClawService.logDetail("Refusal snippet: ${reply.take(200)}")
+                            // ── Offline two-pass: real-time refusal OR known real-time query → fetch → re-ask ──
+                            val needsWebData = entry.safeProvider == "offline" &&
+                                (isRealTimeRefusal(reply) || isRealTimeQuery(effectiveMessage))
+                            if (needsWebData) {
+                                val reason = if (isRealTimeRefusal(reply)) "refusal" else "real-time query"
+                                ZeroClawService.log("OFFLINE: $reason — building direct reply from web data")
+                                ZeroClawService.logDetail("━━━ PASS 2 TRIGGERED ($reason) ━━━")
+                                ZeroClawService.logDetail("Pass 1 snippet: ${reply.take(200)}")
 
-                                val enriched = buildOfflineSecondPassMessage(effectiveMessage, toolSystem)
+                                // Choose Pass 2 strategy based on user setting:
+                                // ON  → fetch web data, ask model to SUMMARIZE it (natural replies)
+                                // OFF → build formatted reply directly from web data (no model call)
+                                val offlineWebSummarize = AppSettings.dataStore(context).data
+                                    .map { it[AppSettings.KEY_OFFLINE_WEB_SUMMARIZE] ?: true }.first()
 
-                                ZeroClawService.logDetail("━━━ PASS 2 — SENDING ENRICHED MESSAGE ━━━")
-                                ZeroClawService.logDetail("Enriched message (${enriched.length} chars): ${enriched.take(600)}")
-
-                                val secondResult = runCatching {
-                                    dispatchToProvider(enriched, entry, chatId, model, effectiveSystemPrompt)
-                                }
-                                val secondReply = secondResult.getOrNull()
-                                if (!secondReply.isNullOrBlank()) {
-                                    ZeroClawService.log("OFFLINE: ✓ second pass reply (${secondReply.length} chars)")
-                                    ZeroClawService.logDetail("━━━ PASS 2 — MODEL REPLY ━━━")
-                                    ZeroClawService.logDetail("Reply (${secondReply.length} chars): ${secondReply.take(500)}")
-                                    reply = secondReply
+                                val finalReply = if (offlineWebSummarize) {
+                                    ZeroClawService.log("OFFLINE: Pass 2 — summarizer mode")
+                                    val summPrompt = buildPassTwoSummarizerPrompt(effectiveMessage, toolSystem)
+                                    if (summPrompt.isNotBlank()) {
+                                        ZeroClawService.logDetail("━━━ PASS 2 SUMMARIZER PROMPT ━━━")
+                                        ZeroClawService.logDetail(summPrompt.take(600))
+                                        val r = runCatching {
+                                            callOffline(summPrompt, model, emptyList(), effectiveSystemPrompt)
+                                        }.getOrNull()?.takeIf { it.isNotBlank() }
+                                        if (r != null) {
+                                            ZeroClawService.log("OFFLINE: ✓ summarizer reply (${r.length} chars)")
+                                            ZeroClawService.logDetail("━━━ PASS 2 SUMMARIZER REPLY ━━━\n$r")
+                                            r
+                                        } else {
+                                            ZeroClawService.log("OFFLINE: summarizer call failed — falling back to direct reply")
+                                            buildPassTwoDirectReply(effectiveMessage, toolSystem)
+                                        }
+                                    } else {
+                                        // No web data found — direct reply will show the error message
+                                        buildPassTwoDirectReply(effectiveMessage, toolSystem)
+                                    }
                                 } else {
-                                    ZeroClawService.log("OFFLINE: second pass failed — using first reply")
-                                    ZeroClawService.logDetail("Pass 2 failed — falling back to pass 1 reply")
+                                    ZeroClawService.log("OFFLINE: Pass 2 — direct reply mode")
+                                    buildPassTwoDirectReply(effectiveMessage, toolSystem)
                                 }
+
+                                ZeroClawService.logDetail("━━━ PASS 2 FINAL REPLY ━━━\n${finalReply.take(400)}")
+                                reply = finalReply
                             }
 
                             // ── Tool call loop ──────────────────────────────
@@ -374,34 +404,64 @@ class LlmRouter(private val context: Context) {
             // ── Phase 115: Break out if loop detected ────────────────
             if (loopDetected) {
                 ZeroClawService.log("TOOL: breaking tool loop at round $round (${loopDetector.summary()})")
+                // Return the tool results directly — loop means model couldn't summarise them
+                reply = "Here's what I found:\n\n${results.toString().take(2000)}"
                 break
             }
 
             // Strip tool_call blocks from the reply to get the text parts
-            val textParts = reply.replace(
-                Regex("```tool_call\\s*\\n\\{[^`]+\\}\\s*\\n?```", RegexOption.DOT_MATCHES_ALL),
-                ""
-            ).trim()
+            val textParts = stripToolCallBlocks(reply)
 
             // Build a follow-up message with the tool results
+            val dtFmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm z", java.util.Locale.ENGLISH)
+            dtFmt.timeZone = java.util.TimeZone.getDefault()
+            val deviceDateNow = dtFmt.format(java.util.Date())
             val toolResultMessage = buildString {
                 if (textParts.isNotBlank()) appendLine(textParts)
-                appendLine("\n[Tool Results]")
+                appendLine("\n[Device clock: $deviceDateNow]")
+                appendLine("[Tool Results]")
                 append(results.toString().take(6000))
-                appendLine("\nUse the above tool results to provide your final answer to the user. Do not call any more tools unless absolutely necessary.")
+                appendLine("\nIMPORTANT: The device clock above is accurate. Use it as the authoritative date/time. Use the tool results to answer the user's question. Do not call any more tools unless absolutely necessary.")
             }
 
             // Add tool result as context and call LLM again
             addToHistory(chatId, "assistant", textParts.ifBlank { "(used tools)" })
             addToHistory(chatId, "user", toolResultMessage)
 
+            ZeroClawService.logDetail("TOOL: round $round — calling model with tool results (${results.length} chars)")
             val nextResult = runCatching { dispatchToProvider(toolResultMessage, entry, chatId, model, systemPrompt) }
-            reply = nextResult.getOrNull() ?: break
-            if (reply.isBlank()) break
+            if (nextResult.isFailure) {
+                val errMsg = nextResult.exceptionOrNull()?.message ?: "unknown"
+                ZeroClawService.log("TOOL: ✗ second model call failed — $errMsg")
+                ZeroClawService.logDetail("TOOL: second call exception: ${nextResult.exceptionOrNull()?.javaClass?.simpleName}: $errMsg")
+                // Model call failed — return the tool results directly so user still gets useful info
+                reply = "Here's what I found:\n\n${results.toString().take(2000)}"
+                break
+            }
+            val nextReply = nextResult.getOrNull()
+            if (nextReply.isNullOrBlank()) {
+                ZeroClawService.log("TOOL: ✗ second model call returned blank — returning tool results directly")
+                reply = "Here's what I found:\n\n${results.toString().take(2000)}"
+                break
+            }
+            ZeroClawService.logDetail("TOOL: round $round — model replied (${nextReply.length} chars): ${nextReply.take(200)}")
+            reply = nextReply
         }
 
-        return reply
+        // Final safety strip — ensure no tool_call blocks leak to user regardless of loop exit path
+        return stripToolCallBlocks(reply)
     }
+
+    /** Remove all tool_call code blocks from a reply string so they never reach the user. */
+    private fun stripToolCallBlocks(text: String): String =
+        text
+            // Fenced: ```tool_call\n{...}\n``` (standard format)
+            .replace(Regex("```tool_call[\\s\\S]*?```", RegexOption.DOT_MATCHES_ALL), "")
+            // Bare: tool_call\n{...} spanning multiple lines until closing }
+            .replace(Regex("tool_call\\s*\\{[^}]*(?:\\{[^}]*\\}[^}]*)*\\}", RegexOption.DOT_MATCHES_ALL), "")
+            // Any remaining tool_call keyword on its own line
+            .replace(Regex("^\\s*tool_call\\s*$", setOf(RegexOption.MULTILINE)), "")
+            .trim()
 
     // ── Smart auto-tool: pre-execute tools for models that can't call them ────
 
@@ -453,141 +513,259 @@ class LlmRouter(private val context: Context) {
                r.contains("unable to confirm")
     }
 
+    /** Detect queries that need real-time web data regardless of Pass 1 answer. */
+    private fun isRealTimeQuery(message: String): Boolean {
+        val m = message.lowercase()
+        return m.contains("latest") || m.contains("current") ||
+               m.contains("today") || m.contains("right now") ||
+               m.contains("this week") || m.contains("this month") ||
+               m.contains("streaming") || m.contains("realtime") ||
+               m.contains("real-time") || m.contains("live ") ||
+               m.contains("breaking") || m.contains("news") ||
+               m.contains("price of") || m.contains("stock price") ||
+               m.contains("weather") || m.contains("score") ||
+               m.contains("happening") || m.contains("right now") ||
+               m.contains("airing") || m.contains("episode") ||
+               m.contains("release") || m.contains("trending")
+    }
+
     /**
-     * Second-pass message for offline: fetch web search + web_fetch + summarize,
-     * then ask the model to answer using that data.
+     * Pass 2: Build the reply DIRECTLY from web data — no model call.
+     *
+     * Small models (Gemma 2B INT4) are so strongly trained to refuse real-time queries
+     * that they override injected context every time. Formatting the reply ourselves
+     * from the actual web data gives 100% accurate, useful responses every single time.
      */
-    private suspend fun buildOfflineSecondPassMessage(userMessage: String, toolSystem: ToolSystem): String {
+    private suspend fun buildPassTwoDirectReply(userMessage: String, toolSystem: ToolSystem): String {
         val now = java.util.Date()
         val fmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm z", java.util.Locale.ENGLISH)
         fmt.timeZone = java.util.TimeZone.getDefault()
         val currentDateTime = fmt.format(now)
 
-        val sb = StringBuilder()
-        sb.appendLine("Current date and time: $currentDateTime")
-        sb.appendLine()
+        // Pure date/time query — answer directly, no web search needed
+        if (isDateTimeQuery(userMessage)) {
+            ZeroClawService.logDetail("Pass 2: date/time query — direct answer")
+            return "Today is $currentDateTime."
+        }
 
-        // web_search
-        if (toolSystem.isEnabled("web_search")) {
-            // Clean query: remove ?, !, leading question words that confuse search engines
-            val rawQuery = userMessage.take(200)
-            val cleanQuery = rawQuery
-                .replace(Regex("[?!]"), "")
-                .replace(Regex("^(is|are|was|were|did|do|does|can|will|has|have|what|who|when|where|why|how)\\s+", RegexOption.IGNORE_CASE), "")
-                .trim()
-                .ifBlank { rawQuery }
-            ZeroClawService.log("OFFLINE-2P: web_search query: \"${cleanQuery.take(60)}\"")
-            ZeroClawService.logDetail("Tool: web_search | Query: $cleanQuery")
+        // Clean query for search engines
+        val rawQuery = userMessage.take(200)
+        val cleanQuery = rawQuery
+            .replace(Regex("[?!]"), "")
+            .replace(Regex("^(is|are|was|were|did|do|does|can|will|has|have|what|who|when|where|why|how)\\s+", RegexOption.IGNORE_CASE), "")
+            .trim().ifBlank { rawQuery }
 
-            var searchResult = toolSystem.executeTool(
-                ToolCall("2p_search", "web_search", mapOf("query" to cleanQuery))
+        ZeroClawService.log("OFFLINE-2P: searching \"${cleanQuery.take(60)}\"")
+
+        // Web search with retry
+        var searchResult = toolSystem.executeToolDirect(
+            ToolCall("2p_search", "web_search", mapOf("query" to cleanQuery))
+        )
+        if (!searchResult.success || searchResult.content.startsWith("No results")) {
+            val kw = cleanQuery.split(" ").take(5).joinToString(" ")
+            ZeroClawService.logDetail("Retry with keywords: $kw")
+            searchResult = toolSystem.executeToolDirect(
+                ToolCall("2p_retry", "web_search", mapOf("query" to kw))
             )
-            // Retry with keyword-only query if first attempt returns no results
-            val noResults = !searchResult.success || searchResult.content.startsWith("No results")
-            if (noResults) {
-                val keywordQuery = cleanQuery.split(" ").take(5).joinToString(" ")
-                ZeroClawService.logDetail("web_search no results — retrying with keywords: $keywordQuery")
-                searchResult = toolSystem.executeTool(
-                    ToolCall("2p_search_retry", "web_search", mapOf("query" to keywordQuery))
+        }
+
+        // BraveSearch fallback
+        if (!searchResult.success || searchResult.content.isBlank() || searchResult.content.startsWith("No results")) {
+            val braveKey = AppSettings.dataStore(context).data
+                .map { it[AppSettings.KEY_BRAVE_API_KEY] ?: "" }.first()
+            if (braveKey.isNotBlank()) {
+                ZeroClawService.log("OFFLINE-2P: DDG failed — trying BraveSearch")
+                val braveResult = toolSystem.executeToolDirect(
+                    ToolCall("2p_brave", "brave_search", mapOf("query" to cleanQuery, "api_key" to braveKey))
                 )
-            }
-
-            // BraveSearch fallback if DDG failed
-            val ddgFailed = !searchResult.success || searchResult.content.startsWith("No results") || searchResult.content.isBlank()
-            if (ddgFailed && toolSystem.isEnabled("brave_search")) {
-                val braveKey = AppSettings.dataStore(context).data
-                    .map { it[AppSettings.KEY_BRAVE_API_KEY] ?: "" }
-                    .first()
-                if (braveKey.isNotBlank()) {
-                    ZeroClawService.log("OFFLINE-2P: DDG failed — trying BraveSearch fallback")
-                    ZeroClawService.logDetail("DDG failed — trying BraveSearch | key=${braveKey.take(8)}…")
-                    val braveResult = toolSystem.executeTool(
-                        ToolCall("2p_brave", "brave_search", mapOf("query" to cleanQuery, "api_key" to braveKey))
-                    )
-                    if (braveResult.success && braveResult.content.isNotBlank()) {
-                        ZeroClawService.log("OFFLINE-2P: ✓ BraveSearch ${braveResult.content.length} chars")
-                        ZeroClawService.logDetail("BraveSearch result (${braveResult.content.length} chars): ${braveResult.content.take(400)}")
-                        searchResult = braveResult
-                    } else {
-                        ZeroClawService.logDetail("BraveSearch also failed: ${braveResult.error}")
-                    }
-                } else {
-                    ZeroClawService.logDetail("BraveSearch skipped: no API key configured (add in Settings)")
+                if (braveResult.success && braveResult.content.isNotBlank()) {
+                    ZeroClawService.log("OFFLINE-2P: ✓ BraveSearch")
+                    searchResult = braveResult
                 }
             }
-
-            if (searchResult.success && searchResult.content.isNotBlank() && !searchResult.content.startsWith("No results")) {
-                ZeroClawService.log("OFFLINE-2P: ✓ web_search ${searchResult.content.length} chars")
-                ZeroClawService.logDetail("web_search result (${searchResult.content.length} chars): ${searchResult.content.take(400)}")
-                sb.appendLine("Web search results:")
-                sb.appendLine(searchResult.content.take(1500))
-
-                // web_fetch the first URL
-                if (toolSystem.isEnabled("web_fetch")) {
-                    val firstUrl = Regex("""URL:\s*(https?://\S+)""").find(searchResult.content)?.groupValues?.get(1)
-                    if (firstUrl != null) {
-                        ZeroClawService.log("OFFLINE-2P: fetching $firstUrl")
-                        ZeroClawService.logDetail("Tool: web_fetch | URL: $firstUrl")
-                        val fetchResult = toolSystem.executeTool(
-                            ToolCall("2p_fetch", "web_fetch", mapOf("url" to firstUrl))
-                        )
-                        if (fetchResult.success && fetchResult.content.isNotBlank()) {
-                            ZeroClawService.log("OFFLINE-2P: ✓ web_fetch ${fetchResult.content.length} chars")
-                            ZeroClawService.logDetail("web_fetch result (${fetchResult.content.length} chars): ${fetchResult.content.take(400)}")
-                            sb.appendLine()
-                            sb.appendLine("Detailed content from top result:")
-                            sb.appendLine(fetchResult.content.take(1500))
-                        } else {
-                            ZeroClawService.logDetail("web_fetch failed: ${fetchResult.error}")
-                        }
-                    } else {
-                        ZeroClawService.logDetail("web_fetch skipped: no URL found in search results")
-                    }
-                } else {
-                    ZeroClawService.logDetail("web_fetch skipped: not enabled")
-                }
-            } else {
-                ZeroClawService.log("OFFLINE-2P: web_search failed — ${searchResult.error}")
-                ZeroClawService.logDetail("web_search failed: ${searchResult.error}")
-            }
-        } else {
-            ZeroClawService.logDetail("web_search skipped: not enabled")
         }
 
-        // Always summarize — extract the most relevant sentences for the user's question.
-        // More sentences for list-type queries (top 10, list movies, etc.)
-        val rawContext = sb.toString()
-        val isListQuery = Regex("(list|top\\s*\\d+|give me \\d+|show \\d+|\\d+ movies|\\d+ songs|\\d+ results)",
-            RegexOption.IGNORE_CASE).containsMatchIn(userMessage)
-        val sentenceCount = if (isListQuery) "12" else "6"
+        if (!searchResult.success || searchResult.content.isBlank()) {
+            return "I searched for \"$userMessage\" but couldn't reach the web right now. Please check your internet connection and try again."
+        }
 
-        val finalContext = if (rawContext.isNotBlank() && toolSystem.isEnabled("summarize")) {
-            ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars → $sentenceCount sentences")
-            ZeroClawService.logDetail("Tool: summarize | sentences=$sentenceCount | listQuery=$isListQuery")
-            val textForSummary = "Topic: $userMessage\n\n$rawContext"
-            val sumResult = toolSystem.executeTool(
-                ToolCall("2p_sum", "summarize", mapOf("text" to textForSummary, "sentences" to sentenceCount))
+        ZeroClawService.log("OFFLINE-2P: ✓ web_search ${searchResult.content.length} chars")
+        ZeroClawService.logDetail("Search result:\n${searchResult.content.take(500)}")
+
+        // Parse search results into structured items
+        data class SearchItem(val num: Int, val title: String, val snippet: String, val url: String)
+        val items = mutableListOf<SearchItem>()
+        val lines = searchResult.content.lines()
+        var i = 0
+        while (i < lines.size) {
+            val line = lines[i].trim()
+            val numMatch = Regex("^(\\d+)\\.\\s+(.+)$").find(line)
+            if (numMatch != null) {
+                val num = numMatch.groupValues[1].toIntOrNull() ?: 0
+                val title = numMatch.groupValues[2].trim()
+                var snippet = ""
+                var url = ""
+                if (i + 1 < lines.size && !lines[i + 1].trim().startsWith("URL:") && lines[i + 1].trim().isNotBlank()) {
+                    snippet = lines[i + 1].trim(); i++
+                }
+                if (i + 1 < lines.size && lines[i + 1].trim().startsWith("URL:")) {
+                    url = lines[i + 1].trim().removePrefix("URL:").trim(); i++
+                }
+                if (title.isNotBlank()) items.add(SearchItem(num, title, snippet, url))
+            }
+            i++
+        }
+
+        // Fetch top URL for richer content
+        var fetchContent = ""
+        val topUrl = items.firstOrNull { it.url.isNotBlank() }?.url
+        if (topUrl != null) {
+            ZeroClawService.log("OFFLINE-2P: fetching $topUrl")
+            val fetchResult = toolSystem.executeToolDirect(
+                ToolCall("2p_fetch", "web_fetch", mapOf("url" to topUrl))
             )
-            if (sumResult.success && sumResult.content.isNotBlank()) {
-                ZeroClawService.log("OFFLINE-2P: ✓ summarized to ${sumResult.content.length} chars")
-                ZeroClawService.logDetail("Summarized context: ${sumResult.content}")
-                sumResult.content
+            if (fetchResult.success && fetchResult.content.isNotBlank()) {
+                ZeroClawService.log("OFFLINE-2P: ✓ web_fetch ${fetchResult.content.length} chars")
+                fetchContent = fetchResult.content.lines()
+                    .map { it.trim() }
+                    .filter { it.length > 25 && !it.startsWith("http") && !it.startsWith("[") && !it.startsWith("|") }
+                    .take(5)
+                    .joinToString("\n")
+                    .take(450)
+                ZeroClawService.logDetail("Fetch excerpt: $fetchContent")
             } else {
-                ZeroClawService.logDetail("summarize failed — using raw context trimmed")
-                rawContext.take(1500)
+                ZeroClawService.logDetail("web_fetch failed: ${fetchResult.error}")
             }
-        } else {
-            rawContext.take(1500)
         }
 
-        // Natural RAG-style prompt — no robotic "Based on facts given" forcing
+        // Build the direct, formatted reply
         return buildString {
-            appendLine("Here is current information retrieved from the web (as of $currentDateTime):")
+            appendLine("🔍 Here's what I found (${currentDateTime}):")
             appendLine()
-            appendLine(finalContext)
-            appendLine()
-            append("$userMessage")
+            if (fetchContent.isNotBlank()) {
+                appendLine(fetchContent)
+                appendLine()
+            }
+            if (items.isNotEmpty()) {
+                items.take(5).forEach { item ->
+                    append("${item.num}. **${item.title}**")
+                    if (item.snippet.isNotBlank()) append("\n   ${item.snippet.take(100)}")
+                    if (item.url.isNotBlank()) append("\n   ${item.url}")
+                    appendLine()
+                }
+            } else {
+                appendLine(searchResult.content.take(800))
+            }
+        }.trim()
+    }
+
+    /**
+     * Pass 2 summarizer mode: fetch web data and return a prompt that asks the model
+     * to SUMMARIZE the fetched text — not to answer a real-time question.
+     * Small models handle "summarize this text" far better than "answer from real-time data".
+     * Returns empty string if web fetch completely failed (caller falls back to direct reply).
+     */
+    private suspend fun buildPassTwoSummarizerPrompt(userMessage: String, toolSystem: ToolSystem): String {
+        val now = java.util.Date()
+        val fmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm z", java.util.Locale.ENGLISH)
+        fmt.timeZone = java.util.TimeZone.getDefault()
+        val currentDateTime = fmt.format(now)
+
+        // Date-only query — no web fetch needed, frame as simple fact
+        if (isDateTimeQuery(userMessage)) {
+            return "The current date and time is: $currentDateTime\n\nPlease tell the user today's date in a friendly way."
         }
+
+        // Clean query
+        val rawQuery = userMessage.take(200)
+        val cleanQuery = rawQuery
+            .replace(Regex("[?!]"), "")
+            .replace(Regex("^(is|are|was|were|did|do|does|can|will|has|have|what|who|when|where|why|how)\\s+", RegexOption.IGNORE_CASE), "")
+            .trim().ifBlank { rawQuery }
+
+        ZeroClawService.log("OFFLINE-SUM: searching \"${cleanQuery.take(60)}\"")
+
+        // Web search with retry
+        var searchResult = toolSystem.executeToolDirect(
+            ToolCall("sum_search", "web_search", mapOf("query" to cleanQuery))
+        )
+        if (!searchResult.success || searchResult.content.startsWith("No results")) {
+            val kw = cleanQuery.split(" ").take(5).joinToString(" ")
+            searchResult = toolSystem.executeToolDirect(
+                ToolCall("sum_retry", "web_search", mapOf("query" to kw))
+            )
+        }
+        // BraveSearch fallback
+        if (!searchResult.success || searchResult.content.isBlank() || searchResult.content.startsWith("No results")) {
+            val braveKey = AppSettings.dataStore(context).data
+                .map { it[AppSettings.KEY_BRAVE_API_KEY] ?: "" }.first()
+            if (braveKey.isNotBlank()) {
+                val br = toolSystem.executeToolDirect(
+                    ToolCall("sum_brave", "brave_search", mapOf("query" to cleanQuery, "api_key" to braveKey))
+                )
+                if (br.success && br.content.isNotBlank()) searchResult = br
+            }
+        }
+
+        if (!searchResult.success || searchResult.content.isBlank()) return ""
+
+        ZeroClawService.log("OFFLINE-SUM: ✓ search ${searchResult.content.length} chars")
+
+        // Try to fetch top URL for richer content
+        val topUrl = Regex("""URL:\s*(https?://\S+)""").find(searchResult.content)?.groupValues?.get(1)
+        var fetchText = ""
+        if (topUrl != null) {
+            val fr = toolSystem.executeToolDirect(
+                ToolCall("sum_fetch", "web_fetch", mapOf("url" to topUrl))
+            )
+            if (fr.success && fr.content.isNotBlank()) {
+                ZeroClawService.log("OFFLINE-SUM: ✓ fetch ${fr.content.length} chars")
+                fetchText = fr.content.lines()
+                    .map { it.trim() }
+                    .filter { it.length > 20 }
+                    .take(10)
+                    .joinToString("\n")
+                    .take(800)
+            }
+        }
+
+        // Build the text to give the model for summarization
+        val dataForModel = buildString {
+            appendLine("Date: $currentDateTime")
+            appendLine()
+            if (fetchText.isNotBlank()) {
+                appendLine("Web page content:")
+                appendLine(fetchText)
+                appendLine()
+            }
+            appendLine("Search results:")
+            appendLine(searchResult.content.take(800))
+        }.trim()
+
+        ZeroClawService.logDetail("OFFLINE-SUM: data for model (${dataForModel.length} chars):\n${dataForModel.take(400)}")
+
+        // Frame as summarization task — model does NOT need real-time access, just needs to summarize given text
+        return buildString {
+            appendLine("I have fetched the following information from the internet. Please read it and provide a helpful, concise summary that answers the user's question.")
+            appendLine()
+            appendLine("--- FETCHED DATA ---")
+            appendLine(dataForModel)
+            appendLine("--- END OF DATA ---")
+            appendLine()
+            append("Question: $userMessage\n\nPlease summarize the above data to answer this question:")
+        }
+    }
+
+    /** Returns true for short queries that just ask the current date or time. */
+    private fun isDateTimeQuery(message: String): Boolean {
+        val m = message.lowercase().trim()
+        return m.length < 55 &&
+            (m.contains("today") || m.contains("what day") || m.contains("what date") ||
+             m.contains("today's date") || m.contains("current date") || m.contains("what time")) &&
+            !m.contains("anime") && !m.contains("movie") && !m.contains("episode") &&
+            !m.contains("news") && !m.contains("price") && !m.contains("war") &&
+            !m.contains("score") && !m.contains("weather") && !m.contains("release") &&
+            !m.contains("schedule") && !m.contains("event")
     }
 
     private suspend fun fetchOfflineContext(userMessage: String, toolSystem: ToolSystem): String {
@@ -2060,9 +2238,14 @@ class LlmRouter(private val context: Context) {
                     val errMsg = json.optJSONObject("error")?.optString("message") ?: "HTTP $code"
                     throw Exception("[$code] $errMsg")
                 }
-                json.getJSONArray("candidates")
-                    .getJSONObject(0).getJSONObject("content")
-                    .getJSONArray("parts").getJSONObject(0).getString("text").trim()
+                val candidates = json.optJSONArray("candidates")
+                    ?: throw Exception("No candidates in response — possible safety block. Raw: ${respBody.take(300)}")
+                val candidate = candidates.optJSONObject(0)
+                    ?: throw Exception("Empty candidates array")
+                val finishReason = candidate.optString("finishReason", "")
+                val content = candidate.optJSONObject("content")
+                    ?: throw Exception("No content in candidate (finishReason=$finishReason). Raw: ${respBody.take(300)}")
+                content.getJSONArray("parts").getJSONObject(0).getString("text").trim()
             }
         }
     }
@@ -2092,7 +2275,7 @@ class LlmRouter(private val context: Context) {
 
     // ── Offline model (MediaPipe LlmInference) ──────────────────────────────
 
-    private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT): String {
+    private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT, prefill: String = ""): String {
         val manager = OfflineModelManager.getInstance(context)
         if (preferredModel.isNotBlank()) {
             val models = manager.listAppModels()
@@ -2110,8 +2293,9 @@ class LlmRouter(private val context: Context) {
                 if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
             } + "\n"
         } else ""
-        val fullPrompt = "$systemPrompt\n\n${historyText}User: $message\nAssistant:"
-        return manager.generateResponse(fullPrompt)
+        val fullPrompt = "$systemPrompt\n\n${historyText}User: $message\nAssistant:$prefill"
+        val raw = manager.generateResponse(fullPrompt)
+        return if (prefill.isNotBlank()) "$prefill$raw" else raw
     }
 
     private suspend fun validateOffline(preferredModel: String): ValidationResult {

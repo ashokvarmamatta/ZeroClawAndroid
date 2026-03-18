@@ -54,6 +54,8 @@ fun SettingsScreen(
     var lineToken by remember { mutableStateOf("") }
     var webChatEnabled by remember { mutableStateOf(false) }
     var autoStart by remember { mutableStateOf(true) }
+    var optimizePrompt by remember { mutableStateOf(false) }
+    var offlineWebSummarize by remember { mutableStateOf(true) }
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
 
@@ -84,6 +86,8 @@ fun SettingsScreen(
             lineToken = s.lineToken
             webChatEnabled = s.webChatEnabled
             autoStart = s.autoStart
+            optimizePrompt = s.optimizePrompt
+            offlineWebSummarize = s.offlineWebSummarize
         }
         val keys = keyManager.loadKeys()
         keyCount = keys.count { it.enabled }
@@ -107,7 +111,7 @@ fun SettingsScreen(
                                 zeroClawUrl, telegramToken, twilioSid,
                                 twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl,
                                 slackToken, matrixConfig, ircConfig, teamsConfig, twitchConfig,
-                                lineToken, webChatEnabled
+                                lineToken, webChatEnabled, optimizePrompt, offlineWebSummarize
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -272,6 +276,30 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = autoStart, onCheckedChange = { autoStart = it })
+                }
+            }
+            item {
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Optimize prompt before sending", fontWeight = FontWeight.Medium)
+                        Text("Summarize long messages before sending to offline model (default: off)", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = optimizePrompt, onCheckedChange = { optimizePrompt = it })
+                }
+            }
+            item {
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Summarize real-time data (offline)", fontWeight = FontWeight.Medium)
+                        Text("Fetch web data when offline model can't answer, then let the model summarize it (default: on)", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = offlineWebSummarize, onCheckedChange = { offlineWebSummarize = it })
                 }
             }
             item { SectionHeaderWithInfo("🚀 Advanced Features", "nullclaw") { onNavigateToInfo("nullclaw") } }
