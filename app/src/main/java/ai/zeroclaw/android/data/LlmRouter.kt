@@ -165,11 +165,6 @@ class LlmRouter(private val context: Context) {
             ZeroClawService.log("LLM: ${offlineKeys.size} offline key(s) only")
         }
 
-        // ── Auto-tool enrichment for offline models ──────────────────────
-        // Pre-execute tools for queries that match patterns, so offline models
-        // get real data injected into the prompt instead of saying "I can't access..."
-        var enrichedMessage: String? = null
-
         var lastRateLimitMsg = ""
 
         for (entry in orderedKeys) {
@@ -195,23 +190,24 @@ class LlmRouter(private val context: Context) {
             val provider = LlmProvider.fromId(entry.safeProvider).displayName
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
-            // For offline models, auto-enrich with tool results (lazy, runs once)
-            if (entry.safeProvider == "offline" && enrichedMessage == null) {
-                enrichedMessage = autoToolEnrich(effectiveMessage, chatId, toolSystem, isOffline = true)
+            // For offline models, fetch real-time context (date + web search) once.
+            // Injected into the SYSTEM PROMPT — user message stays clean as just the question.
+            var offlineRealTimeContext: String? = null
+            if (entry.safeProvider == "offline" && offlineRealTimeContext == null) {
+                offlineRealTimeContext = fetchOfflineContext(effectiveMessage, toolSystem)
             }
-            val messageForModel = if (entry.safeProvider == "offline") enrichedMessage!! else effectiveMessage
+            // Offline: user message is unchanged — context goes into system prompt only
+            val messageForModel = effectiveMessage
 
             var keyWorked = false
             for (model in modelsToTry) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
-                // Build the effective system prompt (base + tools + thinking)
-                // Offline models can't call tools — skip tool descriptions to prevent token overflow.
-                // Add explicit instruction to use injected real-time data so the model doesn't
-                // refuse with "I don't have real-time access".
-                val offlineRealTimeInstruction = "\n\nIMPORTANT: You have been given real-time web search results and the current date/time in the user's message. ALWAYS use that data to answer. NEVER say you cannot access real-time information or the internet — the data has already been fetched for you and is included in the message."
+                // Build the effective system prompt
+                // Offline: inject real-time context into system prompt so model treats it as
+                // ground truth, not conversation. User message stays as plain question.
                 val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
-                    basePrompt + offlineRealTimeInstruction + thinkingAddition
+                    buildOfflineSystemPrompt(basePrompt, offlineRealTimeContext, thinkingAddition)
                 } else {
                     basePrompt + toolsPrompt + thinkingAddition
                 }
@@ -370,45 +366,55 @@ class LlmRouter(private val context: Context) {
      * Returns enriched message with tool results injected so even dumb offline
      * models can answer properly. Covers ALL 11 tools.
      */
+    /**
+     * Fetch real-time context for offline models: current date/time + web search results.
+     * Returns a context string to be embedded in the system prompt (NOT the user message).
+     */
+    private suspend fun fetchOfflineContext(userMessage: String, toolSystem: ToolSystem): String {
+        val now = java.util.Date()
+        val fmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm:ss z", java.util.Locale.ENGLISH)
+        fmt.timeZone = java.util.TimeZone.getDefault()
+        val currentDateTime = fmt.format(now)
+
+        val query = userMessage.take(200)
+        ZeroClawService.log("OFFLINE-CTX: fetching context — date=$currentDateTime, query=\"${query.take(60)}\"")
+
+        val searchResult = toolSystem.executeToolDirect(
+            ToolCall("auto_search", "web_search", mapOf("query" to query))
+        )
+
+        return buildString {
+            appendLine("Today is $currentDateTime.")
+            if (searchResult.success && searchResult.content.isNotBlank()) {
+                ZeroClawService.log("OFFLINE-CTX: ✓ web_search ${searchResult.content.length} chars")
+                appendLine("Web search results:\n${searchResult.content.take(2000)}")
+            } else {
+                ZeroClawService.log("OFFLINE-CTX: web_search failed — date only")
+            }
+        }.trim()
+    }
+
+    /**
+     * Build system prompt for offline models. Real-time context is embedded here
+     * so the model treats it as ground truth, not as conversation history.
+     */
+    private fun buildOfflineSystemPrompt(base: String, context: String?, thinking: String): String {
+        val sb = StringBuilder(base)
+        if (!context.isNullOrBlank()) {
+            sb.append("\n\n--- Real-time context (use this to answer the user) ---\n")
+            sb.append(context)
+            sb.append("\n--- End context ---")
+        }
+        sb.append("\n\nAnswer the user's question directly and concisely using the context above. Do NOT say you lack real-time access or internet — all needed data is provided above.")
+        if (thinking.isNotBlank()) sb.append(thinking)
+        return sb.toString()
+    }
+
     private suspend fun autoToolEnrich(
         userMessage: String,
         chatId: String,
-        toolSystem: ToolSystem,
-        isOffline: Boolean = false
+        toolSystem: ToolSystem
     ): String {
-        // Offline mode: inject current date/time + always do web search for real-time queries.
-        if (isOffline) {
-            val now = java.util.Date()
-            val fmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm:ss z", java.util.Locale.ENGLISH)
-            fmt.timeZone = java.util.TimeZone.getDefault()
-            val currentDateTime = fmt.format(now)
-
-            val query = userMessage.take(200)
-            ZeroClawService.log("AUTO-TOOL: [offline] injecting date=$currentDateTime, web searching: \"${query.take(60)}\"")
-
-            // Always use executeToolDirect — bypasses enabled check so web_search works
-            // even if user hasn't explicitly enabled it in Settings
-            val searchResult = toolSystem.executeToolDirect(
-                ToolCall("auto_search", "web_search", mapOf("query" to query))
-            )
-
-            val context = buildString {
-                appendLine("=== REAL-TIME DATA (use this to answer — do NOT say you lack real-time access) ===")
-                appendLine("Current date and time: $currentDateTime")
-                if (searchResult.success && searchResult.content.isNotBlank()) {
-                    ZeroClawService.log("AUTO-TOOL: ✓ web_search returned ${searchResult.content.length} chars for offline model")
-                    appendLine("Web search results for \"$query\":")
-                    append(searchResult.content.take(2000))
-                } else {
-                    ZeroClawService.log("AUTO-TOOL: web_search failed for offline — date injected only")
-                }
-                appendLine()
-                appendLine("=== END REAL-TIME DATA ===")
-                appendLine("Answer the following question using the real-time data above:")
-            }
-            return "$context\n$userMessage"
-        }
-
         val msg = userMessage.lowercase().trim()
         val toolCalls = mutableListOf<ToolCall>()
 
