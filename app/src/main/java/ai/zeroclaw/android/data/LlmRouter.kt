@@ -197,7 +197,7 @@ class LlmRouter(private val context: Context) {
 
             // For offline models, auto-enrich with tool results (lazy, runs once)
             if (entry.safeProvider == "offline" && enrichedMessage == null) {
-                enrichedMessage = autoToolEnrich(effectiveMessage, chatId, toolSystem)
+                enrichedMessage = autoToolEnrich(effectiveMessage, chatId, toolSystem, isOffline = true)
             }
             val messageForModel = if (entry.safeProvider == "offline") enrichedMessage!! else effectiveMessage
 
@@ -206,7 +206,12 @@ class LlmRouter(private val context: Context) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
                 // Build the effective system prompt (base + tools + thinking)
-                val effectiveSystemPrompt = basePrompt + toolsPrompt + thinkingAddition
+                // Offline models can't call tools — skip tool descriptions to prevent token overflow
+                val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
+                    basePrompt + thinkingAddition
+                } else {
+                    basePrompt + toolsPrompt + thinkingAddition
+                }
 
                 val result = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
 
@@ -365,8 +370,23 @@ class LlmRouter(private val context: Context) {
     private suspend fun autoToolEnrich(
         userMessage: String,
         chatId: String,
-        toolSystem: ToolSystem
+        toolSystem: ToolSystem,
+        isOffline: Boolean = false
     ): String {
+        // Offline mode: always do web search + return. No keyword detection needed.
+        if (isOffline) {
+            val query = userMessage.take(200)
+            ZeroClawService.log("AUTO-TOOL: [offline] always web searching: \"${query.take(60)}...\"")
+            val result = toolSystem.executeTool(ToolCall("auto_search", "web_search", mapOf("query" to query)))
+            return if (result.success && result.content.isNotBlank()) {
+                ZeroClawService.log("AUTO-TOOL: ✓ web_search returned ${result.content.length} chars for offline model")
+                "$userMessage\n\n[Web search results — use this to answer the user naturally:]\n${result.content.take(2000)}"
+            } else {
+                ZeroClawService.log("AUTO-TOOL: web_search failed for offline — sending plain message")
+                userMessage
+            }
+        }
+
         val msg = userMessage.lowercase().trim()
         val toolCalls = mutableListOf<ToolCall>()
 
