@@ -116,6 +116,13 @@ class LlmRouter(private val context: Context) {
         val (routingHint, cleanMessage) = ProviderRouter.extractHint(userMessage)
         val effectiveMessage = cleanMessage
 
+        // Clear detail log and record this new user turn
+        ZeroClawService.clearDetailLog()
+        ZeroClawService.logDetail("━━━ USER INPUT ━━━")
+        ZeroClawService.logDetail("Chat: $chatId")
+        ZeroClawService.logDetail("Message: $effectiveMessage")
+        if (routingHint != null) ZeroClawService.logDetail("Routing hint: $routingHint")
+
         // Record user message in history (use cleaned message without hint prefix)
         addToHistory(chatId, "user", effectiveMessage)
 
@@ -202,25 +209,43 @@ class LlmRouter(private val context: Context) {
                     basePrompt + toolsPrompt + thinkingAddition
                 }
 
+                ZeroClawService.logDetail("━━━ PASS 1 — SENDING TO MODEL ━━━")
+                ZeroClawService.logDetail("Provider: $provider | Model: $model | Key: ${entry.safeLabel}")
+                ZeroClawService.logDetail("System prompt (${effectiveSystemPrompt.length} chars): ${effectiveSystemPrompt.take(300)}…")
+                ZeroClawService.logDetail("User message sent: $messageForModel")
+
                 val result = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
 
                 when {
                     result.isSuccess -> {
                         var reply = result.getOrNull() ?: ""
                         if (reply.isNotBlank()) {
+                            ZeroClawService.logDetail("━━━ PASS 1 — MODEL REPLY ━━━")
+                            ZeroClawService.logDetail("Reply (${reply.length} chars): ${reply.take(500)}")
+
                             // ── Offline two-pass: detect real-time refusal → fetch → re-ask ──
                             if (entry.safeProvider == "offline" && isRealTimeRefusal(reply)) {
                                 ZeroClawService.log("OFFLINE: real-time refusal detected — fetching web data for second pass")
+                                ZeroClawService.logDetail("━━━ REFUSAL DETECTED — STARTING PASS 2 ━━━")
+                                ZeroClawService.logDetail("Refusal snippet: ${reply.take(200)}")
+
                                 val enriched = buildOfflineSecondPassMessage(effectiveMessage, toolSystem)
+
+                                ZeroClawService.logDetail("━━━ PASS 2 — SENDING ENRICHED MESSAGE ━━━")
+                                ZeroClawService.logDetail("Enriched message (${enriched.length} chars): ${enriched.take(600)}")
+
                                 val secondResult = runCatching {
                                     dispatchToProvider(enriched, entry, chatId, model, effectiveSystemPrompt)
                                 }
                                 val secondReply = secondResult.getOrNull()
                                 if (!secondReply.isNullOrBlank()) {
                                     ZeroClawService.log("OFFLINE: ✓ second pass reply (${secondReply.length} chars)")
+                                    ZeroClawService.logDetail("━━━ PASS 2 — MODEL REPLY ━━━")
+                                    ZeroClawService.logDetail("Reply (${secondReply.length} chars): ${secondReply.take(500)}")
                                     reply = secondReply
                                 } else {
                                     ZeroClawService.log("OFFLINE: second pass failed — using first reply")
+                                    ZeroClawService.logDetail("Pass 2 failed — falling back to pass 1 reply")
                                 }
                             }
 
@@ -237,6 +262,8 @@ class LlmRouter(private val context: Context) {
                             }
 
                             ZeroClawService.log("LLM: ✓ [$mode] reply from key=\"${entry.safeLabel}\" model=\"$model\" ($provider)")
+                            ZeroClawService.logDetail("━━━ FINAL REPLY TO USER ━━━")
+                            ZeroClawService.logDetail(reply)
                             addToHistory(chatId, "assistant", reply)
                             return reply
                         }
@@ -420,11 +447,13 @@ class LlmRouter(private val context: Context) {
         // web_search
         if (toolSystem.isEnabled("web_search")) {
             ZeroClawService.log("OFFLINE-2P: running web_search for \"${userMessage.take(60)}\"")
+            ZeroClawService.logDetail("Tool: web_search | Query: ${userMessage.take(200)}")
             val searchResult = toolSystem.executeTool(
                 ToolCall("2p_search", "web_search", mapOf("query" to userMessage.take(200)))
             )
             if (searchResult.success && searchResult.content.isNotBlank()) {
                 ZeroClawService.log("OFFLINE-2P: ✓ web_search ${searchResult.content.length} chars")
+                ZeroClawService.logDetail("web_search result (${searchResult.content.length} chars): ${searchResult.content.take(400)}")
                 sb.appendLine("Web search results:")
                 sb.appendLine(searchResult.content.take(1500))
 
@@ -433,31 +462,44 @@ class LlmRouter(private val context: Context) {
                     val firstUrl = Regex("""URL:\s*(https?://\S+)""").find(searchResult.content)?.groupValues?.get(1)
                     if (firstUrl != null) {
                         ZeroClawService.log("OFFLINE-2P: fetching $firstUrl")
+                        ZeroClawService.logDetail("Tool: web_fetch | URL: $firstUrl")
                         val fetchResult = toolSystem.executeTool(
                             ToolCall("2p_fetch", "web_fetch", mapOf("url" to firstUrl))
                         )
                         if (fetchResult.success && fetchResult.content.isNotBlank()) {
                             ZeroClawService.log("OFFLINE-2P: ✓ web_fetch ${fetchResult.content.length} chars")
+                            ZeroClawService.logDetail("web_fetch result (${fetchResult.content.length} chars): ${fetchResult.content.take(400)}")
                             sb.appendLine()
                             sb.appendLine("Detailed content from top result:")
                             sb.appendLine(fetchResult.content.take(1500))
+                        } else {
+                            ZeroClawService.logDetail("web_fetch failed: ${fetchResult.error}")
                         }
+                    } else {
+                        ZeroClawService.logDetail("web_fetch skipped: no URL found in search results")
                     }
+                } else {
+                    ZeroClawService.logDetail("web_fetch skipped: not enabled")
                 }
             } else {
                 ZeroClawService.log("OFFLINE-2P: web_search failed — ${searchResult.error}")
+                ZeroClawService.logDetail("web_search failed: ${searchResult.error}")
             }
+        } else {
+            ZeroClawService.logDetail("web_search skipped: not enabled")
         }
 
         // summarize tool to condense if too long
         val rawContext = sb.toString()
         val finalContext = if (toolSystem.isEnabled("summarize") && rawContext.length > 2000) {
             ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars of context")
+            ZeroClawService.logDetail("Tool: summarize | Input: ${rawContext.length} chars")
             val sumResult = toolSystem.executeTool(
                 ToolCall("2p_sum", "summarize", mapOf("text" to rawContext, "sentences" to "10"))
             )
             if (sumResult.success && sumResult.content.isNotBlank()) {
                 ZeroClawService.log("OFFLINE-2P: ✓ summarized to ${sumResult.content.length} chars")
+                ZeroClawService.logDetail("summarize result (${sumResult.content.length} chars): ${sumResult.content.take(300)}")
                 sumResult.content
             } else rawContext
         } else rawContext

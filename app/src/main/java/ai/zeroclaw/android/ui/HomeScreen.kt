@@ -36,6 +36,7 @@ fun HomeScreen(
     var isServiceRunning by remember { mutableStateOf(false) }
     var tunnelUrl by remember { mutableStateOf("Not started") }
     var statusLogs by remember { mutableStateOf(listOf("ZeroClaw ready. Tap Start.")) }
+    var detailLogs by remember { mutableStateOf(listOf<String>()) }
     var telegramStatus by remember { mutableStateOf(false) }
     var whatsappStatus by remember { mutableStateOf(false) }
     var discordStatus by remember { mutableStateOf(false) }
@@ -52,6 +53,7 @@ fun HomeScreen(
             tunnelUrl          = ZeroClawService.tunnelUrl ?: "Not connected"
             val newLogs        = ZeroClawService.recentLogs.toList()
             if (newLogs.isNotEmpty()) statusLogs = newLogs
+            detailLogs = ZeroClawService.conversationLogs.toList()
             telegramStatus     = ZeroClawService.telegramConnected
             whatsappStatus     = ZeroClawService.whatsappConnected
             discordStatus      = ZeroClawService.discordConnected
@@ -125,6 +127,7 @@ fun HomeScreen(
                 )
             }
             item { LogCard(statusLogs) }
+            item { DetailedLogCard(detailLogs) }
         }
     }
 }
@@ -373,6 +376,60 @@ fun LogCard(logs: List<String>) {
                 Text("› $log", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 1.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailedLogCard(logs: List<String>) {
+    var expanded by remember { mutableStateOf(false) }
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Header — tap to expand/collapse
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Detailed Operation Log", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(
+                        if (logs.isEmpty()) "No activity yet" else "${logs.size} entries — last conversation trace",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (expanded) {
+                Spacer(Modifier.height(8.dp))
+                if (logs.isEmpty()) {
+                    Text("Send a message to see the full operation trace here.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    logs.forEach { entry ->
+                        val isSectionHeader = entry.contains("━━━")
+                        Text(
+                            entry,
+                            fontSize = if (isSectionHeader) 11.sp else 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = if (isSectionHeader) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSectionHeader)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 1.dp)
+                        )
+                    }
+                }
             }
         }
     }
