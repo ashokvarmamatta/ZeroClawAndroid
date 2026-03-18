@@ -533,22 +533,38 @@ class LlmRouter(private val context: Context) {
             ZeroClawService.logDetail("web_search skipped: not enabled")
         }
 
-        // summarize tool to condense if too long
+        // Always summarize — extract the most relevant sentences for the user's question.
+        // This distills raw news text into clear facts that even a small 2B model can use.
         val rawContext = sb.toString()
-        val finalContext = if (toolSystem.isEnabled("summarize") && rawContext.length > 2000) {
-            ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars of context")
-            ZeroClawService.logDetail("Tool: summarize | Input: ${rawContext.length} chars")
+        val finalContext = if (rawContext.isNotBlank() && toolSystem.isEnabled("summarize")) {
+            ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars → key facts")
+            ZeroClawService.logDetail("Tool: summarize | Input: ${rawContext.length} chars | Topic: $userMessage")
+            // Include user question in text so summarizer picks the most relevant sentences
+            val textForSummary = "Topic: $userMessage\n\n$rawContext"
             val sumResult = toolSystem.executeTool(
-                ToolCall("2p_sum", "summarize", mapOf("text" to rawContext, "sentences" to "10"))
+                ToolCall("2p_sum", "summarize", mapOf("text" to textForSummary, "sentences" to "7"))
             )
             if (sumResult.success && sumResult.content.isNotBlank()) {
                 ZeroClawService.log("OFFLINE-2P: ✓ summarized to ${sumResult.content.length} chars")
-                ZeroClawService.logDetail("summarize result (${sumResult.content.length} chars): ${sumResult.content.take(300)}")
+                ZeroClawService.logDetail("Summarized facts: ${sumResult.content}")
                 sumResult.content
-            } else rawContext
-        } else rawContext
+            } else {
+                ZeroClawService.logDetail("summarize failed — using raw context")
+                rawContext.take(2000)
+            }
+        } else {
+            rawContext.take(2000)
+        }
 
-        return "Using the following real-time data, answer this question: $userMessage\n\nData:\n$finalContext\n\nAnswer directly and concisely based on the data above."
+        // Format as confirmed facts so even small models can't ignore the data
+        return buildString {
+            appendLine("CONFIRMED FACTS from live web search (as of $currentDateTime):")
+            appendLine(finalContext)
+            appendLine()
+            appendLine("Using ONLY the confirmed facts above, answer this question: $userMessage")
+            appendLine("Start your answer by directly stating what the facts say. Do not say you lack real-time access.")
+            append("Assistant:")
+        }
     }
 
     private suspend fun fetchOfflineContext(userMessage: String, toolSystem: ToolSystem): String {
