@@ -77,6 +77,7 @@ class AppSettings(private val context: Context) {
         val KEY_PUSHOVER_USER_KEY = stringPreferencesKey("pushover_user_key")
         val KEY_MATTERMOST_CONFIG = stringPreferencesKey("mattermost_config")
         val KEY_DINGTALK_CONFIG = stringPreferencesKey("dingtalk_config")
+        val KEY_BRAVE_API_KEY = stringPreferencesKey("brave_api_key")
     }
 
     suspend fun getAll(): SettingsData {

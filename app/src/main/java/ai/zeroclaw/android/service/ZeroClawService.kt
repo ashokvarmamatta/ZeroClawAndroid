@@ -80,6 +80,7 @@ class ZeroClawService : Service() {
 
         fun log(msg: String) {
             val entry = "[${timeStr()}] $msg"
+            android.util.Log.i("ZeroClaw", msg)
             synchronized(recentLogs) {
                 if (recentLogs.size >= 50) recentLogs.removeFirst()
                 recentLogs.addLast(entry)
@@ -89,6 +90,7 @@ class ZeroClawService : Service() {
         /** Append a detailed trace entry for the current conversation operation. */
         fun logDetail(msg: String) {
             val entry = "[${timeStr()}] $msg"
+            android.util.Log.d("ZeroClaw.Detail", msg)
             synchronized(conversationLogs) {
                 if (conversationLogs.size >= 200) conversationLogs.removeFirst()
                 conversationLogs.addLast(entry)
@@ -97,6 +99,7 @@ class ZeroClawService : Service() {
 
         /** Clear detailed log — called at start of each new user message. */
         fun clearDetailLog() {
+            android.util.Log.d("ZeroClaw.Detail", "━━━ NEW CONVERSATION TURN — LOG CLEARED ━━━")
             synchronized(conversationLogs) { conversationLogs.clear() }
         }
 

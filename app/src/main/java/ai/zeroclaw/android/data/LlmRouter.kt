@@ -10,6 +10,8 @@ import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolCall
 import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -467,6 +469,30 @@ class LlmRouter(private val context: Context) {
                 searchResult = toolSystem.executeTool(
                     ToolCall("2p_search_retry", "web_search", mapOf("query" to keywordQuery))
                 )
+            }
+
+            // BraveSearch fallback if DDG failed
+            val ddgFailed = !searchResult.success || searchResult.content.startsWith("No results") || searchResult.content.isBlank()
+            if (ddgFailed && toolSystem.isEnabled("brave_search")) {
+                val braveKey = AppSettings.dataStore(context).data
+                    .map { it[AppSettings.KEY_BRAVE_API_KEY] ?: "" }
+                    .first()
+                if (braveKey.isNotBlank()) {
+                    ZeroClawService.log("OFFLINE-2P: DDG failed — trying BraveSearch fallback")
+                    ZeroClawService.logDetail("DDG failed — trying BraveSearch | key=${braveKey.take(8)}…")
+                    val braveResult = toolSystem.executeTool(
+                        ToolCall("2p_brave", "brave_search", mapOf("query" to cleanQuery, "api_key" to braveKey))
+                    )
+                    if (braveResult.success && braveResult.content.isNotBlank()) {
+                        ZeroClawService.log("OFFLINE-2P: ✓ BraveSearch ${braveResult.content.length} chars")
+                        ZeroClawService.logDetail("BraveSearch result (${braveResult.content.length} chars): ${braveResult.content.take(400)}")
+                        searchResult = braveResult
+                    } else {
+                        ZeroClawService.logDetail("BraveSearch also failed: ${braveResult.error}")
+                    }
+                } else {
+                    ZeroClawService.logDetail("BraveSearch skipped: no API key configured (add in Settings)")
+                }
             }
 
             if (searchResult.success && searchResult.content.isNotBlank() && !searchResult.content.startsWith("No results")) {
