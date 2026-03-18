@@ -359,4 +359,23 @@ class ToolSystem private constructor(private val context: Context) {
         }
     }
 
+    /** Execute a tool directly, bypassing the enabled check. Used for internal auto-enrichment. */
+    suspend fun executeToolDirect(call: ToolCall): ToolResult {
+        val tool = tools[call.name]
+            ?: return ToolResult(false, "", "Unknown tool: ${call.name}")
+        ZeroClawService.log("TOOL: [direct] executing ${call.name}(${call.args})")
+        return try {
+            val result = tool.execute(call.args)
+            if (result.success) {
+                ZeroClawService.log("TOOL: ✓ [direct] ${call.name} returned ${result.content.length} chars")
+            } else {
+                ZeroClawService.log("TOOL: ✗ [direct] ${call.name} failed — ${result.error}")
+            }
+            result
+        } catch (e: Exception) {
+            ZeroClawService.log("TOOL: ✗ [direct] ${call.name} exception — ${e.message}")
+            ToolResult(false, "", e.message ?: "Tool execution failed")
+        }
+    }
+
 }
