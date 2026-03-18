@@ -191,13 +191,17 @@ class LlmRouter(private val context: Context) {
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
             // For offline models, fetch real-time context (date + web search) once.
-            // Injected into the SYSTEM PROMPT — user message stays clean as just the question.
+            // Injected into BOTH system prompt AND user message so even small dumb models
+            // that ignore system prompts still see the data right before the question.
             var offlineRealTimeContext: String? = null
             if (entry.safeProvider == "offline" && offlineRealTimeContext == null) {
                 offlineRealTimeContext = fetchOfflineContext(effectiveMessage, toolSystem)
             }
-            // Offline: user message is unchanged — context goes into system prompt only
-            val messageForModel = effectiveMessage
+            val messageForModel = if (entry.safeProvider == "offline" && !offlineRealTimeContext.isNullOrBlank()) {
+                "[Reference data for answering — do not say you lack real-time access]:\n$offlineRealTimeContext\n\nQuestion: $effectiveMessage"
+            } else {
+                effectiveMessage
+            }
 
             var keyWorked = false
             for (model in modelsToTry) {
