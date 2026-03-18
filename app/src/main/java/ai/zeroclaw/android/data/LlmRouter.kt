@@ -190,28 +190,14 @@ class LlmRouter(private val context: Context) {
             val provider = LlmProvider.fromId(entry.safeProvider).displayName
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
 
-            // For offline models, fetch real-time context (date + web search) once.
-            // Injected into BOTH system prompt AND user message so even small dumb models
-            // that ignore system prompts still see the data right before the question.
-            var offlineRealTimeContext: String? = null
-            if (entry.safeProvider == "offline" && offlineRealTimeContext == null) {
-                offlineRealTimeContext = fetchOfflineContext(effectiveMessage, toolSystem)
-            }
-            val messageForModel = if (entry.safeProvider == "offline" && !offlineRealTimeContext.isNullOrBlank()) {
-                "[Reference data for answering — do not say you lack real-time access]:\n$offlineRealTimeContext\n\nQuestion: $effectiveMessage"
-            } else {
-                effectiveMessage
-            }
+            val messageForModel = effectiveMessage
 
             var keyWorked = false
             for (model in modelsToTry) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
-                // Build the effective system prompt
-                // Offline: inject real-time context into system prompt so model treats it as
-                // ground truth, not conversation. User message stays as plain question.
                 val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
-                    buildOfflineSystemPrompt(basePrompt, offlineRealTimeContext, thinkingAddition)
+                    basePrompt + thinkingAddition
                 } else {
                     basePrompt + toolsPrompt + thinkingAddition
                 }
@@ -222,6 +208,22 @@ class LlmRouter(private val context: Context) {
                     result.isSuccess -> {
                         var reply = result.getOrNull() ?: ""
                         if (reply.isNotBlank()) {
+                            // ── Offline two-pass: detect real-time refusal → fetch → re-ask ──
+                            if (entry.safeProvider == "offline" && isRealTimeRefusal(reply)) {
+                                ZeroClawService.log("OFFLINE: real-time refusal detected — fetching web data for second pass")
+                                val enriched = buildOfflineSecondPassMessage(effectiveMessage, toolSystem)
+                                val secondResult = runCatching {
+                                    dispatchToProvider(enriched, entry, chatId, model, effectiveSystemPrompt)
+                                }
+                                val secondReply = secondResult.getOrNull()
+                                if (!secondReply.isNullOrBlank()) {
+                                    ZeroClawService.log("OFFLINE: ✓ second pass reply (${secondReply.length} chars)")
+                                    reply = secondReply
+                                } else {
+                                    ZeroClawService.log("OFFLINE: second pass failed — using first reply")
+                                }
+                            }
+
                             // ── Tool call loop ──────────────────────────────
                             reply = handleToolCalls(reply, entry, chatId, model, effectiveSystemPrompt, toolSystem)
 
@@ -374,6 +376,95 @@ class LlmRouter(private val context: Context) {
      * Fetch real-time context for offline models: current date/time + web search results.
      * Returns a context string to be embedded in the system prompt (NOT the user message).
      */
+    /** Detect when an offline model refused because it thinks it has no real-time access. */
+    private fun isRealTimeRefusal(reply: String): Boolean {
+        val r = reply.lowercase()
+        return r.contains("don't have access to real-time") ||
+               r.contains("do not have access to real-time") ||
+               r.contains("cannot access real-time") ||
+               r.contains("can't access real-time") ||
+               r.contains("no access to real-time") ||
+               r.contains("don't have real-time") ||
+               r.contains("do not have real-time") ||
+               r.contains("cannot provide real-time") ||
+               r.contains("can't provide real-time") ||
+               r.contains("don't have access to the internet") ||
+               r.contains("do not have access to the internet") ||
+               r.contains("cannot access the internet") ||
+               r.contains("no internet access") ||
+               r.contains("i'm not able to browse") ||
+               r.contains("i am not able to browse") ||
+               r.contains("unable to browse") ||
+               r.contains("cannot browse") ||
+               r.contains("can't browse") ||
+               r.contains("my knowledge cutoff") ||
+               r.contains("my training data") ||
+               r.contains("as of my last update") ||
+               r.contains("as of my knowledge")
+    }
+
+    /**
+     * Second-pass message for offline: fetch web search + web_fetch + summarize,
+     * then ask the model to answer using that data.
+     */
+    private suspend fun buildOfflineSecondPassMessage(userMessage: String, toolSystem: ToolSystem): String {
+        val now = java.util.Date()
+        val fmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm z", java.util.Locale.ENGLISH)
+        fmt.timeZone = java.util.TimeZone.getDefault()
+        val currentDateTime = fmt.format(now)
+
+        val sb = StringBuilder()
+        sb.appendLine("Current date and time: $currentDateTime")
+        sb.appendLine()
+
+        // web_search
+        if (toolSystem.isEnabled("web_search")) {
+            ZeroClawService.log("OFFLINE-2P: running web_search for \"${userMessage.take(60)}\"")
+            val searchResult = toolSystem.executeTool(
+                ToolCall("2p_search", "web_search", mapOf("query" to userMessage.take(200)))
+            )
+            if (searchResult.success && searchResult.content.isNotBlank()) {
+                ZeroClawService.log("OFFLINE-2P: ✓ web_search ${searchResult.content.length} chars")
+                sb.appendLine("Web search results:")
+                sb.appendLine(searchResult.content.take(1500))
+
+                // web_fetch the first URL
+                if (toolSystem.isEnabled("web_fetch")) {
+                    val firstUrl = Regex("""URL:\s*(https?://\S+)""").find(searchResult.content)?.groupValues?.get(1)
+                    if (firstUrl != null) {
+                        ZeroClawService.log("OFFLINE-2P: fetching $firstUrl")
+                        val fetchResult = toolSystem.executeTool(
+                            ToolCall("2p_fetch", "web_fetch", mapOf("url" to firstUrl))
+                        )
+                        if (fetchResult.success && fetchResult.content.isNotBlank()) {
+                            ZeroClawService.log("OFFLINE-2P: ✓ web_fetch ${fetchResult.content.length} chars")
+                            sb.appendLine()
+                            sb.appendLine("Detailed content from top result:")
+                            sb.appendLine(fetchResult.content.take(1500))
+                        }
+                    }
+                }
+            } else {
+                ZeroClawService.log("OFFLINE-2P: web_search failed — ${searchResult.error}")
+            }
+        }
+
+        // summarize tool to condense if too long
+        val rawContext = sb.toString()
+        val finalContext = if (toolSystem.isEnabled("summarize") && rawContext.length > 2000) {
+            ZeroClawService.log("OFFLINE-2P: summarizing ${rawContext.length} chars of context")
+            val sumResult = toolSystem.executeTool(
+                ToolCall("2p_sum", "summarize", mapOf("text" to rawContext, "sentences" to "10"))
+            )
+            if (sumResult.success && sumResult.content.isNotBlank()) {
+                ZeroClawService.log("OFFLINE-2P: ✓ summarized to ${sumResult.content.length} chars")
+                sumResult.content
+            } else rawContext
+        } else rawContext
+
+        return "Using the following real-time data, answer this question: $userMessage\n\nData:\n$finalContext\n\nAnswer directly and concisely based on the data above."
+    }
+
     private suspend fun fetchOfflineContext(userMessage: String, toolSystem: ToolSystem): String {
         val now = java.util.Date()
         val fmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm:ss z", java.util.Locale.ENGLISH)
