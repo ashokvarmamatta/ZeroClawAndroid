@@ -446,12 +446,30 @@ class LlmRouter(private val context: Context) {
 
         // web_search
         if (toolSystem.isEnabled("web_search")) {
-            ZeroClawService.log("OFFLINE-2P: running web_search for \"${userMessage.take(60)}\"")
-            ZeroClawService.logDetail("Tool: web_search | Query: ${userMessage.take(200)}")
-            val searchResult = toolSystem.executeTool(
-                ToolCall("2p_search", "web_search", mapOf("query" to userMessage.take(200)))
+            // Clean query: remove ?, !, leading question words that confuse search engines
+            val rawQuery = userMessage.take(200)
+            val cleanQuery = rawQuery
+                .replace(Regex("[?!]"), "")
+                .replace(Regex("^(is|are|was|were|did|do|does|can|will|has|have|what|who|when|where|why|how)\\s+", RegexOption.IGNORE_CASE), "")
+                .trim()
+                .ifBlank { rawQuery }
+            ZeroClawService.log("OFFLINE-2P: web_search query: \"${cleanQuery.take(60)}\"")
+            ZeroClawService.logDetail("Tool: web_search | Query: $cleanQuery")
+
+            var searchResult = toolSystem.executeTool(
+                ToolCall("2p_search", "web_search", mapOf("query" to cleanQuery))
             )
-            if (searchResult.success && searchResult.content.isNotBlank()) {
+            // Retry with keyword-only query if first attempt returns no results
+            val noResults = !searchResult.success || searchResult.content.startsWith("No results")
+            if (noResults) {
+                val keywordQuery = cleanQuery.split(" ").take(5).joinToString(" ")
+                ZeroClawService.logDetail("web_search no results — retrying with keywords: $keywordQuery")
+                searchResult = toolSystem.executeTool(
+                    ToolCall("2p_search_retry", "web_search", mapOf("query" to keywordQuery))
+                )
+            }
+
+            if (searchResult.success && searchResult.content.isNotBlank() && !searchResult.content.startsWith("No results")) {
                 ZeroClawService.log("OFFLINE-2P: ✓ web_search ${searchResult.content.length} chars")
                 ZeroClawService.logDetail("web_search result (${searchResult.content.length} chars): ${searchResult.content.take(400)}")
                 sb.appendLine("Web search results:")
