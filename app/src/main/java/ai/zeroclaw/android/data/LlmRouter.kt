@@ -206,9 +206,12 @@ class LlmRouter(private val context: Context) {
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
                 // Build the effective system prompt (base + tools + thinking)
-                // Offline models can't call tools — skip tool descriptions to prevent token overflow
+                // Offline models can't call tools — skip tool descriptions to prevent token overflow.
+                // Add explicit instruction to use injected real-time data so the model doesn't
+                // refuse with "I don't have real-time access".
+                val offlineRealTimeInstruction = "\n\nIMPORTANT: You have been given real-time web search results and the current date/time in the user's message. ALWAYS use that data to answer. NEVER say you cannot access real-time information or the internet — the data has already been fetched for you and is included in the message."
                 val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
-                    basePrompt + thinkingAddition
+                    basePrompt + offlineRealTimeInstruction + thinkingAddition
                 } else {
                     basePrompt + toolsPrompt + thinkingAddition
                 }
@@ -390,16 +393,20 @@ class LlmRouter(private val context: Context) {
             )
 
             val context = buildString {
-                appendLine("[Current date and time: $currentDateTime]")
+                appendLine("=== REAL-TIME DATA (use this to answer — do NOT say you lack real-time access) ===")
+                appendLine("Current date and time: $currentDateTime")
                 if (searchResult.success && searchResult.content.isNotBlank()) {
                     ZeroClawService.log("AUTO-TOOL: ✓ web_search returned ${searchResult.content.length} chars for offline model")
-                    appendLine("[Web search results — use this to answer the user naturally:]")
+                    appendLine("Web search results for \"$query\":")
                     append(searchResult.content.take(2000))
                 } else {
                     ZeroClawService.log("AUTO-TOOL: web_search failed for offline — date injected only")
                 }
+                appendLine()
+                appendLine("=== END REAL-TIME DATA ===")
+                appendLine("Answer the following question using the real-time data above:")
             }
-            return "$userMessage\n\n$context"
+            return "$context\n$userMessage"
         }
 
         val msg = userMessage.lowercase().trim()
