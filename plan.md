@@ -498,6 +498,51 @@ data class ApiKeyEntry(
 
 ---
 
+## 🤖 Phase 160+ — Agents System
+
+### Phase 160 — Web Scraper Agent (branch: `agents-feature`) ✅ DONE
+First autonomous agent type. User creates an agent that watches a URL and pushes updates to a chosen channel.
+
+**Architecture:**
+```
+AgentManager (SharedPreferences)
+    └── AgentConfig (id, name, type, url, interval, channel, chatId, extractPrompt, onlyOnChange)
+
+ZeroClawService polling loop (every 60s)
+    └── AgentManager.getDueAgents()
+         └── WebScraperAgent.run(agent)
+              ├── WebFetchTool.execute(url)           ← fetch page
+              ├── LlmRouter.call(extractPrompt)       ← optional AI extraction
+              ├── change detection (content hash)     ← skip if unchanged
+              └── ZeroClawService.sendProactive()     ← deliver to channel
+```
+
+**Files created:**
+- `agents/AgentConfig.kt` — data class for agent definition
+- `agents/AgentManager.kt` — CRUD + getDueAgents() + markRun()
+- `agents/WebScraperAgent.kt` — scrape → extract → detect change → deliver
+- `ui/AgentsScreen.kt` — list agents (summary banner, agent cards with status/last-run)
+- `ui/AgentCreateSheet.kt` — create/edit form (URL, interval presets, channel selector, extract prompt templates)
+- `ZeroClawService.kt` — added agent polling coroutine alongside cron loop
+- `MainActivity.kt` — added `agents` nav route
+- `HomeScreen.kt` — added 🤖 SmartToy icon button in TopAppBar → Agents screen
+
+**Supported delivery channels:** Telegram, Discord, Slack, WhatsApp, Email
+**Supported intervals:** 15m / 30m / 1h / 6h / 12h / 24h (or custom, min 5m)
+**Change detection:** SHA hash of fetched content — only pushes if page actually changed (configurable)
+**AI extraction:** Optional extract prompt passed to LlmRouter — e.g. "extract top 5 headlines"
+
+### Phase 161 — RSS Monitor Agent (planned)
+Auto-detect RSS feed from URL, only push new items since last run.
+
+### Phase 162 — Price Tracker Agent (planned)
+Extract a price from a page using regex + LLM, alert only when price drops below threshold.
+
+### Phase 163 — Social Feed Agent (planned)
+Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
+
+---
+
 ## 🐛 Bug Log (Summary)
 > Full details, root causes, and lessons in [BUGS.md](BUGS.md)
 

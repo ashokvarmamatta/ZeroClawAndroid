@@ -15,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ai.zeroclaw.android.data.ThemeManager
+import ai.zeroclaw.android.ui.AgentsScreen
 import ai.zeroclaw.android.ui.AiToolsScreen
 import ai.zeroclaw.android.ui.ApiKeysScreen
 import ai.zeroclaw.android.ui.HomeScreen
@@ -51,7 +52,8 @@ fun ZeroClawNavHost() {
             HomeScreen(
                 onNavigateToSettings   = { navController.navigate("settings") },
                 onNavigateToInfo       = { navController.navigate("info") },
-                onNavigateToPlayground = { navController.navigate("tool_playground") }
+                onNavigateToPlayground = { navController.navigate("tool_playground") },
+                onNavigateToAgents     = { navController.navigate("agents") }
             )
         }
 
@@ -88,6 +90,10 @@ fun ZeroClawNavHost() {
 
         composable("tool_playground") {
             ToolPlaygroundScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("agents") {
+            AgentsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

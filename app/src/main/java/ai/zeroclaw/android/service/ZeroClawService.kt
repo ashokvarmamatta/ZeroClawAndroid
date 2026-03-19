@@ -25,6 +25,8 @@ import ai.zeroclaw.android.webchat.WebChatServer
 import ai.zeroclaw.android.tunnel.TunnelManager
 import ai.zeroclaw.android.tools.CronTool
 import ai.zeroclaw.android.tools.ToolSystem
+import ai.zeroclaw.android.agents.AgentManager
+import ai.zeroclaw.android.agents.WebScraperAgent
 import kotlinx.coroutines.*
 
 class ZeroClawService : Service() {
@@ -367,6 +369,27 @@ class ZeroClawService : Service() {
                         }
                         delay(60_000L)
                     }
+                }
+            }
+
+            // Agent runner — checks due agents every 60 seconds
+            launch {
+                val agentManager = AgentManager.getInstance(this@ZeroClawService)
+                val scraper = WebScraperAgent(this@ZeroClawService)
+                while (isActive) {
+                    try {
+                        val dueAgents = agentManager.getDueAgents()
+                        for (agent in dueAgents) {
+                            log("AGENT: running '${agent.name}' [${agent.type}]")
+                            when (agent.type) {
+                                AgentManager.TYPE_WEB_SCRAPER -> scraper.run(agent)
+                                else -> log("AGENT: unknown type '${agent.type}' — skipping")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        log("AGENT: error — ${e.message}")
+                    }
+                    delay(60_000L)
                 }
             }
         }

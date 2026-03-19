@@ -29,7 +29,8 @@ import kotlinx.coroutines.delay
 fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToInfo: () -> Unit,
-    onNavigateToPlayground: () -> Unit = {}
+    onNavigateToPlayground: () -> Unit = {},
+    onNavigateToAgents: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val keyManager = remember { LlmKeyManager.getInstance(context) }
@@ -90,6 +91,10 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToAgents) {
+                        Icon(Icons.Default.SmartToy, "Agents",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                     IconButton(onClick = onNavigateToPlayground) {
                         Icon(Icons.Default.Science, "Tool Playground",
                             tint = MaterialTheme.colorScheme.onPrimaryContainer)
