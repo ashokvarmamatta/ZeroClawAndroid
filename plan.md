@@ -498,6 +498,26 @@ data class ApiKeyEntry(
 
 ---
 
+## 🐛 Bug Log (Summary)
+> Full details, root causes, and lessons in [BUGS.md](BUGS.md)
+
+| # | Phase | Bug Summary | Status |
+|---|-------|-------------|--------|
+| BUG-01 | 37 | Gson null deserialization → NPE crash on `ApiKeyEntry` fields after save/reload | ✅ Fixed |
+| BUG-02 | 35 | HTTP 429 treated as hard key failure — valid key permanently skipped after one rate-limit | ✅ Fixed |
+| BUG-03 | 41 | Test Key always tested provider default model, not the model user actually selected | ✅ Fixed |
+| BUG-04 | 55 | Stale model ID carried over when switching providers — OpenAI model sent to Anthropic | ✅ Fixed |
+| BUG-05 | 68–70 | LLM response leaked raw `tool_call` JSON blocks into chat — users saw internal calls | ✅ Fixed |
+| BUG-06 | 68 | DuckDuckGo search returned 0 results — raw query contained punctuation/quotes that broke URL | ✅ Fixed |
+| BUG-07 | 70 | Offline model skipped Pass 2 synthesis — replied with raw tool JSON instead of natural answer | ✅ Fixed |
+| BUG-08 | 83 | Online-first failover routed to offline model even when online keys were available | ✅ Fixed |
+| BUG-09 | 117 | Conversation summarizer ran on Pass 2 call — corrupted context by summarizing tool results mid-response | ✅ Fixed |
+| BUG-10 | — | `web_search` query not sanitized — special chars caused HTTP 400 / empty result set | ✅ Fixed |
+| BUG-11 | — | Refusal detection false-positive — short AI replies flagged as refusals, triggering unnecessary retry | ✅ Fixed |
+| BUG-12 | — | System date injected incorrectly — LLM received wrong year in system prompt | ✅ Fixed |
+
+---
+
 ## 🚀 Build & Run Instructions (Android Studio)
 
 1. Open Android Studio → **File → Open** → Select `H:\Antigravity\ZeroClawAndroid`
