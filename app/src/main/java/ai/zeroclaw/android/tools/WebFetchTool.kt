@@ -20,58 +20,88 @@ class WebFetchTool : Tool {
         ToolParam("url", "string", "The URL of the web page to fetch and read")
     )
 
+    // Longer timeouts for slow/international sites; retry on connect timeout
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
         .followRedirects(true)
+        .followSslRedirects(true)
         .build()
 
     override suspend fun execute(args: Map<String, String>): ToolResult {
         var url = args["url"]?.trim()
             ?: return ToolResult(false, "", "Missing 'url' parameter")
 
-        if (url.isBlank()) {
-            return ToolResult(false, "", "Empty URL")
-        }
+        if (url.isBlank()) return ToolResult(false, "", "Empty URL")
 
-        // Add https:// if missing
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             url = "https://$url"
         }
 
         return withContext(Dispatchers.IO) {
+            fetchWithRetry(url, retries = 2)
+        }
+    }
+
+    private fun fetchWithRetry(url: String, retries: Int): ToolResult {
+        var lastError = ""
+        repeat(retries) { attempt ->
             try {
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Mozilla/5.0 (Android; ZeroClaw Bot)")
-                    .header("Accept", "text/html,application/xhtml+xml,text/plain")
+                    // Full Chrome-like browser headers — avoids bot detection on most sites
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .header("Accept-Encoding", "gzip, deflate, br")
+                    .header("Cache-Control", "no-cache")
+                    .header("Pragma", "no-cache")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Upgrade-Insecure-Requests", "1")
                     .get()
                     .build()
 
                 val response = client.newCall(request).execute()
+                val code = response.code
+
+                // Give a clear error for common non-success codes
+                if (code == 403) return ToolResult(false, "", "Access denied (HTTP 403) — $url blocks automated access")
+                if (code == 429) return ToolResult(false, "", "Rate limited (HTTP 429) — try again later")
+                if (code == 404) return ToolResult(false, "", "Page not found (HTTP 404) — $url")
+                if (code !in 200..299) return ToolResult(false, "", "HTTP $code from $url")
+
                 val body = response.body?.string()
-                    ?: return@withContext ToolResult(false, "", "Empty response from $url")
+                    ?: return ToolResult(false, "", "Empty response from $url")
 
                 val contentType = response.header("Content-Type", "") ?: ""
-
                 val text = if (contentType.contains("text/html") || body.trimStart().startsWith("<")) {
                     extractReadableText(body)
                 } else {
-                    // Plain text or other format — use as-is
                     body
                 }
 
                 if (text.isBlank()) {
-                    return@withContext ToolResult(true, "Page fetched but no readable text content found at: $url")
+                    return ToolResult(true, "Page fetched but no readable text found at: $url")
                 }
 
-                val truncated = text.take(MAX_CONTENT_LENGTH)
                 val header = "Content from: $url\n\n"
-                ToolResult(true, header + truncated)
+                return ToolResult(true, header + text.take(MAX_CONTENT_LENGTH))
+
+            } catch (e: java.net.SocketTimeoutException) {
+                lastError = "Timeout on attempt ${attempt + 1}/${retries}"
+                if (attempt < retries - 1) Thread.sleep(2000)
+            } catch (e: java.net.UnknownHostException) {
+                return ToolResult(false, "", "Cannot reach host — check internet connection or URL: $url")
+            } catch (e: javax.net.ssl.SSLException) {
+                return ToolResult(false, "", "SSL/TLS error for $url: ${e.message}")
             } catch (e: Exception) {
-                ToolResult(false, "", "Failed to fetch $url: ${e.message}")
+                lastError = e.message ?: "Unknown error"
+                if (attempt < retries - 1) Thread.sleep(1000)
             }
         }
+        return ToolResult(false, "", "Failed to fetch $url after $retries attempts: $lastError")
     }
 
     /**

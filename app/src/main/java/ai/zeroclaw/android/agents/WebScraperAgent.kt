@@ -22,9 +22,8 @@ class WebScraperAgent(private val context: Context) {
         ZeroClawService.log("AGENT[${agent.name}]: starting web scrape → ${agent.url}")
 
         // ── Step 1: Fetch ────────────────────────────────────────────────────
-        val fetchTool = ToolSystem.getInstance(context)
-            .allTools().filterIsInstance<WebFetchTool>().firstOrNull()
-            ?: WebFetchTool()
+        // Always use a fresh WebFetchTool instance so it picks up the latest client config
+        val fetchTool = WebFetchTool()
 
         val fetchResult = fetchTool.execute(mapOf("url" to agent.url))
 
