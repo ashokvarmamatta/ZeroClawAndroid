@@ -20,6 +20,7 @@ import ai.zeroclaw.android.ui.ApiKeysScreen
 import ai.zeroclaw.android.ui.HomeScreen
 import ai.zeroclaw.android.ui.InfoScreen
 import ai.zeroclaw.android.ui.SettingsScreen
+import ai.zeroclaw.android.ui.ToolPlaygroundScreen
 import ai.zeroclaw.android.ui.theme.ZeroClawTheme
 
 class MainActivity : ComponentActivity() {
@@ -48,8 +49,9 @@ fun ZeroClawNavHost() {
 
         composable("home") {
             HomeScreen(
-                onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToInfo     = { navController.navigate("info") }
+                onNavigateToSettings   = { navController.navigate("settings") },
+                onNavigateToInfo       = { navController.navigate("info") },
+                onNavigateToPlayground = { navController.navigate("tool_playground") }
             )
         }
 
@@ -82,6 +84,10 @@ fun ZeroClawNavHost() {
 
         composable("api_keys") {
             ApiKeysScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("tool_playground") {
+            ToolPlaygroundScreen(onBack = { navController.popBackStack() })
         }
     }
 }

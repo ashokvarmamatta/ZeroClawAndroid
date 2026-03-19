@@ -27,7 +27,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun HomeScreen(
     onNavigateToSettings: () -> Unit,
-    onNavigateToInfo: () -> Unit
+    onNavigateToInfo: () -> Unit,
+    onNavigateToPlayground: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val keyManager = remember { LlmKeyManager.getInstance(context) }
@@ -86,6 +87,10 @@ fun HomeScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNavigateToPlayground) {
+                        Icon(Icons.Default.Science, "Tool Playground",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                     IconButton(onClick = onNavigateToInfo) {
                         Icon(Icons.Default.Info, "Setup Guide",
                             tint = MaterialTheme.colorScheme.onPrimaryContainer)
