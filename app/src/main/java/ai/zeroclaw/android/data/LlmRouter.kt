@@ -2293,7 +2293,15 @@ class LlmRouter(private val context: Context) {
                 if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
             } + "\n"
         } else ""
-        val fullPrompt = "$systemPrompt\n\n${historyText}User: $message\nAssistant:$prefill"
+        // Offline models have a hard token limit (1024). Truncate message so that
+        // systemPrompt + historyText + message together stay within ~2200 chars.
+        val overhead = systemPrompt.length + historyText.length + 40 // "User: \nAssistant:" etc.
+        val maxMsgChars = (2200 - overhead).coerceAtLeast(200)
+        val safeMessage = if (message.length > maxMsgChars) {
+            ZeroClawService.log("Offline: message truncated ${message.length} → $maxMsgChars chars")
+            message.take(maxMsgChars) + "…"
+        } else message
+        val fullPrompt = "$systemPrompt\n\n${historyText}User: $safeMessage\nAssistant:$prefill"
         val raw = manager.generateResponse(fullPrompt)
         return if (prefill.isNotBlank()) "$prefill$raw" else raw
     }

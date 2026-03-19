@@ -81,12 +81,15 @@ class WebScraperAgent(private val context: Context) {
     private suspend fun extractWithLlm(agent: AgentConfig, rawContent: String): String? {
         return try {
             val router = ai.zeroclaw.android.data.LlmRouter.getInstance(context)
-            val prompt = """You are a web content extractor. Given the following web page content, ${agent.extractPrompt}
+            // Keep content short — offline models cap at 1024 tokens (~3000 chars total).
+            // 600 chars of content leaves enough room for the prompt template + system prompt.
+            val contentSnippet = rawContent.take(600)
+            val prompt = """Extract from this web page content: ${agent.extractPrompt}
 
-Page content:
-${rawContent.take(4000)}
+Content:
+$contentSnippet
 
-Provide a concise, formatted response. Do not add any intro or outro text."""
+Be concise."""
             val reply = router.call(prompt, chatId = "agent_${agent.id}")
             if (reply.isNotBlank()) reply else null
         } catch (_: Exception) {

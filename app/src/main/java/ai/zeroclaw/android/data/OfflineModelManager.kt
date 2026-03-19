@@ -185,8 +185,18 @@ class OfflineModelManager private constructor(private val context: Context) {
     suspend fun generateResponse(prompt: String): String = withContext(Dispatchers.IO) {
         val inference = llmInference
             ?: throw Exception("No offline model loaded — select one in Settings → API Keys")
+
+        // Guard against JNI crash: MediaPipe aborts the process if input > maxTokens.
+        // Rough estimate: 3 chars per token (conservative for English). Keep 80 % of budget
+        // for the prompt, leaving 20 % headroom for the output tokens.
+        val maxSafeChars = (MAX_TOKENS * 3 * 0.80).toInt()   // ≈ 2457 chars
+        val safePrompt = if (prompt.length > maxSafeChars) {
+            ZeroClawService.log("Offline: prompt truncated ${prompt.length} → $maxSafeChars chars (model limit)")
+            prompt.take(maxSafeChars)
+        } else prompt
+
         try {
-            inference.generateResponse(prompt)
+            inference.generateResponse(safePrompt)
         } catch (e: Exception) {
             ZeroClawService.log("Offline: generation error — ${e.message}")
             throw e
