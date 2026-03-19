@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.zeroclaw.android.agents.AgentConfig
 import ai.zeroclaw.android.agents.AgentManager
+import ai.zeroclaw.android.agents.WebScraperAgent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -117,6 +118,12 @@ fun AgentsScreen(onBack: () -> Unit) {
                         onDelete = {
                             agentManager.delete(agent.id)
                             agents = agentManager.loadAll()
+                        },
+                        onRunNow = {
+                            scope.launch {
+                                WebScraperAgent(context).run(agent)
+                                agents = agentManager.loadAll()
+                            }
                         }
                     )
                 }
@@ -178,9 +185,12 @@ private fun AgentCard(
     agent: AgentConfig,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onRunNow: () -> Unit
 ) {
     var showDelete by remember { mutableStateOf(false) }
+    var running by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val gradientStart = if (agent.enabled) Color(0xFF0A2540) else Color(0xFF1A1A1A)
     val gradientEnd   = if (agent.enabled) Color(0xFF0D3B6E) else Color(0xFF252525)
     val accentColor   = if (agent.enabled) Color(0xFF1E88E5) else Color(0xFF555555)
@@ -271,7 +281,38 @@ private fun AgentCard(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.07f))
 
-                // Action row
+                // Run Now button — full width, prominent
+                Button(
+                    onClick = {
+                        running = true
+                        scope.launch {
+                            onRunNow()
+                            running = false
+                        }
+                    },
+                    enabled = !running,
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1565C0),
+                        disabledContainerColor = Color(0xFF0D2A4A)
+                    )
+                ) {
+                    if (running) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White, strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scraping…", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Run Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Edit / Delete row
                 Row(modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(

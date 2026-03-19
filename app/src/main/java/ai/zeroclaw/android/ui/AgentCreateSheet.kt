@@ -11,12 +11,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.zeroclaw.android.agents.AgentConfig
 import ai.zeroclaw.android.agents.AgentManager
+import ai.zeroclaw.android.tools.WebFetchTool
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AgentCreateSheet — bottom sheet form for creating / editing a Web Scraper agent
@@ -30,6 +34,8 @@ fun AgentCreateSheet(
     onSave: (AgentConfig) -> Unit
 ) {
     val isEdit = existing != null
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // Form state
     var name          by remember { mutableStateOf(existing?.name ?: "") }
@@ -44,6 +50,11 @@ fun AgentCreateSheet(
     var nameError   by remember { mutableStateOf<String?>(null) }
     var urlError    by remember { mutableStateOf<String?>(null) }
     var chatIdError by remember { mutableStateOf<String?>(null) }
+
+    // Test fetch state
+    var testLoading  by remember { mutableStateOf(false) }
+    var testResult   by remember { mutableStateOf<String?>(null) }
+    var testSuccess  by remember { mutableStateOf(false) }
 
     val channels = listOf("telegram", "discord", "slack", "whatsapp", "email")
     val accentColor = Color(0xFF1E88E5)
@@ -220,6 +231,87 @@ fun AgentCreateSheet(
                         ) {
                             Text("› $t", modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 fontSize = 11.sp, color = accentColor.copy(alpha = 0.8f))
+                        }
+                    }
+                }
+            }
+
+            // ── Test Fetch ─────────────────────────────────────────────────
+            item { SectionLabel("Test", accentColor) }
+
+            item {
+                val canTest = url.startsWith("http://") || url.startsWith("https://")
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            if (!canTest) {
+                                urlError = "Enter a valid URL first to test"
+                                return@OutlinedButton
+                            }
+                            testResult = null
+                            testLoading = true
+                            scope.launch {
+                                val r = WebFetchTool().execute(mapOf("url" to url.trim()))
+                                testSuccess = r.success
+                                testResult = if (r.success) {
+                                    r.content.take(600).trimEnd() +
+                                    if (r.content.length > 600) "\n\n…(${r.content.length} chars total)" else ""
+                                } else {
+                                    r.error ?: "Unknown error"
+                                }
+                                testLoading = false
+                            }
+                        },
+                        enabled = !testLoading,
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp, if (canTest) accentColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.15f)
+                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
+                    ) {
+                        if (testLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                                color = accentColor, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Fetching…", fontWeight = FontWeight.SemiBold)
+                        } else {
+                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Test Fetch URL", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    // Result preview
+                    testResult?.let { res ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (testSuccess) Color(0xFF0A2A0A) else Color(0xFF2A0A0A)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(
+                                        if (testSuccess) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                        null,
+                                        tint = if (testSuccess) Color(0xFF81C784) else Color(0xFFEF9A9A),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        if (testSuccess) "Fetch successful — content preview:" else "Fetch failed:",
+                                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                        color = if (testSuccess) Color(0xFF81C784) else Color(0xFFEF9A9A)
+                                    )
+                                }
+                                Text(
+                                    res,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.White.copy(alpha = 0.75f),
+                                    lineHeight = 14.sp
+                                )
+                            }
                         }
                     }
                 }
