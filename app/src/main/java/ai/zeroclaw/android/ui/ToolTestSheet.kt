@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
+import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.Tool
 import ai.zeroclaw.android.tools.ToolResult
 import ai.zeroclaw.android.tools.ToolSystem
@@ -218,6 +219,25 @@ private fun CopyButton(text: String, accent: Color) {
 private fun SheetPad() = Modifier.padding(horizontal = 16.dp)
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Logging wrapper — every tool call goes through this so activity shows on Home
+// ─────────────────────────────────────────────────────────────────────────────
+
+private suspend fun runTool(tool: Tool, args: Map<String, String>): ToolResult {
+    val argSummary = args.entries.joinToString(" · ") { (k, v) ->
+        "$k=${v.take(40).replace('\n', ' ')}"
+    }
+    ZeroClawService.log("[Lab] ▶ ${tool.name} — $argSummary")
+    val result = runTool(tool,args)
+    if (result.success) {
+        val preview = result.content.take(80).replace('\n', ' ')
+        ZeroClawService.log("[Lab] ✓ ${tool.name} — $preview")
+    } else {
+        ZeroClawService.log("[Lab] ✗ ${tool.name} — ${result.error?.take(80)}")
+    }
+    return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 1 · Web Search
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -236,7 +256,7 @@ private fun WebSearchTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item {
             RunButton("🔍  Search", accent, loading, isEnabled && query.isNotBlank()) {
                 loading = true; scope.launch {
-                    result = tool.execute(mapOf("query" to query)); loading = false
+                    result = runTool(tool,mapOf("query" to query)); loading = false
                 }
             }
         }
@@ -296,7 +316,7 @@ private fun WebFetchTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item { SheetInput(url, { url = it }, "https://example.com", accent) }
         item {
             RunButton("🌐  Fetch Page", accent, loading, isEnabled && url.isNotBlank()) {
-                loading = true; scope.launch { result = tool.execute(mapOf("url" to url.trim())); loading = false }
+                loading = true; scope.launch { result = runTool(tool,mapOf("url" to url.trim())); loading = false }
             }
         }
         result?.let { r ->
@@ -352,7 +372,7 @@ private fun WeatherTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         }
         item {
             RunButton("🌤️  Get Weather", accent, loading, isEnabled && city.isNotBlank()) {
-                loading = true; scope.launch { result = tool.execute(mapOf("location" to city, "action" to mode)); loading = false }
+                loading = true; scope.launch { result = runTool(tool,mapOf("location" to city, "action" to mode)); loading = false }
             }
         }
         result?.let { r ->
@@ -442,7 +462,7 @@ private fun TranslateTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         }
         item {
             RunButton("🌍  Translate", accent, loading, isEnabled && text.isNotBlank()) {
-                loading = true; scope.launch { result = tool.execute(mapOf("text" to text, "to" to toLang)); loading = false }
+                loading = true; scope.launch { result = runTool(tool,mapOf("text" to text, "to" to toLang)); loading = false }
             }
         }
         result?.let { r ->
@@ -492,7 +512,7 @@ private fun SummarizeTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         }
         item {
             RunButton("📝  Summarize", accent, loading, isEnabled && text.length > 50) {
-                loading = true; scope.launch { result = tool.execute(mapOf("text" to text, "sentences" to sentences.toString())); loading = false }
+                loading = true; scope.launch { result = runTool(tool,mapOf("text" to text, "sentences" to sentences.toString())); loading = false }
             }
         }
         result?.let { r ->
@@ -552,7 +572,7 @@ private fun CalculatorTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item {
             RunButton("🔢  Calculate", accent, loading, isEnabled && expr.isNotBlank()) {
                 loading = true; scope.launch {
-                    val r = tool.execute(mapOf("action" to "eval", "expression" to expr))
+                    val r = runTool(tool,mapOf("action" to "eval", "expression" to expr))
                     if (r.success) history = listOf(expr to r.content) + history.take(9)
                     else history = listOf(expr to "⚠️ ${r.error}") + history.take(9)
                     loading = false
@@ -607,7 +627,7 @@ private fun QrCodeTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item {
             RunButton("📷  Generate QR", accent, loading, isEnabled && text.isNotBlank()) {
                 loading = true; qrBitmap = null; scope.launch {
-                    val r = tool.execute(mapOf("text" to text, "action" to "generate"))
+                    val r = runTool(tool,mapOf("text" to text, "action" to "generate"))
                     result = r
                     if (r.success) {
                         val pathMatch = Regex("/[^\\s]+\\.png").find(r.content)
@@ -672,7 +692,7 @@ private fun ImageGenTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item {
             RunButton("🎨  Generate Image", accent, loading, isEnabled && prompt.isNotBlank()) {
                 loading = true; imageUrl = ""; error = ""; scope.launch {
-                    val r = tool.execute(mapOf("prompt" to prompt, "provider" to provider))
+                    val r = runTool(tool,mapOf("prompt" to prompt, "provider" to provider))
                     if (r.success) {
                         resultText = r.content
                         imageUrl = Regex("https?://[^\\s]+").find(r.content)?.value ?: ""
@@ -753,19 +773,19 @@ private fun MemoryTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
                     item { SheetInput(storeKey, { storeKey = it }, "Memory key — e.g. my_api_key", accent) }
                     item { SheetInput(storeValue, { storeValue = it }, "Value to store…", accent, singleLine = false, minLines = 2) }
                     item { RunButton("💾  Store", accent, loading, isEnabled && storeKey.isNotBlank() && storeValue.isNotBlank()) {
-                        loading = true; scope.launch { result = tool.execute(mapOf("action" to "store", "key" to storeKey, "value" to storeValue)); loading = false }
+                        loading = true; scope.launch { result = runTool(tool,mapOf("action" to "store", "key" to storeKey, "value" to storeValue)); loading = false }
                     } }
                 }
                 1 -> {
                     item { SheetInput(recallQuery, { recallQuery = it }, "Search query — e.g. api key", accent) }
                     item { RunButton("🔍  Recall", accent, loading, isEnabled && recallQuery.isNotBlank()) {
-                        loading = true; scope.launch { result = tool.execute(mapOf("action" to "recall", "query" to recallQuery)); loading = false }
+                        loading = true; scope.launch { result = runTool(tool,mapOf("action" to "recall", "query" to recallQuery)); loading = false }
                     } }
                 }
                 2 -> {
                     item { SheetInput(storeKey, { storeKey = it }, "Key to forget…", accent) }
                     item { RunButton("🗑️  Forget", accent, loading, isEnabled && storeKey.isNotBlank()) {
-                        loading = true; scope.launch { result = tool.execute(mapOf("action" to "forget", "key" to storeKey)); loading = false }
+                        loading = true; scope.launch { result = runTool(tool,mapOf("action" to "forget", "key" to storeKey)); loading = false }
                     } }
                 }
             }
@@ -803,7 +823,7 @@ private fun GitHubTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item { SheetInput(query, { query = it }, if (action == "search") "Search repos — e.g. Kotlin AI" else "owner/repo — e.g. google/accompanist", accent) }
         item { RunButton("🐱  ${action.replaceFirstChar { it.uppercase() }}", accent, loading, isEnabled && query.isNotBlank()) {
             loading = true; scope.launch {
-                result = tool.execute(mapOf("action" to action, if (action == "search") "query" to query else "repo" to query))
+                result = runTool(tool,mapOf("action" to action, if (action == "search") "query" to query else "repo" to query))
                 loading = false
             }
         } }
@@ -839,7 +859,7 @@ private fun BraveSearchTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         }
         item { SheetInput(query, { query = it }, "Search query…", accent) }
         item { RunButton("🦁  Brave Search", accent, loading, isEnabled && query.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("query" to query, "action" to mode)); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("query" to query, "action" to mode)); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1005,7 +1025,7 @@ private fun ImageAnalysisTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
             ) {
                 loading = true
                 scope.launch {
-                    result = tool.execute(mapOf(
+                    result = runTool(tool,mapOf(
                         "source" to (selectedUri.toString()),
                         "prompt" to prompt
                     ))
@@ -1060,7 +1080,7 @@ private fun StatusTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
     var loading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (isEnabled) { loading = true; result = tool.execute(mapOf("action" to "overview")); loading = false }
+        if (isEnabled) { loading = true; result = runTool(tool,mapOf("action" to "overview")); loading = false }
     }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1073,7 +1093,7 @@ private fun StatusTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
             }
         }
         item { RunButton("ℹ️  Get Status", accent, loading, isEnabled) {
-            loading = true; scope.launch { result = tool.execute(mapOf("action" to action)); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("action" to action)); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1103,12 +1123,12 @@ private fun ClipboardTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { loading = true; scope.launch { result = tool.execute(mapOf("action" to "read")); loading = false } },
+                Button(onClick = { loading = true; scope.launch { result = runTool(tool,mapOf("action" to "read")); loading = false } },
                     enabled = isEnabled && !loading, shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = accent)) {
                     Text("📋  Read Clipboard")
                 }
-                OutlinedButton(onClick = { loading = true; scope.launch { result = tool.execute(mapOf("action" to "clear")); loading = false } },
+                OutlinedButton(onClick = { loading = true; scope.launch { result = runTool(tool,mapOf("action" to "clear")); loading = false } },
                     enabled = isEnabled && !loading, shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, accent.copy(0.5f))) {
                     Text("🗑  Clear", color = accent)
@@ -1118,7 +1138,7 @@ private fun ClipboardTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item { HorizontalDivider(color = Color.White.copy(0.1f)) }
         item { SheetInput(writeText, { writeText = it }, "Text to write to clipboard…", accent, singleLine = false, minLines = 2) }
         item { RunButton("✍️  Write to Clipboard", accent, loading, isEnabled && writeText.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("action" to "write", "text" to writeText)); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("action" to "write", "text" to writeText)); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1160,7 +1180,7 @@ private fun LocationTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
                     "nearby"  -> mapOf("action" to action, "query" to address)
                     else      -> mapOf("action" to "current")
                 }
-                result = tool.execute(args); loading = false
+                result = runTool(tool,args); loading = false
             }
         } }
         result?.let { r ->
@@ -1209,7 +1229,7 @@ private fun RssFeedTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
             }
         }
         item { RunButton("📡  Fetch Feed", accent, loading, isEnabled && feedUrl.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("url" to feedUrl, "action" to "fetch")); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("url" to feedUrl, "action" to "fetch")); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1234,7 +1254,7 @@ private fun BookmarkTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
     var loading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (isEnabled) { listResult = tool.execute(mapOf("action" to "list")) }
+        if (isEnabled) { listResult = runTool(tool,mapOf("action" to "list")) }
     }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1243,9 +1263,9 @@ private fun BookmarkTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item { SheetInput(title, { title = it }, "Bookmark title (optional)", accent) }
         item { RunButton("🔖  Save Bookmark", accent, loading, isEnabled && url.isNotBlank()) {
             loading = true; scope.launch {
-                val r = tool.execute(mapOf("action" to "save", "url" to url, "title" to title.ifBlank { url }))
+                val r = runTool(tool,mapOf("action" to "save", "url" to url, "title" to title.ifBlank { url }))
                 saveResult = if (r.success) "✓ Saved!" else "⚠️ ${r.error}"
-                if (r.success) listResult = tool.execute(mapOf("action" to "list"))
+                if (r.success) listResult = runTool(tool,mapOf("action" to "list"))
                 loading = false
             }
         } }
@@ -1279,7 +1299,7 @@ private fun EmailTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item { SheetInput(subject, { subject = it }, "Subject…", accent) }
         item { SheetInput(body, { body = it }, "Email body…", accent, singleLine = false, minLines = 4, maxLines = 7) }
         item { RunButton("📧  Send Email", accent, loading, isEnabled && to.isNotBlank() && subject.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("to" to to, "subject" to subject, "body" to body)); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("to" to to, "subject" to subject, "body" to body)); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1327,7 +1347,7 @@ private fun CronTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
             }
         }
         item { RunButton("⏰  Schedule Task", accent, loading, isEnabled && taskName.isNotBlank() && prompt.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("action" to "schedule", "name" to taskName, "prompt" to prompt, "schedule" to schedule)); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("action" to "schedule", "name" to taskName, "prompt" to prompt, "schedule" to schedule)); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1363,7 +1383,7 @@ private fun TtsTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
             }
         }
         item { RunButton("🔊  Speak", accent, loading, isEnabled && text.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("text" to text, "action" to "speak")); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("text" to text, "action" to "speak")); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1390,14 +1410,14 @@ private fun CalendarTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
     var loading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (isEnabled) { loading = true; result = tool.execute(mapOf("action" to "list", "date" to "today")); loading = false }
+        if (isEnabled) { loading = true; result = runTool(tool,mapOf("action" to "list", "date" to "today")); loading = false }
     }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("today" to "Today", "tomorrow" to "Tomorrow", "week" to "This Week").forEach { (d, l) ->
-                    Surface(onClick = { loading = true; scope.launch { result = tool.execute(mapOf("action" to "list", "date" to d)); loading = false } },
+                    Surface(onClick = { loading = true; scope.launch { result = runTool(tool,mapOf("action" to "list", "date" to d)); loading = false } },
                         shape = RoundedCornerShape(10.dp), color = accent.copy(0.12f), border = BorderStroke(1.dp, accent.copy(0.25f))) {
                         Text(l, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), fontSize = 11.sp, color = accent)
                     }
@@ -1428,7 +1448,7 @@ private fun ContactsTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { SheetInput(query, { query = it }, "Search contacts by name…", accent) }
         item { RunButton("👥  Search Contacts", accent, loading, isEnabled && query.isNotBlank()) {
-            loading = true; scope.launch { result = tool.execute(mapOf("action" to "search", "name" to query)); loading = false }
+            loading = true; scope.launch { result = runTool(tool,mapOf("action" to "search", "name" to query)); loading = false }
         } }
         result?.let { r ->
             if (r.success) {
@@ -1469,7 +1489,7 @@ private fun GenericTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
         item {
             RunButton("▶  Run ${tool.name.replace("_", " ").replaceFirstChar { it.uppercase() }}", accent, loading, isEnabled) {
                 loading = true; scope.launch {
-                    result = tool.execute(argState.toMap()); loading = false
+                    result = runTool(tool,argState.toMap()); loading = false
                 }
             }
         }

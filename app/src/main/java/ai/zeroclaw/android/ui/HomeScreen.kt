@@ -2,6 +2,7 @@ package ai.zeroclaw.android.ui
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -363,21 +364,56 @@ fun StatusRow(label: String, value: String, ok: Boolean) {
 
 @Composable
 fun LogCard(logs: List<String>) {
+    var expanded by remember { mutableStateOf(false) }
+    val displayed = if (expanded) logs.reversed() else logs.takeLast(20).reversed()
+
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("Live Logs", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Icon(Icons.Default.Terminal, null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (logs.size > 20) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.clickable { expanded = !expanded }
+                        ) {
+                            Text(
+                                if (expanded) "Show less" else "View all ${logs.size}",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                    Icon(Icons.Default.Terminal, null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp))
+                }
             }
             Spacer(Modifier.height(8.dp))
-            logs.takeLast(20).reversed().forEach { log ->
-                Text("› $log", fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 1.dp))
+            displayed.forEach { log ->
+                val isPlayground = log.contains("[Lab]")
+                Text(
+                    "› $log",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (isPlayground) Color(0xFF64B5F6)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 1.dp)
+                )
+            }
+            if (!expanded && logs.size > 20) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "… ${logs.size - 20} more entries — tap 'View all' to expand",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    fontFamily = FontFamily.Monospace
+                )
             }
         }
     }
