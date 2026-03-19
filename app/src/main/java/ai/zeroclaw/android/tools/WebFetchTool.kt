@@ -49,11 +49,13 @@ class WebFetchTool : Tool {
             try {
                 val request = Request.Builder()
                     .url(url)
-                    // Full Chrome-like browser headers — avoids bot detection on most sites
+                    // Full Chrome-like browser headers — avoids bot detection on most sites.
+                    // NOTE: Do NOT set Accept-Encoding manually — OkHttp automatically adds
+                    // "Accept-Encoding: gzip" and transparently decompresses the response.
+                    // Setting it manually disables that auto-decompression → raw binary garbage.
                     .header("User-Agent", "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
                     .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
                     .header("Accept-Language", "en-US,en;q=0.9")
-                    .header("Accept-Encoding", "gzip, deflate, br")
                     .header("Cache-Control", "no-cache")
                     .header("Pragma", "no-cache")
                     .header("Sec-Fetch-Dest", "document")

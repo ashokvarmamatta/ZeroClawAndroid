@@ -328,7 +328,11 @@ fun AgentCreateSheet(
                         if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
                             urlError = "Enter a valid URL starting with http:// or https://"; ok = false
                         }
-                        if (chatId.isBlank()) { chatIdError = "${chatIdLabel(channel)} is required"; ok = false }
+                        if (chatId.isBlank()) {
+                            chatIdError = "${chatIdLabel(channel)} is required"; ok = false
+                        } else if (channel == "telegram" && chatId.contains(":") && chatId.length > 20) {
+                            chatIdError = "This looks like a bot token, not a Chat ID. Your Chat ID is a number like 123456789 or -1001234567890"; ok = false
+                        }
                         if (!ok) return@Button
 
                         val intervalMins = intervalRaw.toIntOrNull()?.coerceAtLeast(5) ?: 60
@@ -474,7 +478,7 @@ private fun chatIdLabel(channel: String) = when (channel) {
 
 private fun chatIdPlaceholder(channel: String) = when (channel) {
     "email"    -> "user@example.com"
-    "telegram" -> "-1001234567890"
+    "telegram" -> "123456789 or -1001234567890 (NOT your bot token)"
     "discord"  -> "1234567890123456789"
     "slack"    -> "#general or C1234567890"
     "whatsapp" -> "+1234567890"
