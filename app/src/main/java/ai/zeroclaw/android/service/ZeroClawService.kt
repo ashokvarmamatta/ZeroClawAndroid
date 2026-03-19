@@ -64,6 +64,8 @@ class ZeroClawService : Service() {
         @Volatile var lineConnected     = false
         @Volatile var webChatRunning    = false
         val recentLogs = ArrayDeque<String>(50)
+        // Detailed per-conversation trace — cleared at start of each new user message
+        val conversationLogs = ArrayDeque<String>(200)
 
         /** Route a quick-reply from the notification shade to the correct channel. */
         @Volatile var instance: ZeroClawService? = null
@@ -78,10 +80,27 @@ class ZeroClawService : Service() {
 
         fun log(msg: String) {
             val entry = "[${timeStr()}] $msg"
+            android.util.Log.i("ZeroClaw", msg)
             synchronized(recentLogs) {
                 if (recentLogs.size >= 50) recentLogs.removeFirst()
                 recentLogs.addLast(entry)
             }
+        }
+
+        /** Append a detailed trace entry for the current conversation operation. */
+        fun logDetail(msg: String) {
+            val entry = "[${timeStr()}] $msg"
+            android.util.Log.d("ZeroClaw.Detail", msg)
+            synchronized(conversationLogs) {
+                if (conversationLogs.size >= 200) conversationLogs.removeFirst()
+                conversationLogs.addLast(entry)
+            }
+        }
+
+        /** Clear detailed log — called at start of each new user message. */
+        fun clearDetailLog() {
+            android.util.Log.d("ZeroClaw.Detail", "━━━ NEW CONVERSATION TURN — LOG CLEARED ━━━")
+            synchronized(conversationLogs) { conversationLogs.clear() }
         }
 
         private fun timeStr(): String {

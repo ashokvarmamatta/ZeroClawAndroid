@@ -24,7 +24,7 @@
 4. **Update tool count** in `InfoData.kt` `APP_FEATURES` if a new tool was added
 5. **Mark phase done** in `plan.md` with ✅
 6. **Build** with `JAVA_HOME="C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr" ./gradlew assembleDebug`
-7. **Commit & push** to GitHub after every successful build
+7. **Commit & push** to GitHub after every successful build by updating readme
 8. **Screenshots** for testing go to `test_screenshots/` (gitignored) — analyse then delete before commit
 9. When setting `isNew = true` on a GuideStep, it shows a **NEW** badge until the user taps it (tracked via SharedPreferences)
 

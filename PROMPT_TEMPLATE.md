@@ -1,4 +1,4 @@
-# 🚀 PROJECT BOOTSTRAP PROMPT — UNIVERSAL AI APP DEVELOPMENT TEMPLATE
+ k...# 🚀 PROJECT BOOTSTRAP PROMPT — UNIVERSAL AI APP DEVELOPMENT TEMPLATE
 
 ## YOUR ROLE
 
@@ -73,6 +73,7 @@ Create `plan.md` at the project root with this EXACT structure:
 7. **Commit & push** — commit with a clear message, push to the current branch
 8. **Update README** — reflect new features in README.md before committing
 9. Screenshots for testing go to test_screenshots/ (gitignored) — delete before commit
+10. **Log bugs** — if any bug was encountered during this phase, add a full entry to BUGS.md and a one-line summary row to the Bug Log table in plan.md
 
 ---
 
@@ -90,6 +91,15 @@ Create `plan.md` at the project root with this EXACT structure:
 
 ## 📋 Detailed Phase Notes
 [detailed notes per phase added as they are implemented]
+
+---
+
+## 🐛 Bug Log (Summary)
+> Full details in [BUGS.md](BUGS.md)
+
+| # | Phase | Bug Summary | Status |
+|---|-------|-------------|--------|
+[filled automatically as bugs are found and fixed — one line per bug]
 ```
 
 ### 0C. Plan All Phases
@@ -170,8 +180,8 @@ Create `SKILL.md` at the project root:
 ```bash
 git init
 git checkout -b main
-git add plan.md SKILL.md
-git commit -m "chore: project bootstrap — plan.md + SKILL.md"
+git add plan.md SKILL.md BUGS.md
+git commit -m "chore: project bootstrap — plan.md + SKILL.md + BUGS.md"
 git remote add origin [REPO URL]
 git push -u origin main
 mkdir -p .github/workflows
@@ -180,6 +190,36 @@ git add .github/
 git commit -m "feat(ci): add GitHub Actions build + release workflow"
 git push origin main
 ```
+
+### 0F. Create BUGS.md
+
+Create `BUGS.md` at the project root to track every bug encountered during development:
+
+```markdown
+# [APP NAME] — Bug Tracker
+
+> This file records every significant bug encountered during development, how it was diagnosed, and how it was fixed.
+> Summary rows are also added to the **Bug Log** table in `plan.md`.
+
+---
+
+## Bug Entry Template
+
+### BUG-[N] — [Short title]
+- **Phase:** [phase number where the bug appeared]
+- **Status:** 🔴 Open / 🟡 In Progress / ✅ Fixed
+- **Severity:** Critical / High / Medium / Low
+- **Symptom:** [What the user/developer sees — exact error message or wrong behavior]
+- **Root Cause:** [What actually caused it — be specific]
+- **Fix:** [What was changed to fix it — file name, function, what was wrong]
+- **Lesson:** [What to watch out for in future phases to avoid this again]
+
+---
+
+[Bug entries go below — add one block per bug, newest at the top]
+```
+
+Commit it in the bootstrap commit alongside plan.md and SKILL.md.
 
 ---
 
@@ -786,6 +826,10 @@ Before marking a phase ✅ in plan.md, verify ALL:
 - [ ] Feature disabled by default if it requires API key or special setup
 - [ ] "Not configured" message shows with instructions when key is missing
 
+**Bug Tracking:**
+- [ ] Any bugs encountered this phase → full entry added to BUGS.md (symptom, root cause, fix, lesson)
+- [ ] Summary row added to Bug Log table in plan.md
+
 **Release:**
 - [ ] Phase marked ✅ in plan.md
 - [ ] README.md updated
@@ -861,9 +905,10 @@ Types:
 
 If this conversation is lost or context runs out:
 1. Open a new chat
-2. Share `plan.md` — it has the full phase list and status
-3. Say: "Continue from the next ⏳ PENDING phase"
-4. The AI reads plan.md and continues without losing context
+2. Share `plan.md` — it has the full phase list, status, and bug log summary
+3. Share `BUGS.md` if any bugs are in progress or relevant to the next phase
+4. Say: "Continue from the next ⏳ PENDING phase"
+5. The AI reads plan.md and BUGS.md and continues without losing context
 
 ---
 
@@ -875,14 +920,16 @@ Confirm you have read and understood ALL rules above — especially:
 - ✓ Performance rules (background threads, LazyColumn, no blocking)
 - ✓ Settings ⓘ redirect buttons
 - ✓ CI/CD workflow (create `.github/workflows/build-and-release.yml` in Step 0E)
+- ✓ Bug tracking (create `BUGS.md` in Step 0F — log every bug with root cause + fix)
 
 Then:
 1. Analyse any provided reference repos/apps
 2. Design the color palette and typography scale
 3. Create `plan.md` with ALL phases planned out
 4. Create `SKILL.md`
-5. Create `README.md` skeleton
-6. Set up git, create CI/CD workflow, and push the bootstrap commit
+5. Create `BUGS.md` (empty, ready to receive bug entries)
+6. Create `README.md` skeleton
+7. Set up git, create CI/CD workflow, and push the bootstrap commit
 7. Ask for my confirmation before starting Phase 1
 
 **Current date:** [TODAY'S DATE]
