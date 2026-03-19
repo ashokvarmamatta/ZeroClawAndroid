@@ -15,11 +15,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import ai.zeroclaw.android.data.LlmKeyManager
+import ai.zeroclaw.android.data.LlmProvider
+import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.tools.Tool
 import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.launch
@@ -96,25 +100,41 @@ internal fun pgTagline(name: String) = PLAYGROUND_META[name]?.tagline ?: ""
 fun ToolPlaygroundScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val toolSystem = remember { ToolSystem.getInstance(context) }
+    val keyManager = remember { LlmKeyManager.getInstance(context) }
+    val offlineManager = remember { OfflineModelManager.getInstance(context) }
     val scope = rememberCoroutineScope()
 
+    // LOCAL playground state — independent from global Settings toggles
     var toolStates by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var selectedCategory by remember { mutableStateOf(PlaygroundCategory.ALL) }
     var selectedTool by remember { mutableStateOf<Tool?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showModelPicker by remember { mutableStateOf(false) }
+
+    // Model picker state
+    var apiKeys by remember { mutableStateOf<List<ai.zeroclaw.android.data.ApiKeyEntry>>(emptyList()) }
+    var offlineModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    var activeModelLabel by remember { mutableStateOf("Default") }
 
     LaunchedEffect(Unit) {
+        // Init local tool toggles — seed from current global state, but NOT synced back
         val states = mutableMapOf<String, Boolean>()
         for (tool in toolSystem.allTools()) {
             states[tool.name] = toolSystem.isEnabled(tool.name)
         }
         toolStates = states
+
+        // Load models for picker
+        apiKeys = keyManager.loadKeys()
+        offlineModels = offlineManager.listAppModels().map { it.name }
+        activeModelLabel = apiKeys.firstOrNull { it.enabled }?.let {
+            "${LlmProvider.fromId(it.safeProvider).emoji} ${it.safeLabel}"
+        } ?: "No model"
     }
 
     val allTools = toolSystem.allTools()
     val visibleTools = if (selectedCategory == PlaygroundCategory.ALL) allTools
                        else allTools.filter { pgCategory(it.name) == selectedCategory }
-
     val enabledCount = toolStates.count { it.value }
 
     Scaffold(
@@ -124,26 +144,47 @@ fun ToolPlaygroundScreen(onBack: () -> Unit) {
                     Column {
                         Text("Tool Playground", fontWeight = FontWeight.Bold)
                         Text(
-                            "$enabledCount tools enabled · tap any card to test",
+                            "$enabledCount active · tap card to test",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                         )
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }
+                },
+                actions = {
+                    // Model picker button
+                    Surface(
+                        onClick = { showModelPicker = true },
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFF00BCD4).copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Color(0xFF00BCD4).copy(alpha = 0.4f)),
+                        modifier = Modifier.padding(end = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("🤖", fontSize = 12.sp)
+                            Text(
+                                activeModelLabel.take(14),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF00BCD4)
+                            )
+                            Icon(Icons.Default.ExpandMore, null,
+                                tint = Color(0xFF00BCD4), modifier = Modifier.size(14.dp))
+                        }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0D0D1A)
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0D0D1A))
             )
         },
         containerColor = Color(0xFF0D0D1A)
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Tab row — Tools / Chat
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = Color(0xFF0D0D1A),
@@ -161,17 +202,15 @@ fun ToolPlaygroundScreen(onBack: () -> Unit) {
                     toolStates = toolStates,
                     selectedCategory = selectedCategory,
                     onCategorySelect = { selectedCategory = it },
-                    onToolSelect = { selectedTool = it }
+                    onToolSelect = { selectedTool = it },
+                    onToggle = { name, enabled -> toolStates = toolStates + (name to enabled) }
                 )
-                1 -> ToolChatTab(
-                    toolSystem = toolSystem,
-                    toolStates = toolStates
-                )
+                1 -> ToolChatTab(toolSystem = toolSystem, toolStates = toolStates)
             }
         }
     }
 
-    // Bottom sheet for selected tool
+    // Tool test bottom sheet
     selectedTool?.let { tool ->
         ModalBottomSheet(
             onDismissRequest = { selectedTool = null },
@@ -180,8 +219,7 @@ fun ToolPlaygroundScreen(onBack: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .padding(top = 12.dp, bottom = 8.dp)
-                        .width(40.dp)
-                        .height(4.dp)
+                        .width(40.dp).height(4.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.2f))
                 )
@@ -192,6 +230,33 @@ fun ToolPlaygroundScreen(onBack: () -> Unit) {
                 toolSystem = toolSystem,
                 isEnabled = toolStates[tool.name] ?: false,
                 onClose = { selectedTool = null }
+            )
+        }
+    }
+
+    // Model picker bottom sheet
+    if (showModelPicker) {
+        ModalBottomSheet(
+            onDismissRequest = { showModelPicker = false },
+            containerColor = Color(0xFF12122A)
+        ) {
+            ModelSelectorSheet(
+                apiKeys = apiKeys,
+                offlineModels = offlineModels,
+                activeModelLabel = activeModelLabel,
+                onSelectKey = { key ->
+                    scope.launch {
+                        keyManager.setActiveKey(key.id)
+                        apiKeys = keyManager.loadKeys()
+                        activeModelLabel = "${LlmProvider.fromId(key.safeProvider).emoji} ${key.safeLabel}"
+                        showModelPicker = false
+                    }
+                },
+                onSelectOffline = { modelName ->
+                    activeModelLabel = "📴 $modelName"
+                    showModelPicker = false
+                },
+                onDismiss = { showModelPicker = false }
             )
         }
     }
@@ -207,7 +272,8 @@ private fun ToolGridTab(
     toolStates: Map<String, Boolean>,
     selectedCategory: PlaygroundCategory,
     onCategorySelect: (PlaygroundCategory) -> Unit,
-    onToolSelect: (Tool) -> Unit
+    onToolSelect: (Tool) -> Unit,
+    onToggle: (String, Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // Category chips row
@@ -257,7 +323,8 @@ private fun ToolGridTab(
                 ToolCard(
                     tool = tool,
                     isEnabled = toolStates[tool.name] ?: false,
-                    onClick = { onToolSelect(tool) }
+                    onSelect = { onToolSelect(tool) },
+                    onToggle = { enabled -> onToggle(tool.name, enabled) }
                 )
             }
             item(span = { GridItemSpan(2) }) { Spacer(Modifier.height(80.dp)) }
@@ -266,22 +333,23 @@ private fun ToolGridTab(
 }
 
 @Composable
-private fun ToolCard(tool: Tool, isEnabled: Boolean, onClick: () -> Unit) {
+private fun ToolCard(
+    tool: Tool,
+    isEnabled: Boolean,
+    onSelect: () -> Unit,
+    onToggle: (Boolean) -> Unit
+) {
     val cat = pgCategory(tool.name)
     val grad0 = cat.gradient[0]
     val grad1 = cat.gradient[1]
 
     Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(158.dp),
+        modifier = Modifier.fillMaxWidth().height(168.dp),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         border = BorderStroke(
             1.dp,
-            if (isEnabled) grad1.copy(alpha = 0.6f)
-            else Color.White.copy(alpha = 0.08f)
+            if (isEnabled) grad1.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.08f)
         )
     ) {
         Box(
@@ -291,12 +359,12 @@ private fun ToolCard(tool: Tool, isEnabled: Boolean, onClick: () -> Unit) {
                     Brush.linearGradient(
                         colors = if (isEnabled)
                             listOf(grad0.copy(alpha = 0.9f), grad1.copy(alpha = 0.6f))
-                        else
-                            listOf(Color(0xFF1A1A2E), Color(0xFF16213E))
+                        else listOf(Color(0xFF1A1A2E), Color(0xFF16213E))
                     )
                 )
+                .clickable { onSelect() }
         ) {
-            // Subtle top-right glow circle
+            // Glow when enabled
             if (isEnabled) {
                 Box(
                     modifier = Modifier
@@ -304,13 +372,27 @@ private fun ToolCard(tool: Tool, isEnabled: Boolean, onClick: () -> Unit) {
                         .offset(x = 40.dp, y = (-20).dp)
                         .align(Alignment.TopEnd)
                         .background(
-                            Brush.radialGradient(
-                                colors = listOf(grad1.copy(alpha = 0.4f), Color.Transparent)
-                            ),
+                            Brush.radialGradient(listOf(grad1.copy(alpha = 0.4f), Color.Transparent)),
                             CircleShape
                         )
                 )
             }
+
+            // Switch — top-right, intercepts its own click (won't fire parent clickable)
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = onToggle,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .scale(0.65f),
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = grad1,
+                    checkedThumbColor = Color.White,
+                    uncheckedTrackColor = Color.White.copy(alpha = 0.15f),
+                    uncheckedThumbColor = Color.White.copy(alpha = 0.4f)
+                )
+            )
 
             Column(
                 modifier = Modifier
@@ -318,72 +400,200 @@ private fun ToolCard(tool: Tool, isEnabled: Boolean, onClick: () -> Unit) {
                     .padding(14.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top: emoji + enabled dot
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                // Emoji badge (top-left)
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White.copy(alpha = if (isEnabled) 0.15f else 0.07f),
+                    modifier = Modifier.size(44.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color.White.copy(alpha = if (isEnabled) 0.15f else 0.07f),
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                            Text(pgEmoji(tool.name), fontSize = 22.sp)
-                        }
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Text(pgEmoji(tool.name), fontSize = 22.sp)
                     }
-
-                    // Enabled indicator
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(
-                                if (isEnabled) Color(0xFF4CAF50) else Color(0xFF555555),
-                                CircleShape
-                            )
-                    )
                 }
 
-                // Bottom: name + tagline + test button
+                // Name + tagline + label
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         tool.name.replace("_", " ").replaceFirstChar { it.uppercase() },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         pgTagline(tool.name),
-                        fontSize = 10.sp,
-                        color = Color.White.copy(alpha = 0.55f),
-                        maxLines = 2,
-                        lineHeight = 13.sp,
-                        overflow = TextOverflow.Ellipsis
+                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.55f),
+                        maxLines = 2, lineHeight = 13.sp, overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = if (isEnabled) grad1.copy(alpha = 0.35f)
                                 else Color.White.copy(alpha = 0.07f)
                     ) {
-                        Row(
+                        Text(
+                            if (isEnabled) "▶  Test" else "⊘  Off",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            color = if (isEnabled) Color.White else Color(0xFF888888)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Model Selector Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ModelSelectorSheet(
+    apiKeys: List<ai.zeroclaw.android.data.ApiKeyEntry>,
+    offlineModels: List<String>,
+    activeModelLabel: String,
+    onSelectKey: (ai.zeroclaw.android.data.ApiKeyEntry) -> Unit,
+    onSelectOffline: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF1A1A2E))
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text("🤖  Select Model", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color.White)
+                Text("Playground only — won't affect Settings", fontSize = 11.sp, color = Color.White.copy(0.45f))
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, null, tint = Color.White.copy(0.6f))
+            }
+        }
+
+        LazyColumn(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.heightIn(max = 500.dp)
+        ) {
+            // API key models
+            if (apiKeys.isNotEmpty()) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(modifier = Modifier.size(6.dp).background(Color(0xFF00BCD4), CircleShape))
+                        Text("API Models", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00BCD4))
+                    }
+                }
+                items(apiKeys) { key ->
+                    val provider = LlmProvider.fromId(key.safeProvider)
+                    val isActive = activeModelLabel.contains(key.safeLabel)
+                    Card(
+                        onClick = { onSelectKey(key) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isActive) Color(0xFF00BCD4).copy(0.15f)
+                                            else Color(0xFF1E1E3A)
+                        ),
+                        border = BorderStroke(1.dp,
+                            if (isActive) Color(0xFF00BCD4).copy(0.6f)
+                            else Color.White.copy(0.08f))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(
-                                if (isEnabled) "▶  Test" else "⚠  Disabled",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isEnabled) Color.White else Color(0xFF888888)
-                            )
+                            Text(provider.emoji, fontSize = 24.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(key.safeLabel, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                                    color = Color.White)
+                                Text(
+                                    buildString {
+                                        append(provider.displayName)
+                                        if (key.safePreferredModel.isNotBlank()) append(" · ${key.safePreferredModel.take(24)}")
+                                    },
+                                    fontSize = 11.sp, color = Color.White.copy(0.5f)
+                                )
+                            }
+                            if (isActive) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF00BCD4).copy(0.2f)) {
+                                    Text("ACTIVE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00BCD4))
+                                }
+                            }
+                            if (!key.enabled) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF555555).copy(0.3f)) {
+                                    Text("OFF", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 9.sp, color = Color.White.copy(0.4f))
+                                }
+                            }
                         }
                     }
                 }
             }
+
+            // Offline models
+            if (offlineModels.isNotEmpty()) {
+                item { Spacer(Modifier.height(4.dp)) }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(modifier = Modifier.size(6.dp).background(Color(0xFF4CAF50), CircleShape))
+                        Text("Offline Models", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                    }
+                }
+                items(offlineModels) { modelName ->
+                    val isActive = activeModelLabel.contains(modelName)
+                    Card(
+                        onClick = { onSelectOffline(modelName) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isActive) Color(0xFF4CAF50).copy(0.15f) else Color(0xFF1E1E3A)
+                        ),
+                        border = BorderStroke(1.dp,
+                            if (isActive) Color(0xFF4CAF50).copy(0.6f) else Color.White.copy(0.08f))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("📴", fontSize = 22.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(modelName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.White)
+                                Text("Offline · On-device", fontSize = 11.sp, color = Color.White.copy(0.5f))
+                            }
+                            if (isActive) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF4CAF50).copy(0.2f)) {
+                                    Text("ACTIVE", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (apiKeys.isEmpty() && offlineModels.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("🔑", fontSize = 36.sp)
+                            Text("No models configured", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Go to Settings → API Keys to add a model", fontSize = 12.sp,
+                                color = Color.White.copy(0.5f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
+                }
+            }
+
+            item { Spacer(Modifier.height(16.dp)) }
         }
     }
 }

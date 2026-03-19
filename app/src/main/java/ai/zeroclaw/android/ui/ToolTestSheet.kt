@@ -1,6 +1,9 @@
 package ai.zeroclaw.android.ui
 
 import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -109,6 +113,7 @@ fun ToolTestSheet(
                 "memory"         -> MemoryTestUI(tool, accentColor, isEnabled)
                 "github"         -> GitHubTestUI(tool, accentColor, isEnabled)
                 "brave_search"   -> BraveSearchTestUI(tool, accentColor, isEnabled)
+                "image_analysis" -> ImageAnalysisTestUI(tool, accentColor, isEnabled)
                 "status"         -> StatusTestUI(tool, accentColor, isEnabled)
                 "clipboard"      -> ClipboardTestUI(tool, accentColor, isEnabled)
                 "location"       -> LocationTestUI(tool, accentColor, isEnabled)
@@ -841,6 +846,204 @@ private fun BraveSearchTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
                 item { ResultCard(accent) { ResultLabel(accent); Text(r.content, fontSize = 12.sp, color = Color.White, lineHeight = 17.sp) } }
             } else { item { ErrorCard(r.error ?: "Brave search failed") } }
         }
+        item { Spacer(Modifier.height(20.dp)) }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image Analysis — with image upload
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ImageAnalysisTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var previewBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var prompt by remember { mutableStateOf("Describe this image in detail.") }
+    var result by remember { mutableStateOf<ToolResult?>(null) }
+    var loading by remember { mutableStateOf(false) }
+
+    // Image picker launcher
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            selectedUri = it
+            // Load preview bitmap
+            try {
+                val inputStream = context.contentResolver.openInputStream(it)
+                previewBitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+            } catch (_: Exception) { previewBitmap = null }
+        }
+    }
+
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Image picker area
+        item {
+            Card(
+                onClick = { launcher.launch("image/*") },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selectedUri != null) Color.Transparent
+                                    else Color.White.copy(alpha = 0.04f)
+                ),
+                border = BorderStroke(
+                    width = if (selectedUri != null) 1.5.dp else 1.dp,
+                    color = if (selectedUri != null) accent.copy(alpha = 0.6f)
+                            else Color.White.copy(alpha = 0.12f)
+                ),
+                modifier = Modifier.fillMaxWidth().height(if (previewBitmap != null) 220.dp else 140.dp)
+            ) {
+                if (previewBitmap != null) {
+                    Image(
+                        bitmap = previewBitmap!!.asImageBitmap(),
+                        contentDescription = "Selected image",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = accent.copy(alpha = 0.15f),
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(Icons.Default.AddPhotoAlternate, null,
+                                        tint = accent, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                            Text("Tap to upload image", fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp, color = Color.White.copy(0.8f))
+                            Text("JPG, PNG, WebP supported",
+                                fontSize = 11.sp, color = Color.White.copy(0.4f))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Re-pick button when image selected
+        if (selectedUri != null) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { launcher.launch("image/*") },
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, accent.copy(0.4f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("🔄  Change Image", color = accent, fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { selectedUri = null; previewBitmap = null; result = null },
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(0.15f))
+                    ) {
+                        Icon(Icons.Default.Close, null, tint = Color.White.copy(0.6f), modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+
+        // Prompt field
+        item {
+            SheetInput(
+                value = prompt,
+                onValueChange = { prompt = it },
+                placeholder = "Ask about the image…",
+                accent = accent,
+                singleLine = false,
+                minLines = 2,
+                maxLines = 3
+            )
+        }
+
+        // Quick prompts
+        item {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    "Describe in detail",
+                    "What objects are here?",
+                    "Read any text",
+                    "What's the mood?",
+                    "Identify colors"
+                ).forEach { q ->
+                    Surface(
+                        onClick = { prompt = q },
+                        shape = RoundedCornerShape(8.dp),
+                        color = accent.copy(0.1f),
+                        border = BorderStroke(1.dp, accent.copy(0.2f))
+                    ) {
+                        Text(q, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                            fontSize = 10.sp, color = accent)
+                    }
+                }
+            }
+        }
+
+        // Analyze button
+        item {
+            RunButton(
+                label = "🖼️  Analyse Image",
+                accent = accent,
+                loading = loading,
+                enabled = isEnabled && selectedUri != null
+            ) {
+                loading = true
+                scope.launch {
+                    result = tool.execute(mapOf(
+                        "source" to (selectedUri.toString()),
+                        "prompt" to prompt
+                    ))
+                    loading = false
+                }
+            }
+        }
+
+        if (selectedUri == null && !isEnabled) {
+            item {
+                Text(
+                    "Upload an image above, then tap Analyse to see what the AI sees.",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(0.4f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                )
+            }
+        }
+
+        // Result
+        result?.let { r ->
+            if (r.success) {
+                item {
+                    ResultCard(accent) {
+                        ResultLabel(accent)
+                        Text(r.content, fontSize = 13.sp, color = Color.White, lineHeight = 19.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                            CopyButton(r.content, accent)
+                        }
+                    }
+                }
+            } else {
+                item { ErrorCard(r.error ?: "Analysis failed — ensure a vision-capable API key is configured") }
+            }
+        }
+
         item { Spacer(Modifier.height(20.dp)) }
     }
 }
