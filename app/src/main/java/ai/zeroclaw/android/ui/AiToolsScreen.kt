@@ -95,8 +95,6 @@ fun AiToolsScreen(
     val context = LocalContext.current
     val toolSystem = remember { ToolSystem.getInstance(context) }
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
-
     var toolStates by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
@@ -113,7 +111,6 @@ fun AiToolsScreen(
     val totalCount = toolStates.size
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
@@ -170,14 +167,7 @@ fun AiToolsScreen(
                     onSearchChange = { searchQuery = it },
                     onToggle = { name, enabled ->
                         toolStates = toolStates + (name to enabled)
-                        scope.launch {
-                            toolSystem.setEnabled(name, enabled)
-                            snackbarHostState.showSnackbar(
-                                if (enabled) "${toolEmoji(name)} ${name.replace("_", " ")} enabled"
-                                else "${toolEmoji(name)} ${name.replace("_", " ")} disabled",
-                                duration = SnackbarDuration.Short
-                            )
-                        }
+                        scope.launch { toolSystem.setEnabled(name, enabled) }
                     }
                 )
                 1 -> FlowDiagramTab(
