@@ -227,7 +227,7 @@ private suspend fun runTool(tool: Tool, args: Map<String, String>): ToolResult {
         "$k=${v.take(40).replace('\n', ' ')}"
     }
     ZeroClawService.log("[Lab] ▶ ${tool.name} — $argSummary")
-    val result = runTool(tool,args)
+    val result = tool.execute(args)
     if (result.success) {
         val preview = result.content.take(80).replace('\n', ' ')
         ZeroClawService.log("[Lab] ✓ ${tool.name} — $preview")
