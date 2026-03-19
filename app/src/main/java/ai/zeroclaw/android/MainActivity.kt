@@ -15,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ai.zeroclaw.android.data.ThemeManager
+import ai.zeroclaw.android.ui.AiToolsScreen
 import ai.zeroclaw.android.ui.ApiKeysScreen
 import ai.zeroclaw.android.ui.HomeScreen
 import ai.zeroclaw.android.ui.InfoScreen
@@ -56,7 +57,15 @@ fun ZeroClawNavHost() {
             SettingsScreen(
                 onBack              = { navController.popBackStack() },
                 onNavigateToApiKeys = { navController.navigate("api_keys") },
+                onNavigateToAiTools = { navController.navigate("ai_tools") },
                 onNavigateToInfo    = { sectionId -> navController.navigate("info/$sectionId") }
+            )
+        }
+
+        composable("ai_tools") {
+            AiToolsScreen(
+                onBack            = { navController.popBackStack() },
+                onNavigateToInfo  = { sectionId -> navController.navigate("info/$sectionId") }
             )
         }
 

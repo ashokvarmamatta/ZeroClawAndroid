@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToApiKeys: () -> Unit,
+    onNavigateToAiTools: () -> Unit = {},
     onNavigateToInfo: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -57,17 +58,13 @@ fun SettingsScreen(
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
 
-    // Tools state
+    // Tool count for display in nav button
     val toolSystem = remember { ToolSystem.getInstance(context) }
-    var toolStates by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var enabledToolCount by remember { mutableIntStateOf(0) }
+    val totalToolCount = remember { toolSystem.allTools().size }
 
     LaunchedEffect(Unit) {
-        // Load tool enabled states
-        val states = mutableMapOf<String, Boolean>()
-        for (tool in toolSystem.allTools()) {
-            states[tool.name] = toolSystem.isEnabled(tool.name)
-        }
-        toolStates = states
+        enabledToolCount = toolSystem.allTools().count { toolSystem.isEnabled(it.name) }
         settings.getAll().let { s ->
             zeroClawUrl = s.zeroClawUrl
             telegramToken = s.telegramToken
@@ -127,84 +124,9 @@ fun SettingsScreen(
             }
             item { OfflineModelSourcesSection() }
             item { ApiKeyProvidersSection() }
-            // ── AI TOOLS SECTION ──────────────────────────────────────
+            // ── AI TOOLS NAV BUTTON ───────────────────────────────────
             item { SectionHeaderWithInfo("🔧 AI Tools", "tools") { onNavigateToInfo("tools") } }
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "Tools the AI can use during conversations. When enabled, the LLM can call these tools to answer questions with real-time data.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 17.sp
-                        )
-                        Spacer(Modifier.height(12.dp))
-
-                        for (tool in toolSystem.allTools()) {
-                            val isEnabled = toolStates[tool.name] ?: true
-                            val toolEmoji = when (tool.name) {
-                                "web_search" -> "🔍"
-                                "web_fetch" -> "🌐"
-                                "memory" -> "🧠"
-                                "pdf_read" -> "📄"
-                                "image_analysis" -> "🖼️"
-                                "cron" -> "⏰"
-                                "notion" -> "📝"
-                                "email" -> "📧"
-                                else -> "🔧"
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(toolEmoji, fontSize = 20.sp)
-                                Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        tool.name.replace("_", " ")
-                                            .replaceFirstChar { it.uppercase() },
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        tool.description.take(80) +
-                                            if (tool.description.length > 80) "…" else "",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 15.sp,
-                                        maxLines = 2
-                                    )
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Switch(
-                                    checked = isEnabled,
-                                    onCheckedChange = { enabled ->
-                                        toolStates = toolStates + (tool.name to enabled)
-                                        scope.launch { toolSystem.setEnabled(tool.name, enabled) }
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = Color(0xFF00BCD4),
-                                        checkedThumbColor = Color.White
-                                    )
-                                )
-                            }
-                            if (tool != toolSystem.allTools().last()) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(start = 40.dp),
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            item { AiToolsNavButton(enabledCount = enabledToolCount, totalCount = totalToolCount, onClick = onNavigateToAiTools) }
 
             item { SectionHeader("⚙️ ZeroClaw Configuration") }
             item { SettingsTextField("ZeroClaw API URL", zeroClawUrl, false) { zeroClawUrl = it } }
@@ -409,6 +331,52 @@ fun DropdownSetting(label: String, value: String, options: List<String>, onSelec
                 DropdownMenuItem(text = { Text(opt) },
                     onClick = { onSelect(opt); expanded = false })
             }
+        }
+    }
+}
+
+@Composable
+fun AiToolsNavButton(enabledCount: Int, totalCount: Int, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("🔧", fontSize = 26.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Manage AI Tools", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                if (enabledCount == 0) {
+                    Text(
+                        "All tools off — tap to enable tools and see the flow diagram",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        "$enabledCount / $totalCount tools active",
+                        fontSize = 12.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Text(
+                        "Tap to configure tools + view AI pipeline",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
