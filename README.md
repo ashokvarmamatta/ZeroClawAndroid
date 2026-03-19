@@ -4,7 +4,7 @@
 
 # ZeroClaw Android
 
-**A 24/7 AI agent daemon for Android — 11 messaging channels, 35 built-in AI tools, advanced AI orchestration, vector memory, full infrastructure, polished configuration & UX, and NullClaw-inspired advanced features (Composio, MCP, A2A, MMR, hint routing, agent identity). Runs entirely on your phone.**
+**A 24/7 AI agent daemon for Android — 11 messaging channels, 36 built-in AI tools, autonomous web scraper agents with scheduled delivery, interactive Tool Playground, advanced AI orchestration, vector memory, full infrastructure, polished configuration & UX, and NullClaw-inspired advanced features (Composio, MCP, A2A, MMR, hint routing, agent identity). Runs entirely on your phone.**
 
 [![Android](https://img.shields.io/badge/Platform-Android%2026%2B-green?logo=android)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple?logo=kotlin)](https://kotlinlang.org)
@@ -17,7 +17,7 @@
 
 ## 📖 What is ZeroClaw?
 
-ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service across **11 messaging channels**, with **35 built-in AI tools**, **advanced AI orchestration** (streaming, multi-agent, delegate/spawn, workflows, thinking mode), **vector memory with RAG + MMR diversity**, a **complete infrastructure platform** (hooks, plugins, biometric lock, MCP client, A2A protocol, audit log), and a **NullClaw-inspired advanced layer** — Composio 1000+ app integrations, hint-based provider routing, agent identity (AIEOS v1.1), semantic cache, memory hygiene, and Pushover notifications.
+ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service across **11 messaging channels**, with **36 built-in AI tools**, an **Agents system** (autonomous web scraper agents that monitor URLs and push updates to Telegram/Discord/Slack on a schedule), an **interactive Tool Playground** to test and debug any tool live, **advanced AI orchestration** (streaming, multi-agent, delegate/spawn, workflows, thinking mode), **vector memory with RAG + MMR diversity**, a **complete infrastructure platform** (hooks, plugins, biometric lock, MCP client, A2A protocol, audit log), and a **NullClaw-inspired advanced layer** — Composio 1000+ app integrations, hint-based provider routing, agent identity (AIEOS v1.1), semantic cache, memory hygiene, and Pushover notifications.
 
 No cloud subscription. No always-on PC. Just your Android device.
 
@@ -36,7 +36,11 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
               ↓
     Vector Memory: VectorMemory → HybridSearch+RRF → MMR Reranker → AdaptiveRetrieval → SemanticCache
               ↓
-    Tool System (35 tools) → LLM Router → Reply
+    Agents System: WebScraperAgent → AgentManager → scheduled delivery
+              ↓
+    Tool Playground: ToolPlaygroundScreen → ToolTestSheet → live test any tool
+              ↓
+    Tool System (36 tools) → LLM Router → Reply
 ```
 
 ---
@@ -54,6 +58,39 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 ---
 
 ## ✨ Features
+
+### 🤖 Agents System (Phase 160)
+
+#### Web Scraper Agent
+- **Create autonomous agents** that monitor any URL on a schedule and push updates to your chosen channel
+- **Supported delivery channels:** Telegram, Discord, Slack, WhatsApp, Email
+- **Flexible intervals:** 15 min / 30 min / 1 h / 6 h / 12 h / 24 h (or custom, minimum 5 minutes)
+- **AI extraction** — optional prompt sent to LlmRouter to extract insight from fetched page (e.g. "extract top 5 headlines")
+- **Change detection** — hash-based: only pushes if page content actually changed (configurable toggle)
+- **Run Now button** — trigger a fresh scrape instantly from the agent card to verify it's working
+- **Test Fetch button** — test URL fetch from the create form before saving; shows 600-char preview or error inline
+- **Telegram chatId validation** — real-time error if you accidentally paste a bot token instead of a chat ID
+- Live status display on each agent card: last-run time, last delivery status, enabled/paused toggle
+- 5-second polling loop refreshes the agent list so status updates appear immediately
+
+### 🧪 Tool Playground & Testing
+
+#### Tool Playground Screen
+- **Interactive tool testing** — test any of the 36 built-in tools individually without sending a real message
+- Per-tool enable/disable toggles, model selector (choose which LLM), category grid layout
+- Every test run is logged to the Home Screen activity feed for visibility
+
+#### Tool Test Sheet
+- Bottom sheet form with custom argument fields per tool
+- Image picker for ImageAnalysis tool testing
+- Before/after logging via `ZeroClawService.log()` — results visible on Home Screen instantly
+
+#### AI Tools Screen
+- Browseable list of all 36 tools with enable/disable toggles, descriptions, and parameter details
+
+#### Home Screen Log Improvements
+- **Expandable LogCard** — "View all N / Show less" toggle when log entries exceed 20; playground tool runs highlighted in blue
+- **DetailedLogCard** — second log panel showing full LLM call traces, tool results, web search steps
 
 ### ⚙️ Configuration & UX (Phases 131-140)
 
@@ -167,7 +204,7 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 - **LINE** — LINE Messaging API
 - **WebChat** — built-in browser-accessible WebSocket chat (+ voice input via Phase 138)
 
-### 🔧 AI Tools — 30 Built-in Tools
+### 🔧 AI Tools — 36 Built-in Tools
 
 #### Core Tools (10)
 Web Search (DuckDuckGo), Web Fetch, Memory (vector-backed), PDF Reader, Image Analysis, Cron/Scheduled Tasks, Status/Diagnostics, GitHub, Notion, Email
@@ -177,6 +214,9 @@ Summarize, Translate (50+ languages), ImageGen (Pollinations + DALL-E), SpeechTo
 
 #### Infrastructure Tools (2 — Phase 125)
 WebViewTool (headless JS-rendered scraping), MediaPipelineTool (media download + transcode)
+
+#### NullClaw Tools (6 — Phases 141-151)
+ComposioTool (1000+ app integrations), DelegateTool, SpawnTool, MessageTool (proactive messaging), McpClient, PushoverTool
 
 ### 🔑 Multi-Provider API Key Manager
 - Unlimited keys, cURL import, live key testing, Gemini model picker
@@ -199,10 +239,15 @@ app/src/main/java/ai/zeroclaw/android/
 ├── MainActivity.kt
 │
 ├── ui/
-│   ├── HomeScreen.kt                    # Dashboard + usage stats + widget data
+│   ├── HomeScreen.kt                    # Dashboard + expandable logs + DetailedLogCard
 │   ├── ApiKeysScreen.kt                 # Key manager + per-key usage stats
 │   ├── SettingsScreen.kt                # All settings inc. themes, prompts, rate limits
 │   ├── InfoScreen.kt + InfoData.kt
+│   ├── AgentsScreen.kt                  # Phase 160 — agent list, Run Now, live status
+│   ├── AgentCreateSheet.kt              # Phase 160 — create/edit form with Test Fetch
+│   ├── ToolPlaygroundScreen.kt          # Interactive tool testing + model selector
+│   ├── ToolTestSheet.kt                 # Per-tool arg form + image picker + logging
+│   ├── AiToolsScreen.kt                 # All-tools browse + enable/disable
 │   ├── UsageDashboardScreen.kt          # Phase 135 — charts and stats
 │   ├── ApprovalScreen.kt               # Phase 136 — pending approvals queue
 │   ├── ConversationLabelsScreen.kt      # Phase 139 — label management
@@ -245,9 +290,14 @@ app/src/main/java/ai/zeroclaw/android/
 │   ├── WorkflowEngine.kt, ToolLoopDetector.kt
 │   ├── ThinkingMode.kt, ConversationSummarizer.kt
 │
+├── agents/
+│   ├── AgentConfig.kt                   # Phase 160 — agent data class
+│   ├── AgentManager.kt                  # Phase 160 — CRUD + getDueAgents() + markRun()
+│   └── WebScraperAgent.kt               # Phase 160 — fetch → extract → diff → deliver
+│
 ├── tools/
 │   ├── ToolSystem.kt
-│   ├── [30 tool files — WebSearch through MediaPipelineTool]
+│   ├── [36 tool files — WebSearch through PushoverTool]
 │
 ├── service/
 │   ├── ZeroClawService.kt
@@ -358,6 +408,25 @@ cd ZeroClawAndroid
 ## 🛣️ Roadmap — Complete Feature Set
 
 All phases are implemented on this branch.
+
+### ✅ Agents System (Phase 160)
+- [x] Web Scraper Agent — monitor any URL on a schedule ✅
+- [x] AgentManager — SharedPreferences CRUD + due-agent polling ✅
+- [x] AgentsScreen — agent list with summary banner, Run Now button ✅
+- [x] AgentCreateSheet — create/edit form with Test Fetch button ✅
+- [x] Delivery to Telegram / Discord / Slack / WhatsApp / Email ✅
+- [x] AI extraction prompt — optional LlmRouter call per scrape cycle ✅
+- [x] Change detection — skip push if content hash unchanged ✅
+- [ ] RSS Monitor Agent (Phase 161 — planned)
+- [ ] Price Tracker Agent (Phase 162 — planned)
+- [ ] Social Feed Agent (Phase 163 — planned)
+
+### ✅ Tool Playground & Testing
+- [x] ToolPlaygroundScreen — test any of 36 tools live ✅
+- [x] ToolTestSheet — per-tool arg form with image picker ✅
+- [x] AiToolsScreen — browse and toggle all 36 tools ✅
+- [x] Expandable LogCard — View all / Show less, blue-highlighted playground runs ✅
+- [x] DetailedLogCard — full LLM trace logs below activity feed ✅
 
 ### ✅ Core Foundation
 - [x] Multi-provider API key manager with unlimited keys ✅
@@ -573,7 +642,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ## 🙏 Acknowledgements
 
 ### Built on ZeroClaw
-This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends it into a production-grade, fully self-hosted AI agent platform — 11 messaging channels, 30 AI tools, advanced AI orchestration, vector memory with RAG, complete infrastructure platform, and polished configuration & UX. All running on your Android device.
+This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends it into a production-grade, fully self-hosted AI agent platform — 11 messaging channels, 36 AI tools, autonomous agents with scheduled delivery, interactive Tool Playground, advanced AI orchestration, vector memory with RAG, complete infrastructure platform, and polished configuration & UX. All running on your Android device.
 
 ### Libraries & Services
 - [Telegram Bot API](https://core.telegram.org/bots/api) — [Twilio](https://www.twilio.com) — [Discord Gateway](https://discord.com/developers/docs/topics/gateway)

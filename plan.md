@@ -498,6 +498,32 @@ data class ApiKeyEntry(
 
 ---
 
+## 🧪 Tool Playground & UI Enhancements (branch: `tools-playground` / `offline-websearch-fix`)
+
+### Tool Playground Screen (`ui/ToolPlaygroundScreen.kt`) ✅ DONE
+- Interactive screen to test any of the 36 built-in tools individually
+- Per-tool toggle switches (enable/disable per playground session, seeded from ToolSystem)
+- `ModelSelectorSheet` — choose which LLM model to use for playground test calls
+- **PlaygroundCategory grid** — tools grouped by category for easy browsing
+- Logs every tool invocation to `ZeroClawService.log()` so results appear in HomeScreen log card
+
+### Tool Test Sheet (`ui/ToolTestSheet.kt`) ✅ DONE
+- Bottom sheet form for configuring and running a single tool with custom args
+- `runTool()` helper wraps `tool.execute()` with before/after logging
+- Supports image picker for `ImageAnalysisTestUI`
+- All tool test runs logged to HomeScreen activity feed
+
+### AI Tools Screen (`ui/AiToolsScreen.kt`) ✅ DONE
+- Browseable list of all available tools with enable/disable toggles
+- Shows tool name, description, and parameter list
+
+### Home Screen UX Improvements ✅ DONE
+- **LogCard expand** — "View all N / Show less" pill toggle when log entries exceed 20; playground tool logs highlighted blue; trailing "…" pill when collapsed
+- **DetailedLogCard** — second log panel below LogCard showing full `conversationLogs` (from `offline-websearch-fix` merge) — detailed LLM call traces, tool results, web search steps
+- **🤖 Agents button** in TopAppBar — `Icons.Default.SmartToy` IconButton navigates to Agents screen
+
+---
+
 ## 🤖 Phase 160+ — Agents System
 
 ### Phase 160 — Web Scraper Agent (branch: `agents-feature`) ✅ DONE
@@ -532,6 +558,13 @@ ZeroClawService polling loop (every 60s)
 **Change detection:** SHA hash of fetched content — only pushes if page actually changed (configurable)
 **AI extraction:** Optional extract prompt passed to LlmRouter — e.g. "extract top 5 headlines"
 
+**UX additions (post-launch fixes):**
+- **Run Now button** on each AgentCard — triggers a fresh scrape instantly, shows "Scraping…" spinner while running, refreshes card status on completion
+- **Test Fetch button** in AgentCreateSheet — calls WebFetchTool inline while user is still on the create form, shows green preview card (first 600 chars + total count) on success or red error card on failure
+- **Telegram chatId validation** — real-time check: if chatId contains ':' and length > 20, shows "This looks like a bot token, not a Chat ID" error inline
+- **Offline model token guard** — three-layer defense against JNI SIGABRT: OfflineModelManager truncates at 2457 chars, LlmRouter budgets message vs system+history overhead, WebScraperAgent passes at most 600 chars to extraction
+- **Web fetch gzip fix** — removed manual `Accept-Encoding` header so OkHttp auto-handles transparent gzip decompression
+
 ### Phase 161 — RSS Monitor Agent (planned)
 Auto-detect RSS feed from URL, only push new items since last run.
 
@@ -560,6 +593,10 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 | BUG-10 | — | `web_search` query not sanitized — special chars caused HTTP 400 / empty result set | ✅ Fixed |
 | BUG-11 | — | Refusal detection false-positive — short AI replies flagged as refusals, triggering unnecessary retry | ✅ Fixed |
 | BUG-12 | — | System date injected incorrectly — LLM received wrong year in system prompt | ✅ Fixed |
+| BUG-13 | 160 | `runTool()` infinite recursion — global replace of `tool.execute(` → `runTool(tool,` also hit the call inside `runTool` itself, causing StackOverflow crash | ✅ Fixed |
+| BUG-14 | 160 | Offline model JNI SIGABRT — `input_size(3386) >= maxTokens(1024)`. MediaPipe aborts the process via JNI (not catchable). Three-layer fix: OfflineModelManager guard (2457-char cap), LlmRouter budget, WebScraperAgent content cap (600 chars) | ✅ Fixed |
+| BUG-15 | 160 | Web fetch returned binary garbage (`����gM`) — manually setting `Accept-Encoding: gzip` disables OkHttp's transparent decompression. Fixed by removing the header entirely | ✅ Fixed |
+| BUG-16 | 160 | Telegram chatId validation — user entered bot token (`8143…:AAEe…`) as chat ID. Added real-time validation + updated placeholder text in AgentCreateSheet | ✅ Fixed |
 
 ---
 
