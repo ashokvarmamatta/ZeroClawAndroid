@@ -65,6 +65,28 @@ class LlmRouter(private val context: Context) {
         chatHistories.remove(chatId)
     }
 
+    /** Return known chat IDs grouped by channel prefix (tg_, discord_, slack_, etc.) */
+    fun getKnownChatIds(): Map<String, List<String>> {
+        return chatHistories.keys.groupBy { id ->
+            when {
+                id.startsWith("tg_") -> "telegram"
+                id.startsWith("discord_") -> "discord"
+                id.startsWith("slack_") -> "slack"
+                id.startsWith("wa_") -> "whatsapp"
+                id.startsWith("signal_") -> "signal"
+                id.startsWith("matrix_") -> "matrix"
+                id.startsWith("irc_") -> "irc"
+                id.startsWith("teams_") -> "teams"
+                id.startsWith("twitch_") -> "twitch"
+                id.startsWith("line_") -> "line"
+                id.startsWith("web_") -> "webchat"
+                else -> "other"
+            }
+        }.mapValues { (_, ids) ->
+            ids.map { id -> id.substringAfter("_") }.distinct()
+        }
+    }
+
     // ── Sealed result type so callers know WHY it failed ─────────────────────
 
     sealed class LlmResult {

@@ -20,8 +20,12 @@ import ai.zeroclaw.android.agents.AgentConfig
 import ai.zeroclaw.android.agents.AgentManager
 import ai.zeroclaw.android.agents.AgentTemplate
 import ai.zeroclaw.android.agents.NEWS_CATEGORIES
+import ai.zeroclaw.android.data.AppSettings
+import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.tools.WebFetchTool
 import java.util.UUID
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,16 +45,45 @@ fun AgentCreateSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // Detect connected channels and known chat IDs
+    var connectedChannels by remember { mutableStateOf(mapOf<String, Boolean>()) }
+    var knownChatIds by remember { mutableStateOf(mapOf<String, List<String>>()) }
+    LaunchedEffect(Unit) {
+        val prefs = AppSettings.dataStore(context).data.first()
+        connectedChannels = mapOf(
+            "telegram" to (prefs[AppSettings.KEY_TELEGRAM_TOKEN] ?: "").isNotBlank(),
+            "discord" to (prefs[AppSettings.KEY_DISCORD_TOKEN] ?: "").isNotBlank(),
+            "slack" to (prefs[AppSettings.KEY_SLACK_TOKEN] ?: "").isNotBlank(),
+            "whatsapp" to (prefs[AppSettings.KEY_TWILIO_SID] ?: "").isNotBlank(),
+            "email" to false
+        )
+        knownChatIds = try { LlmRouter.getInstance(context).getKnownChatIds() } catch (_: Exception) { emptyMap() }
+    }
+
+    // Auto-select first connected channel for new agents
+    val defaultChannel = remember(connectedChannels) {
+        if (existing != null) existing.channel
+        else connectedChannels.entries.firstOrNull { it.value }?.key ?: "telegram"
+    }
+
     // Form state — pre-fill from template or existing agent
     var name          by remember { mutableStateOf(existing?.name ?: template?.name ?: "") }
     var url           by remember { mutableStateOf(existing?.url ?: template?.url ?: "") }
     var intervalRaw   by remember { mutableStateOf((existing?.intervalMinutes ?: template?.intervalMinutes ?: 60).toString()) }
-    var channel       by remember { mutableStateOf(existing?.channel ?: "telegram") }
+    var channel       by remember { mutableStateOf(existing?.channel ?: defaultChannel) }
     var chatId        by remember { mutableStateOf(existing?.chatId ?: "") }
     var extractPrompt by remember { mutableStateOf(existing?.extractPrompt ?: template?.extractPrompt ?: "") }
     var onlyOnChange  by remember { mutableStateOf(existing?.onlyOnChange ?: template?.onlyOnChange ?: true) }
     var customInput   by remember { mutableStateOf("") }
     var selectedSubs  by remember { mutableStateOf(setOf<String>()) }
+
+    // Auto-fill chatId when channel changes and we have known IDs
+    LaunchedEffect(channel, knownChatIds) {
+        if (chatId.isBlank() && existing == null) {
+            val ids = knownChatIds[channel]
+            if (!ids.isNullOrEmpty()) chatId = ids.first()
+        }
+    }
 
     // Validation errors
     var nameError   by remember { mutableStateOf<String?>(null) }
@@ -221,17 +254,36 @@ fun AgentCreateSheet(
 
             item {
                 Text("Channel", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text("Connected channels shown first", fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f))
                 Spacer(Modifier.height(8.dp))
+                // Sort: connected channels first
+                val sortedChannels = remember(connectedChannels) {
+                    channels.sortedByDescending { connectedChannels[it] == true }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()) {
-                    channels.forEach { ch ->
+                    sortedChannels.forEach { ch ->
+                        val connected = connectedChannels[ch] == true
                         FilterChip(
                             selected = channel == ch,
-                            onClick = { channel = ch },
-                            label = { Text("${channelEmoji(ch)} ${ch.replaceFirstChar { it.uppercase() }}", fontSize = 11.sp) },
+                            onClick = {
+                                channel = ch
+                                // Auto-fill chat ID from known IDs when switching
+                                if (chatId.isBlank() || chatId == (knownChatIds[channel]?.firstOrNull() ?: "")) {
+                                    chatId = knownChatIds[ch]?.firstOrNull() ?: ""
+                                }
+                            },
+                            label = {
+                                Text(
+                                    "${channelEmoji(ch)} ${ch.replaceFirstChar { it.uppercase() }}" +
+                                    if (connected) " ✓" else "",
+                                    fontSize = 11.sp
+                                )
+                            },
                             shape = RoundedCornerShape(8.dp),
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = accentColor,
+                                selectedContainerColor = if (connected) Color(0xFF2E7D32) else accentColor,
                                 selectedLabelColor = Color.White
                             )
                         )
@@ -249,6 +301,31 @@ fun AgentCreateSheet(
                     accent = accentColor,
                     leadingIcon = { Text(channelEmoji(channel), fontSize = 16.sp) }
                 )
+                // Show known chat IDs as quick-fill suggestions
+                val channelIds = knownChatIds[channel]
+                if (!channelIds.isNullOrEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Recent chats (tap to use):", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        channelIds.take(5).forEach { id ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (chatId == id) Color(0xFF2E7D32).copy(alpha = 0.3f)
+                                        else accentColor.copy(alpha = 0.1f),
+                                modifier = Modifier.clickable { chatId = id; chatIdError = null }
+                            ) {
+                                Text(id, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                    color = if (chatId == id) Color(0xFF81C784) else accentColor)
+                            }
+                        }
+                    }
+                } else if (connectedChannels[channel] == true) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("${channelEmoji(channel)} ${channel.replaceFirstChar { it.uppercase() }} is connected — send a message to the bot first, then the Chat ID will auto-appear here.",
+                        fontSize = 10.sp, color = Color(0xFF81C784).copy(alpha = 0.7f), lineHeight = 14.sp)
+                }
             }
 
             // ── Section: Extraction (optional) ─────────────────────────────
