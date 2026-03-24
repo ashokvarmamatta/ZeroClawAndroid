@@ -111,7 +111,7 @@ class LlmRouter(private val context: Context) {
             val toolSystem = ToolSystem.getInstance(context)
             val enabled = toolSystem.enabledTools()
             return if (enabled.isEmpty()) "No tools enabled."
-            else "🔧 Enabled tools:\n" + enabled.joinToString("\n") { "• ${it.name} — ${it.description.take(60)}" }
+            else "🔧 Enabled tools (${enabled.size}):\n" + enabled.joinToString("\n") { "• ${it.name} — ${it.description.take(90)}" }
         }
 
         // ── Phase 149: Extract routing hint and clean message ─────────────
@@ -269,12 +269,13 @@ class LlmRouter(private val context: Context) {
                                         val r = runCatching {
                                             callOffline(summPrompt, model, emptyList(), effectiveSystemPrompt)
                                         }.getOrNull()?.takeIf { it.isNotBlank() }
-                                        if (r != null) {
+                                        if (r != null && !isSummarizerRefusal(r)) {
                                             ZeroClawService.log("OFFLINE: ✓ summarizer reply (${r.length} chars)")
                                             ZeroClawService.logDetail("━━━ PASS 2 SUMMARIZER REPLY ━━━\n$r")
                                             r
                                         } else {
-                                            ZeroClawService.log("OFFLINE: summarizer call failed — falling back to direct reply")
+                                            val fallbackReason = if (r != null) "summarizer gave refusal" else "summarizer call failed"
+                                            ZeroClawService.log("OFFLINE: $fallbackReason — falling back to direct reply")
                                             buildPassTwoDirectReply(effectiveMessage, toolSystem)
                                         }
                                     } else {
@@ -513,6 +514,30 @@ class LlmRouter(private val context: Context) {
                r.contains("unable to confirm")
     }
 
+    /**
+     * Detect when the Pass 2 summarizer gives a useless "can't answer from context" reply
+     * instead of actually summarizing the fetched data. Small models do this frequently.
+     */
+    private fun isSummarizerRefusal(reply: String): Boolean {
+        val r = reply.lowercase()
+        return r.contains("not possible to answer") ||
+               r.contains("doesn't mention") || r.contains("does not mention") ||
+               r.contains("not mentioned in") || r.contains("no mention of") ||
+               r.contains("doesn't contain") || r.contains("does not contain") ||
+               r.contains("not contain any") || r.contains("doesn't provide") ||
+               r.contains("does not provide") || r.contains("no information") ||
+               r.contains("not enough information") || r.contains("insufficient information") ||
+               r.contains("cannot determine") || r.contains("can't determine") ||
+               r.contains("cannot answer") || r.contains("can't answer") ||
+               r.contains("unable to answer") || r.contains("unable to determine") ||
+               r.contains("not able to answer") || r.contains("not able to determine") ||
+               r.contains("provided context") || r.contains("provided text") ||
+               r.contains("given text") || r.contains("given context") ||
+               r.contains("above text") || r.contains("above data") ||
+               (r.contains("i don't") && r.contains("information")) ||
+               (r.contains("i do not") && r.contains("information"))
+    }
+
     /** Detect queries that need real-time web data regardless of Pass 1 answer. */
     private fun isRealTimeQuery(message: String): Boolean {
         val m = message.lowercase()
@@ -744,15 +769,14 @@ class LlmRouter(private val context: Context) {
 
         ZeroClawService.logDetail("OFFLINE-SUM: data for model (${dataForModel.length} chars):\n${dataForModel.take(400)}")
 
-        // Frame as summarization task — model does NOT need real-time access, just needs to summarize given text
+        // Frame as summarization task — model does NOT need real-time access, just needs to summarize given text.
+        // Use simple, direct language that small models (Gemma 2B) can follow reliably.
         return buildString {
-            appendLine("I have fetched the following information from the internet. Please read it and provide a helpful, concise summary that answers the user's question.")
+            appendLine("Below is real data I collected from the web. Read it carefully and answer the question using ONLY this data. Do NOT say the data is missing or insufficient — the answer IS in the data below.")
             appendLine()
-            appendLine("--- FETCHED DATA ---")
             appendLine(dataForModel)
-            appendLine("--- END OF DATA ---")
             appendLine()
-            append("Question: $userMessage\n\nPlease summarize the above data to answer this question:")
+            append("Question: $userMessage\n\nAnswer using the data above:")
         }
     }
 
@@ -2303,7 +2327,12 @@ class LlmRouter(private val context: Context) {
         } else message
         val fullPrompt = "$systemPrompt\n\n${historyText}User: $safeMessage\nAssistant:$prefill"
         val raw = manager.generateResponse(fullPrompt)
-        return if (prefill.isNotBlank()) "$prefill$raw" else raw
+        // Offline models sometimes keep generating past their response into a fake user turn.
+        // Strip everything from the first "\nUser:" or "\nHuman:" onwards.
+        val trimmed = raw
+            .split(Regex("\n+(?:User|Human)\\s*:", RegexOption.IGNORE_CASE)).first()
+            .trim()
+        return if (prefill.isNotBlank()) "$prefill$trimmed" else trimmed
     }
 
     private suspend fun validateOffline(preferredModel: String): ValidationResult {
