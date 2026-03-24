@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.zeroclaw.android.agents.AgentConfig
 import ai.zeroclaw.android.agents.AgentManager
+import ai.zeroclaw.android.agents.AgentTemplate
+import ai.zeroclaw.android.agents.NEWS_CATEGORIES
 import ai.zeroclaw.android.tools.WebFetchTool
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -30,21 +32,25 @@ import kotlinx.coroutines.launch
 @Composable
 fun AgentCreateSheet(
     existing: AgentConfig? = null,
+    template: AgentTemplate? = null,
     onDismiss: () -> Unit,
     onSave: (AgentConfig) -> Unit
 ) {
     val isEdit = existing != null
+    val isTemplate = template != null
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // Form state
-    var name          by remember { mutableStateOf(existing?.name ?: "") }
-    var url           by remember { mutableStateOf(existing?.url ?: "") }
-    var intervalRaw   by remember { mutableStateOf(existing?.intervalMinutes?.toString() ?: "60") }
+    // Form state — pre-fill from template or existing agent
+    var name          by remember { mutableStateOf(existing?.name ?: template?.name ?: "") }
+    var url           by remember { mutableStateOf(existing?.url ?: template?.url ?: "") }
+    var intervalRaw   by remember { mutableStateOf((existing?.intervalMinutes ?: template?.intervalMinutes ?: 60).toString()) }
     var channel       by remember { mutableStateOf(existing?.channel ?: "telegram") }
     var chatId        by remember { mutableStateOf(existing?.chatId ?: "") }
-    var extractPrompt by remember { mutableStateOf(existing?.extractPrompt ?: "") }
-    var onlyOnChange  by remember { mutableStateOf(existing?.onlyOnChange ?: true) }
+    var extractPrompt by remember { mutableStateOf(existing?.extractPrompt ?: template?.extractPrompt ?: "") }
+    var onlyOnChange  by remember { mutableStateOf(existing?.onlyOnChange ?: template?.onlyOnChange ?: true) }
+    var customInput   by remember { mutableStateOf("") }
+    var selectedSubs  by remember { mutableStateOf(setOf<String>()) }
 
     // Validation errors
     var nameError   by remember { mutableStateOf<String?>(null) }
@@ -81,12 +87,75 @@ fun AgentCreateSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("🕷️", fontSize = 28.sp)
+                    Text(template?.emoji ?: "🕷️", fontSize = 28.sp)
                     Column {
-                        Text(if (isEdit) "Edit Agent" else "New Web Scraper Agent",
+                        Text(
+                            when {
+                                isEdit -> "Edit Agent"
+                                isTemplate -> template!!.name
+                                else -> "New Web Scraper Agent"
+                            },
                             fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
-                        Text("Periodically scrapes a URL and pushes updates to your channel",
+                        Text(
+                            template?.description ?: "Periodically scrapes a URL and pushes updates to your channel",
                             fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                    }
+                }
+            }
+
+            // Template sub-categories & custom input
+            if (isTemplate && !isEdit) {
+                if (template!!.subCategories.isNotEmpty()) {
+                    item {
+                        SectionLabel("Categories", accentColor)
+                    }
+                    item {
+                        Text("Select categories to track:", fontSize = 12.sp, color = accentColor)
+                        Spacer(Modifier.height(8.dp))
+                        val columns = 2
+                        val rows = (template.subCategories.size + columns - 1) / columns
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            repeat(rows) { row ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()) {
+                                    for (col in 0 until columns) {
+                                        val idx = row * columns + col
+                                        if (idx < template.subCategories.size) {
+                                            val sub = template.subCategories[idx]
+                                            val selected = sub in selectedSubs
+                                            FilterChip(
+                                                selected = selected,
+                                                onClick = {
+                                                    selectedSubs = if (selected) selectedSubs - sub else selectedSubs + sub
+                                                },
+                                                label = { Text(sub, fontSize = 11.sp) },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = accentColor,
+                                                    selectedLabelColor = Color.White
+                                                )
+                                            )
+                                        } else {
+                                            Spacer(Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (template!!.needsUserInput) {
+                    item {
+                        FormField(
+                            label = "Custom Input",
+                            value = customInput,
+                            onValueChange = { customInput = it },
+                            placeholder = template.customFieldHint,
+                            error = null,
+                            accent = accentColor,
+                            leadingIcon = { Icon(Icons.Default.Edit, null, tint = accentColor, modifier = Modifier.size(18.dp)) }
+                        )
                     }
                 }
             }
@@ -336,20 +405,41 @@ fun AgentCreateSheet(
                         if (!ok) return@Button
 
                         val intervalMins = intervalRaw.toIntOrNull()?.coerceAtLeast(5) ?: 60
+                        // Resolve template {query} placeholder
+                        var finalUrl = url.trim()
+                        var finalPrompt = extractPrompt.trim()
+                        var finalName = name.trim()
+                        if (isTemplate && template != null) {
+                            val query = when {
+                                customInput.isNotBlank() -> customInput.trim()
+                                selectedSubs.isNotEmpty() -> selectedSubs.joinToString("+")
+                                else -> ""
+                            }
+                            if (query.isNotBlank()) {
+                                val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+                                finalUrl = finalUrl.replace("{query}", encoded)
+                                finalName = if (selectedSubs.size == 1) "$finalName — ${selectedSubs.first()}"
+                                            else if (customInput.isNotBlank()) "$finalName — $customInput"
+                                            else finalName
+                            } else {
+                                finalUrl = finalUrl.replace("{query}", "")
+                            }
+                        }
                         val config = (existing ?: AgentConfig(
                             id = UUID.randomUUID().toString(),
                             name = "", type = AgentManager.TYPE_WEB_SCRAPER,
                             url = "", intervalMinutes = 60, channel = "",
                             chatId = "", extractPrompt = "", onlyOnChange = true,
                             enabled = true, createdAt = System.currentTimeMillis(),
-                            lastRunAt = 0L, lastContentHash = 0, lastStatus = "Not run yet"
+                            lastRunAt = 0L, lastContentHash = 0, lastStatus = "Not run yet",
+                            templateId = template?.id
                         )).copy(
-                            name = name.trim(),
-                            url = url.trim(),
+                            name = finalName,
+                            url = finalUrl,
                             intervalMinutes = intervalMins,
                             channel = channel,
                             chatId = chatId.trim(),
-                            extractPrompt = extractPrompt.trim(),
+                            extractPrompt = finalPrompt,
                             onlyOnChange = onlyOnChange
                         )
                         onSave(config)

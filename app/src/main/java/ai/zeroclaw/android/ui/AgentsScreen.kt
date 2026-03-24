@@ -22,6 +22,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.zeroclaw.android.agents.AgentConfig
 import ai.zeroclaw.android.agents.AgentManager
+import ai.zeroclaw.android.agents.AgentTemplate
+import ai.zeroclaw.android.agents.AGENT_TEMPLATES
+import ai.zeroclaw.android.agents.getTemplatesByCategory
 import ai.zeroclaw.android.agents.WebScraperAgent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,6 +45,8 @@ fun AgentsScreen(onBack: () -> Unit) {
     var agents by remember { mutableStateOf(agentManager.loadAll()) }
     var showCreateSheet by remember { mutableStateOf(false) }
     var editAgent by remember { mutableStateOf<AgentConfig?>(null) }
+    var showTemplates by remember { mutableStateOf(false) }
+    var selectedTemplate by remember { mutableStateOf<AgentTemplate?>(null) }
 
     // Poll agent list every 5 s so lastStatus updates reflect live runs
     LaunchedEffect(Unit) {
@@ -72,6 +77,10 @@ fun AgentsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showTemplates = true }) {
+                        Icon(Icons.Default.Dashboard, "Templates",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                     IconButton(onClick = { showCreateSheet = true }) {
                         Icon(Icons.Default.Add, "New Agent",
                             tint = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -85,9 +94,9 @@ fun AgentsScreen(onBack: () -> Unit) {
         floatingActionButton = {
             if (agents.isNotEmpty()) {
                 ExtendedFloatingActionButton(
-                    onClick = { showCreateSheet = true },
+                    onClick = { showTemplates = true },
                     icon = { Icon(Icons.Default.Add, null) },
-                    text = { Text("New Agent") },
+                    text = { Text("Add Agent") },
                     containerColor = Color(0xFF1565C0),
                     contentColor = Color.White
                 )
@@ -97,7 +106,8 @@ fun AgentsScreen(onBack: () -> Unit) {
         if (agents.isEmpty()) {
             EmptyAgentsPlaceholder(
                 modifier = Modifier.fillMaxSize().padding(padding),
-                onCreateClick = { showCreateSheet = true }
+                onCreateClick = { showTemplates = true },
+                onCustomClick = { showCreateSheet = true }
             )
         } else {
             LazyColumn(
@@ -124,7 +134,11 @@ fun AgentsScreen(onBack: () -> Unit) {
                                 WebScraperAgent(context).run(agent)
                                 agents = agentManager.loadAll()
                             }
-                        }
+                        },
+                        onReset = if (agent.templateId != null) {{
+                            agentManager.resetToTemplate(agent.id)
+                            agents = agentManager.loadAll()
+                        }} else null
                     )
                 }
                 item { Spacer(Modifier.height(80.dp)) }
@@ -132,16 +146,33 @@ fun AgentsScreen(onBack: () -> Unit) {
         }
     }
 
-    // Create / edit sheet
-    if (showCreateSheet || editAgent != null) {
+    // Template gallery sheet
+    if (showTemplates) {
+        AgentTemplateGallery(
+            onDismiss = { showTemplates = false },
+            onSelectTemplate = { template ->
+                selectedTemplate = template
+                showTemplates = false
+            },
+            onCustom = {
+                showTemplates = false
+                showCreateSheet = true
+            }
+        )
+    }
+
+    // Create / edit sheet (from template or custom)
+    if (showCreateSheet || editAgent != null || selectedTemplate != null) {
         AgentCreateSheet(
             existing = editAgent,
-            onDismiss = { showCreateSheet = false; editAgent = null },
+            template = selectedTemplate,
+            onDismiss = { showCreateSheet = false; editAgent = null; selectedTemplate = null },
             onSave = { config ->
                 agentManager.save(config)
                 agents = agentManager.loadAll()
                 showCreateSheet = false
                 editAgent = null
+                selectedTemplate = null
             }
         )
     }
@@ -186,7 +217,8 @@ private fun AgentCard(
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onRunNow: () -> Unit
+    onRunNow: () -> Unit,
+    onReset: (() -> Unit)? = null
 ) {
     var showDelete by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf(false) }
@@ -219,13 +251,13 @@ private fun AgentCard(
                             color = accentColor.copy(alpha = 0.15f),
                             modifier = Modifier.size(40.dp)) {
                             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                Text(agentEmoji(agent.type), fontSize = 20.sp)
+                                Text(agentEmoji(agent.type, agent.templateId), fontSize = 20.sp)
                             }
                         }
                         Column {
                             Text(agent.name, fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp, color = Color.White)
-                            Text(agentTypeLabel(agent.type),
+                            Text(agentTypeLabel(agent.type, agent.templateId),
                                 fontSize = 10.sp, color = accentColor)
                         }
                     }
@@ -312,7 +344,7 @@ private fun AgentCard(
                     }
                 }
 
-                // Edit / Delete row
+                // Edit / Reset / Delete row
                 Row(modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
@@ -324,7 +356,20 @@ private fun AgentCard(
                     ) {
                         Icon(Icons.Default.Edit, null, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Edit", fontSize = 12.sp)
+                        Text("Edit", fontSize = 11.sp)
+                    }
+                    if (onReset != null) {
+                        OutlinedButton(
+                            onClick = onReset,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFFB74D).copy(alpha = 0.4f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFB74D))
+                        ) {
+                            Icon(Icons.Default.RestartAlt, null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Reset", fontSize = 11.sp)
+                        }
                     }
                     OutlinedButton(
                         onClick = { showDelete = true },
@@ -335,7 +380,7 @@ private fun AgentCard(
                     ) {
                         Icon(Icons.Default.Delete, null, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Delete", fontSize = 12.sp)
+                        Text("Delete", fontSize = 11.sp)
                     }
                 }
             }
@@ -373,7 +418,7 @@ private fun InfoChip(text: String, accent: Color) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun EmptyAgentsPlaceholder(modifier: Modifier, onCreateClick: () -> Unit) {
+private fun EmptyAgentsPlaceholder(modifier: Modifier, onCreateClick: () -> Unit, onCustomClick: () -> Unit) {
     Column(modifier = modifier,
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally) {
@@ -381,7 +426,7 @@ private fun EmptyAgentsPlaceholder(modifier: Modifier, onCreateClick: () -> Unit
         Spacer(Modifier.height(16.dp))
         Text("No Agents Yet", fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Spacer(Modifier.height(8.dp))
-        Text("Create your first agent to start monitoring\nwebsites and pushing updates automatically.",
+        Text("Choose from 25+ ready-made agent templates\nor create your own custom agent.",
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -391,9 +436,15 @@ private fun EmptyAgentsPlaceholder(modifier: Modifier, onCreateClick: () -> Unit
             onClick = onCreateClick,
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
         ) {
+            Icon(Icons.Default.Dashboard, null)
+            Spacer(Modifier.width(8.dp))
+            Text("Browse Agent Templates", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(onClick = onCustomClick) {
             Icon(Icons.Default.Add, null)
             Spacer(Modifier.width(8.dp))
-            Text("Create Web Scraper Agent", fontWeight = FontWeight.Bold)
+            Text("Create Custom Agent")
         }
     }
 }
@@ -402,14 +453,26 @@ private fun EmptyAgentsPlaceholder(modifier: Modifier, onCreateClick: () -> Unit
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun agentEmoji(type: String) = when (type) {
-    AgentManager.TYPE_WEB_SCRAPER -> "🕷️"
-    else -> "🤖"
+private fun agentEmoji(type: String, templateId: String? = null): String {
+    if (templateId != null) {
+        val tpl = AGENT_TEMPLATES.firstOrNull { it.id == templateId }
+        if (tpl != null) return tpl.emoji
+    }
+    return when (type) {
+        AgentManager.TYPE_WEB_SCRAPER -> "🕷️"
+        else -> "🤖"
+    }
 }
 
-private fun agentTypeLabel(type: String) = when (type) {
-    AgentManager.TYPE_WEB_SCRAPER -> "Web Scraper"
-    else -> type
+private fun agentTypeLabel(type: String, templateId: String? = null): String {
+    if (templateId != null) {
+        val tpl = AGENT_TEMPLATES.firstOrNull { it.id == templateId }
+        if (tpl != null) return tpl.category
+    }
+    return when (type) {
+        AgentManager.TYPE_WEB_SCRAPER -> "Web Scraper"
+        else -> type
+    }
 }
 
 private fun channelEmoji(channel: String) = when (channel.lowercase()) {
@@ -425,4 +488,103 @@ private fun formatInterval(minutes: Int): String = when {
     minutes < 60   -> "${minutes}m"
     minutes % 60 == 0 -> "${minutes / 60}h"
     else           -> "${minutes / 60}h ${minutes % 60}m"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Template gallery — bottom sheet showing all 25 agent templates by category
+// ─────────────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AgentTemplateGallery(
+    onDismiss: () -> Unit,
+    onSelectTemplate: (AgentTemplate) -> Unit,
+    onCustom: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val grouped = remember { getTemplatesByCategory() }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF0D1B2A)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
+            Text("Agent Templates", fontWeight = FontWeight.Bold, fontSize = 20.sp,
+                color = Color.White)
+            Text("${AGENT_TEMPLATES.size} ready-made agents — tap to activate",
+                fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+            Spacer(Modifier.height(16.dp))
+
+            LazyColumn(
+                modifier = Modifier.weight(1f, fill = false).heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                grouped.forEach { (category, templates) ->
+                    item {
+                        Text(category.uppercase(), fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64B5F6),
+                            letterSpacing = 1.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
+                    }
+                    items(templates, key = { it.id }) { template ->
+                        TemplateItem(template = template, onClick = { onSelectTemplate(template) })
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            OutlinedButton(
+                onClick = onCustom,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFF64B5F6).copy(alpha = 0.4f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF64B5F6))
+            ) {
+                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Create Custom Agent", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemplateItem(template: AgentTemplate, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF152238))
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFF1E88E5).copy(alpha = 0.15f),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text(template.emoji, fontSize = 22.sp)
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(template.name, fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp, color = Color.White)
+                Text(template.description, fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.6f), maxLines = 2)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 4.dp)) {
+                    InfoChip("⏱ ${formatInterval(template.intervalMinutes)}", Color(0xFF64B5F6))
+                    if (template.needsUserInput) InfoChip("✏️ Customizable", Color(0xFFFFB74D))
+                    if (template.subCategories.isNotEmpty()) InfoChip("📂 ${template.subCategories.size} options", Color(0xFF81C784))
+                }
+            }
+            Icon(Icons.Default.ChevronRight, null,
+                tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
+        }
+    }
 }

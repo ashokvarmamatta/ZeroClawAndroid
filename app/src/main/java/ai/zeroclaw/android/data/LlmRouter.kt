@@ -936,15 +936,36 @@ class LlmRouter(private val context: Context) {
             }
         }
 
-        // ── 2. Summarize (text or URL) ──────────────────────────────────────
+        // ── 2. Summarize (text, URL, or conversation history) ─────────────
         val wantsSummary = msg.contains("summarize") || msg.contains("summary") || msg.contains("summarise") ||
                 msg.contains("key points") || msg.contains("tldr") || msg.contains("tl;dr") ||
-                msg.contains("condense") || msg.contains("shorten") || msg.contains("brief")
+                msg.contains("condense") || msg.contains("shorten")
+        // Check if user wants to summarize the chat/conversation itself
+        val wantsChatSummary = wantsSummary && (
+                msg.contains("chat") || msg.contains("conversation") || msg.contains("above") ||
+                msg.contains("last message") || msg.contains("previous") || msg.contains("this") ||
+                msg.contains("it") || msg.matches(Regex("^(summarize|summarise|summary|tldr|tl;dr|key points)\\s*$")))
         if (toolCalls.isEmpty() && wantsSummary) {
             val urlInMsg = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE).find(userMessage)
             if (urlInMsg != null) {
                 val url = urlInMsg.groupValues[1].removeSuffix(",").removeSuffix(")").removeSuffix(".")
                 toolCalls.add(ToolCall("auto_summarize", "summarize", mapOf("text" to url)))
+            } else if (wantsChatSummary) {
+                // Summarize conversation history — grab recent messages for this chat
+                val history = getHistory(chatId)
+                if (history.size >= 2) {
+                    // Collect last few messages (skip the current "summarize" message)
+                    val recentChat = history.dropLast(1).takeLast(20).joinToString("\n") { m ->
+                        "${m.role.replaceFirstChar { it.uppercase() }}: ${m.content}"
+                    }
+                    if (toolSystem.isEnabled("summarize")) {
+                        toolCalls.add(ToolCall("auto_summarize", "summarize",
+                            mapOf("text" to recentChat, "sentences" to "5")))
+                    } else {
+                        // No summarize tool — inject history so model can summarize directly
+                        return "$userMessage\n\n[Conversation history to summarize:]\n${recentChat.take(4000)}"
+                    }
+                }
             } else {
                 // Summarize the raw text after the keyword
                 val textMatch = Regex("(?:summarize|summarise|summary of|key points of|tldr|tl;dr|condense|shorten)\\s*:?\\s*(.{20,})", RegexOption.IGNORE_CASE).find(userMessage)

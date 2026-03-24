@@ -20,5 +20,6 @@ data class AgentConfig(
     val createdAt: Long,
     val lastRunAt: Long,
     val lastContentHash: Int,          // Hash of last delivered content for change detection
-    val lastStatus: String             // Human-readable last result summary
+    val lastStatus: String,            // Human-readable last result summary
+    val templateId: String? = null     // ID of the template this agent was created from (null = custom)
 )

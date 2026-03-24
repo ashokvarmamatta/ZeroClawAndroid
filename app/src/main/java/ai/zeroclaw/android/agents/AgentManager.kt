@@ -57,7 +57,8 @@ class AgentManager private constructor(context: Context) {
         channel: String,
         chatId: String,
         extractPrompt: String,
-        onlyOnChange: Boolean
+        onlyOnChange: Boolean,
+        templateId: String? = null
     ): AgentConfig {
         val agent = AgentConfig(
             id = UUID.randomUUID().toString(),
@@ -73,10 +74,31 @@ class AgentManager private constructor(context: Context) {
             createdAt = System.currentTimeMillis(),
             lastRunAt = 0L,
             lastContentHash = 0,
-            lastStatus = "Not run yet"
+            lastStatus = "Not run yet",
+            templateId = templateId
         )
         save(agent)
         return agent
+    }
+
+    /** Reset an agent to its template defaults (keeps channel/chatId). */
+    fun resetToTemplate(id: String): Boolean {
+        val list = loadAll().toMutableList()
+        val idx = list.indexOfFirst { it.id == id }
+        if (idx < 0) return false
+        val agent = list[idx]
+        val tplId = agent.templateId ?: return false
+        val template = AGENT_TEMPLATES.firstOrNull { it.id == tplId } ?: return false
+        list[idx] = agent.copy(
+            name = template.name,
+            url = template.url,
+            extractPrompt = template.extractPrompt,
+            intervalMinutes = template.intervalMinutes,
+            onlyOnChange = template.onlyOnChange,
+            lastStatus = "Reset to defaults"
+        )
+        persist(list)
+        return true
     }
 
     // ── Scheduling ──────────────────────────────────────────────────────────
