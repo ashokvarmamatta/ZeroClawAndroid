@@ -292,11 +292,12 @@ fun AgentCreateSheet(
             }
 
             item {
+                val isConnected = connectedChannels[channel] == true
                 FormField(
-                    label = chatIdLabel(channel),
+                    label = chatIdLabel(channel) + if (isConnected) " (optional)" else "",
                     value = chatId,
                     onValueChange = { chatId = it; chatIdError = null },
-                    placeholder = chatIdPlaceholder(channel),
+                    placeholder = if (isConnected) "Optional — uses default bot chat" else chatIdPlaceholder(channel),
                     error = chatIdError,
                     accent = accentColor,
                     leadingIcon = { Text(channelEmoji(channel), fontSize = 16.sp) }
@@ -474,9 +475,9 @@ fun AgentCreateSheet(
                         if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
                             urlError = "Enter a valid URL starting with http:// or https://"; ok = false
                         }
-                        if (chatId.isBlank()) {
+                        if (chatId.isBlank() && connectedChannels[channel] != true) {
                             chatIdError = "${chatIdLabel(channel)} is required"; ok = false
-                        } else if (channel == "telegram" && chatId.contains(":") && chatId.length > 20) {
+                        } else if (chatId.isNotBlank() && channel == "telegram" && chatId.contains(":") && chatId.length > 20) {
                             chatIdError = "This looks like a bot token, not a Chat ID. Your Chat ID is a number like 123456789 or -1001234567890"; ok = false
                         }
                         if (!ok) return@Button

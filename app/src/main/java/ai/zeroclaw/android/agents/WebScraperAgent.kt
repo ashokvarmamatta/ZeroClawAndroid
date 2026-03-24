@@ -1,6 +1,7 @@
 package ai.zeroclaw.android.agents
 
 import android.content.Context
+import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolSystem
 import ai.zeroclaw.android.tools.WebFetchTool
@@ -54,6 +55,21 @@ class WebScraperAgent(private val context: Context) {
         val header = buildHeader(agent)
         val message = "$header\n\n${content.take(MAX_MESSAGE_CHARS)}"
 
+        // Resolve chatId — if blank, use the most recent known chat for this channel
+        val effectiveChatId = if (agent.chatId.isNotBlank()) agent.chatId else {
+            val known = try { LlmRouter.getInstance(context).getKnownChatIds() } catch (_: Exception) { emptyMap() }
+            val ids = known[agent.channel]
+            if (ids.isNullOrEmpty()) {
+                val status = "No chat ID configured and no recent chats found for ${agent.channel}"
+                ZeroClawService.log("AGENT[${agent.name}]: $status")
+                agentManager.markRun(agent.id, newHash, status)
+                return
+            }
+            ids.first().also {
+                ZeroClawService.log("AGENT[${agent.name}]: using last known chat ID: $it")
+            }
+        }
+
         val svc = ZeroClawService.instance
         if (svc == null) {
             val status = "Service not running — delivery skipped"
@@ -63,8 +79,8 @@ class WebScraperAgent(private val context: Context) {
         }
 
         try {
-            svc.sendProactive(agent.channel, agent.chatId, message)
-            val status = "Delivered ${content.length} chars → ${agent.channel}/${agent.chatId}"
+            svc.sendProactive(agent.channel, effectiveChatId, message)
+            val status = "Delivered ${content.length} chars → ${agent.channel}/${effectiveChatId}"
             ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
             agentManager.markRun(agent.id, newHash, status)
         } catch (e: Exception) {
@@ -92,7 +108,9 @@ $contentSnippet
 Be concise."""
             val reply = router.call(prompt, chatId = "agent_${agent.id}")
             if (reply.isNotBlank()) reply else null
-        } catch (_: Exception) {
+        } catch (e: Throwable) {
+            // Catch Throwable (not just Exception) — MediaPipe JNI errors can throw Error
+            ZeroClawService.log("AGENT[${agent.name}]: LLM extraction failed — ${e.message}")
             null
         }
     }

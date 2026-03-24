@@ -586,6 +586,11 @@ Extract a price from a page using regex + LLM, alert only when price drops below
 ### Phase 163 — Social Feed Agent (planned)
 Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 
+### Phase 164 — Agent reliability fixes ✅ DONE
+- **Chat ID optional for connected channels**: `AgentCreateSheet` now allows blank Chat ID when the channel is already connected (has a token configured). Field label shows "(optional)", placeholder updated. At delivery time, `WebScraperAgent` resolves blank chatId from `LlmRouter.getKnownChatIds()` (most recent conversation for that channel).
+- **JNI crash prevention (MediaPipe Mutex)**: Added `kotlinx.coroutines.sync.Mutex` to `OfflineModelManager` — both `loadModel()` and `generateResponse()` are now serialized. Prevents concurrent JNI access that caused `nativeRemoveCallback` crash with "invalid global reference". Added JNI error detection in catch block that auto-destroys the engine so next call can recover.
+- **Agent extraction error handling**: `WebScraperAgent.extractWithLlm()` now catches `Throwable` (not just `Exception`) to handle JNI `Error` types. Falls back gracefully to raw content.
+
 ---
 
 ## 🐛 Bug Log (Summary)
@@ -609,6 +614,8 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 | BUG-14 | 160 | Offline model JNI SIGABRT — `input_size(3386) >= maxTokens(1024)`. MediaPipe aborts the process via JNI (not catchable). Three-layer fix: OfflineModelManager guard (2457-char cap), LlmRouter budget, WebScraperAgent content cap (600 chars) | ✅ Fixed |
 | BUG-15 | 160 | Web fetch returned binary garbage (`����gM`) — manually setting `Accept-Encoding: gzip` disables OkHttp's transparent decompression. Fixed by removing the header entirely | ✅ Fixed |
 | BUG-16 | 160 | Telegram chatId validation — user entered bot token (`8143…:AAEe…`) as chat ID. Added real-time validation + updated placeholder text in AgentCreateSheet | ✅ Fixed |
+| BUG-17 | 164 | Agent creation blocked when chatId blank even though channel is connected. Validation now skips chatId requirement for connected channels | ✅ Fixed |
+| BUG-18 | 164 | JNI `nativeRemoveCallback` crash — MediaPipe LlmInference not thread-safe, concurrent agent + chat calls corrupted JNI global reference. Fixed with Mutex serialization + auto-destroy on JNI error | ✅ Fixed |
 
 ---
 

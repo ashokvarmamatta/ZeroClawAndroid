@@ -94,6 +94,19 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 - **Copy buttons** — both Live Logs and Detailed Operation Log have a "Copy" button that copies all log text to clipboard with 2-second "Copied!" feedback
 - **Larger log font** — detailed log entries at 12/13sp for better readability and screenshots
 
+### 🛡️ Agent Reliability (Phase 164)
+
+#### Chat ID Optional for Connected Channels
+- When a channel (Telegram, Discord, Slack, WhatsApp) is already connected with a valid token, the Chat ID field becomes **optional** during agent creation
+- Label shows "(optional)" and placeholder changes to "Optional — uses default bot chat"
+- At delivery time, if chatId is blank, `WebScraperAgent` resolves it from `LlmRouter.getKnownChatIds()` (the most recent conversation for that channel)
+
+#### MediaPipe JNI Crash Prevention
+- **Problem:** Clicking "Run Now" on an agent while the offline model was in use from another coroutine caused a JNI `nativeRemoveCallback` crash with "invalid global reference" — instant app death
+- **Fix:** Added a `kotlinx.coroutines.sync.Mutex` to `OfflineModelManager` that serializes all `loadModel()` and `generateResponse()` calls, preventing concurrent JNI access
+- If a JNI error is detected in the catch block, the engine is auto-destroyed so the next call can reload cleanly
+- `WebScraperAgent.extractWithLlm()` now catches `Throwable` (not just `Exception`) to handle JNI `Error` types, falling back gracefully to raw content
+
 ### 🔧 Offline Model Intelligence (Phases 158-162)
 
 #### Summarizer Refusal Fallback
