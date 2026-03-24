@@ -221,6 +221,18 @@
 | **155** | **SkillForge.kt — runtime skill creation from LLM output (save & run)** | ✅ DONE |
 | **156** | **AuditLog.kt — tamper-evident JSON Lines log of all tool actions** | ✅ DONE |
 | **157** | **OpenTelemetry.kt — OTLP span export for tracing + metrics** | ✅ DONE |
+| | | |
+| | **── BUG FIXES & UI IMPROVEMENTS (Phase 158+) ──** | |
+| **158** | **Offline summarizer refusal fallback — isSummarizerRefusal() detects useless "can't answer from context" replies from small models, falls back to direct web data reply** | ✅ DONE |
+| **159** | **Garbage offline reply detection — isGarbageOfflineReply() catches hallucinated URLs and irrelevant responses with zero keyword overlap, triggers Pass 2** | ✅ DONE |
+| | | |
+| | **── AGENTS SYSTEM (Phase 160) ──** | |
+| **160** | **Web Scraper Agent system — AgentConfig, AgentManager, WebScraperAgent, AgentsScreen, AgentCreateSheet, Run Now, Test Fetch, chatId validation** | ✅ DONE |
+| | | |
+| | **── UI & UX IMPROVEMENTS (Phase 161+) ──** | |
+| **161** | **Summarizer prompt improvement — simpler directive language for small models ("Do NOT say the data is missing"), removed FETCHED DATA delimiters** | ✅ DONE |
+| **162** | **Extended summarizer refusal patterns — "available in the text", "has not occurred", "based on...the text...not", "no evidence/indication"** | ✅ DONE |
+| **163** | **Log UI improvements — increased DetailedLogCard font 10/11sp→12/13sp, LiveLogs 11sp→12sp; added Copy button to both log cards with 2s "Copied!" feedback** | ✅ DONE |
 
 ---
 

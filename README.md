@@ -91,6 +91,24 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 #### Home Screen Log Improvements
 - **Expandable LogCard** — "View all N / Show less" toggle when log entries exceed 20; playground tool runs highlighted in blue
 - **DetailedLogCard** — second log panel showing full LLM call traces, tool results, web search steps
+- **Copy buttons** — both Live Logs and Detailed Operation Log have a "Copy" button that copies all log text to clipboard with 2-second "Copied!" feedback
+- **Larger log font** — detailed log entries at 12/13sp for better readability and screenshots
+
+### 🔧 Offline Model Intelligence (Phases 158-162)
+
+#### Summarizer Refusal Fallback
+- **Problem:** Small offline models (Gemma 2B) frequently respond with "the provided text doesn't mention..." even when fetched web data clearly contains the answer
+- **Fix:** `isSummarizerRefusal()` detects 25+ refusal patterns including "not possible to answer", "doesn't mention", "available in the text", "has not occurred", "based on...the text...not"
+- When detected, automatically falls back to `buildPassTwoDirectReply()` which formats web data directly — 100% accurate every time
+
+#### Garbage Reply Detection
+- **Problem:** Gemma 2B sometimes hallucinates random URL paths (e.g. an Iran war article URL when asked about anime)
+- **Fix:** `isGarbageOfflineReply()` detects URL-dominated replies, URL-only responses, and short replies with zero keyword overlap with the user's query
+- These garbage replies now trigger Pass 2 web data fetch instead of being sent to the user
+
+#### Improved Summarizer Prompt
+- Simplified from verbose "I have fetched the following information from the internet..." to direct "Below is real data... Do NOT say the data is missing — the answer IS in the data below"
+- Small models respond significantly better to short, directive language
 
 ### ⚙️ Configuration & UX (Phases 131-140)
 
@@ -427,6 +445,14 @@ All phases are implemented on this branch.
 - [x] AiToolsScreen — browse and toggle all 36 tools ✅
 - [x] Expandable LogCard — View all / Show less, blue-highlighted playground runs ✅
 - [x] DetailedLogCard — full LLM trace logs below activity feed ✅
+- [x] Copy button on Live Logs and Detailed Operation Log ✅
+- [x] Larger font (12/13sp) for detailed log readability ✅
+
+### ✅ Offline Model Intelligence (Phases 158-162)
+- [x] isSummarizerRefusal() — detect "can't answer from context" replies, fall back to direct data ✅
+- [x] isGarbageOfflineReply() — detect hallucinated URLs and irrelevant responses ✅
+- [x] Improved summarizer prompt — directive language for small models ✅
+- [x] Extended refusal patterns — "available in the text", "has not occurred", "no evidence" ✅
 
 ### ✅ Core Foundation
 - [x] Multi-provider API key manager with unlimited keys ✅
@@ -616,6 +642,11 @@ All phases are implemented on this branch.
 - [x] PushoverTool — push notifications ✅
 - [x] AuditLog — tamper-evident JSONL log ✅
 - [x] Settings ⓘ redirect buttons to Info guide ✅
+- [x] Offline summarizer refusal fallback (Phase 158) ✅
+- [x] Garbage offline reply detection (Phase 159) ✅
+- [x] Improved summarizer prompt for small models (Phase 161) ✅
+- [x] Extended refusal pattern matching (Phase 162) ✅
+- [x] Log UI copy buttons + larger font (Phase 163) ✅
 
 ---
 
