@@ -590,6 +590,7 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 - **Chat ID optional for connected channels**: `AgentCreateSheet` now allows blank Chat ID when the channel is already connected (has a token configured). Field label shows "(optional)", placeholder updated. At delivery time, `WebScraperAgent` resolves blank chatId from `LlmRouter.getKnownChatIds()` (most recent conversation for that channel).
 - **JNI crash prevention (MediaPipe Mutex)**: Added `kotlinx.coroutines.sync.Mutex` to `OfflineModelManager` — both `loadModel()` and `generateResponse()` are now serialized. Prevents concurrent JNI access that caused `nativeRemoveCallback` crash with "invalid global reference". Added JNI error detection in catch block that auto-destroys the engine so next call can recover.
 - **Agent extraction error handling**: `WebScraperAgent.extractWithLlm()` now catches `Throwable` (not just `Exception`) to handle JNI `Error` types. Falls back gracefully to raw content.
+- **Agent extraction pipeline rewrite**: `extractWithLlm()` now calls `LlmRouter.extractOnly()` — a new direct-to-model method that bypasses Pass 2 web search, tool enrichment, and chat history. Prevents agents from getting irrelevant web scraping tutorials instead of actual news. Content increased from 600→2000 chars with RSS boilerplate stripping.
 
 ---
 
@@ -616,6 +617,8 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 | BUG-16 | 160 | Telegram chatId validation — user entered bot token (`8143…:AAEe…`) as chat ID. Added real-time validation + updated placeholder text in AgentCreateSheet | ✅ Fixed |
 | BUG-17 | 164 | Agent creation blocked when chatId blank even though channel is connected. Validation now skips chatId requirement for connected channels | ✅ Fixed |
 | BUG-18 | 164 | JNI `nativeRemoveCallback` crash — MediaPipe LlmInference not thread-safe, concurrent agent + chat calls corrupted JNI global reference. Fixed with Mutex serialization + auto-destroy on JNI error | ✅ Fixed |
+| BUG-19 | 164 | Agent extraction returned web scraping tutorials instead of news — `router.call()` triggered Pass 2 web search with extraction prompt as query. Fixed by adding `LlmRouter.extractOnly()` that bypasses Pass 2 entirely | ✅ Fixed |
+| BUG-20 | 164 | RSS content truncated to 600 chars — only got XML copyright header, zero headlines. Increased to 2000 chars with boilerplate stripping | ✅ Fixed |
 
 ---
 

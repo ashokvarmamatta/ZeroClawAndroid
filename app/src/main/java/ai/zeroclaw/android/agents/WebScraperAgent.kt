@@ -91,28 +91,54 @@ class WebScraperAgent(private val context: Context) {
     }
 
     /**
-     * Use LlmRouter to apply the user's extraction prompt against the fetched content.
+     * Use LlmRouter.extractOnly() to apply the user's extraction prompt.
+     * Calls the model DIRECTLY — no Pass 2 web search, no tool enrichment,
+     * no chat history. This prevents the agent from getting irrelevant
+     * web search results instead of extracting from the actual fetched content.
      * Returns null on failure so caller can fall back to raw content.
      */
     private suspend fun extractWithLlm(agent: AgentConfig, rawContent: String): String? {
         return try {
-            val router = ai.zeroclaw.android.data.LlmRouter.getInstance(context)
-            // Keep content short — offline models cap at 1024 tokens (~3000 chars total).
-            // 600 chars of content leaves enough room for the prompt template + system prompt.
-            val contentSnippet = rawContent.take(600)
-            val prompt = """Extract from this web page content: ${agent.extractPrompt}
+            val router = LlmRouter.getInstance(context)
+            // Strip common boilerplate that wastes token budget
+            val cleaned = stripBoilerplate(rawContent)
+            // Use 2000 chars — extractOnly() will truncate further if needed for offline models
+            val contentSnippet = cleaned.take(2000)
+            val prompt = """${agent.extractPrompt}
 
 Content:
-$contentSnippet
-
-Be concise."""
-            val reply = router.call(prompt, chatId = "agent_${agent.id}")
-            if (reply.isNotBlank()) reply else null
+$contentSnippet"""
+            ZeroClawService.log("AGENT[${agent.name}]: extracting with LLM (${contentSnippet.length} chars content)")
+            val reply = router.extractOnly(prompt)
+            if (reply != null) {
+                ZeroClawService.log("AGENT[${agent.name}]: extraction OK (${reply.length} chars)")
+            }
+            reply
         } catch (e: Throwable) {
             // Catch Throwable (not just Exception) — MediaPipe JNI errors can throw Error
             ZeroClawService.log("AGENT[${agent.name}]: LLM extraction failed — ${e.message}")
             null
         }
+    }
+
+    /** Strip RSS/XML boilerplate, copyright notices, and metadata that waste token budget */
+    private fun stripBoilerplate(content: String): String {
+        var text = content
+        // Remove common RSS boilerplate lines
+        val boilerplatePhrases = listOf(
+            "This XML feed is made available solely",
+            "Any other use of the feed is expressly prohibited",
+            "By accessing this feed or using these results",
+            "you agree to be bound by the foregoing",
+            "Copyright ©",
+            "All rights reserved"
+        )
+        for (phrase in boilerplatePhrases) {
+            // Remove the sentence containing the phrase
+            text = text.replace(Regex("[^.]*${Regex.escape(phrase)}[^.]*\\.?\\s*"), " ")
+        }
+        // Collapse whitespace
+        return text.replace(Regex("\\s+"), " ").trim()
     }
 
     private fun buildHeader(agent: AgentConfig): String {

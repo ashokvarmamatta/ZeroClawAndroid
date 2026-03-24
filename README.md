@@ -101,6 +101,11 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 - Label shows "(optional)" and placeholder changes to "Optional — uses default bot chat"
 - At delivery time, if chatId is blank, `WebScraperAgent` resolves it from `LlmRouter.getKnownChatIds()` (the most recent conversation for that channel)
 
+#### Agent Extraction Pipeline
+- **Problem:** `extractWithLlm()` called `router.call()` which triggered Pass 2 web search when the offline model couldn't extract from truncated content — resulted in irrelevant web scraping tutorial links instead of actual news headlines
+- **Fix:** New `LlmRouter.extractOnly()` method that calls the model directly, bypassing Pass 2, tool enrichment, and chat history entirely
+- Content increased from 600→2000 chars with RSS/XML boilerplate stripping (copyright notices, feed metadata) to maximize useful content within token budget
+
 #### MediaPipe JNI Crash Prevention
 - **Problem:** Clicking "Run Now" on an agent while the offline model was in use from another coroutine caused a JNI `nativeRemoveCallback` crash with "invalid global reference" — instant app death
 - **Fix:** Added a `kotlinx.coroutines.sync.Mutex` to `OfflineModelManager` that serializes all `loadModel()` and `generateResponse()` calls, preventing concurrent JNI access

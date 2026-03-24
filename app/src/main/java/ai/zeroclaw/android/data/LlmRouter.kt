@@ -95,6 +95,28 @@ class LlmRouter(private val context: Context) {
         data class Failure(val message: String) : LlmResult()    // auth/network error
     }
 
+    // ── Direct extraction — bypasses Pass 2 / tool enrichment / chat history ──
+
+    /**
+     * Send a prompt directly to the current model for content extraction.
+     * Does NOT trigger Pass 2 web search, tool enrichment, or chat history.
+     * Used by WebScraperAgent to extract insights from already-fetched content.
+     * Returns null on failure.
+     */
+    suspend fun extractOnly(prompt: String): String? {
+        val allKeys = keyManager.loadKeys().filter { it.enabled }
+        if (allKeys.isEmpty()) return null
+        val entry = allKeys.first()
+        return try {
+            val systemPrompt = "You are a data extraction assistant. Extract exactly what is asked. Be concise and factual."
+            dispatchToProvider(prompt, entry, "extract_temp", systemPrompt = systemPrompt)
+                .takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            ZeroClawService.log("ExtractOnly: failed — ${e.message}")
+            null
+        }
+    }
+
     // ── Main entry point — waterfall failover ─────────────────────────────────
 
     suspend fun call(userMessage: String, chatId: String = "default"): String {
