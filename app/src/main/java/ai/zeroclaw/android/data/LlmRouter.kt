@@ -538,6 +538,11 @@ class LlmRouter(private val context: Context) {
                r.contains("provided context") || r.contains("provided text") ||
                r.contains("given text") || r.contains("given context") ||
                r.contains("above text") || r.contains("above data") ||
+               r.contains("available in the text") || r.contains("information in the text") ||
+               r.contains("has not occurred") || r.contains("not occurred yet") ||
+               r.contains("has not happened") || r.contains("not happened yet") ||
+               r.contains("no evidence") || r.contains("no indication") ||
+               (r.contains("based on") && r.contains("the text") && (r.contains("not") || r.contains("no "))) ||
                (r.contains("i don't") && r.contains("information")) ||
                (r.contains("i do not") && r.contains("information"))
     }

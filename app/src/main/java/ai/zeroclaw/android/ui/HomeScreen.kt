@@ -13,7 +13,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -373,6 +375,8 @@ fun StatusRow(label: String, value: String, ok: Boolean) {
 @Composable
 fun LogCard(logs: List<String>) {
     var expanded by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
     val displayed = if (expanded) logs.reversed() else logs.takeLast(20).reversed()
 
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
@@ -382,6 +386,26 @@ fun LogCard(logs: List<String>) {
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("Live Logs", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (logs.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (copied) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.clickable {
+                                clipboardManager.setText(AnnotatedString(logs.joinToString("\n")))
+                                copied = true
+                            }
+                        ) {
+                            Text(
+                                if (copied) "Copied!" else "Copy",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (copied) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
                     if (logs.size > 20) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -407,7 +431,7 @@ fun LogCard(logs: List<String>) {
                 val isPlayground = log.contains("[Lab]")
                 Text(
                     "› $log",
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     color = if (isPlayground) Color(0xFF64B5F6)
                             else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -418,18 +442,26 @@ fun LogCard(logs: List<String>) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "… ${logs.size - 20} more entries — tap 'View all' to expand",
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     fontFamily = FontFamily.Monospace
                 )
             }
         }
     }
+
+    // Reset copied state after delay
+    LaunchedEffect(copied) {
+        if (copied) { delay(2000); copied = false }
+    }
 }
 
 @Composable
 fun DetailedLogCard(logs: List<String>) {
     var expanded by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(20.dp)) {
             // Header — tap to expand/collapse
@@ -438,13 +470,34 @@ fun DetailedLogCard(logs: List<String>) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("Detailed Operation Log", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text(
                         if (logs.isEmpty()) "No activity yet" else "${logs.size} entries — last conversation trace",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (expanded && logs.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (copied) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.clickable {
+                            clipboardManager.setText(AnnotatedString(logs.joinToString("\n")))
+                            copied = true
+                        }
+                    ) {
+                        Text(
+                            if (copied) "Copied!" else "Copy",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (copied) MaterialTheme.colorScheme.onPrimaryContainer
+                                    else MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
                 }
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
@@ -459,13 +512,13 @@ fun DetailedLogCard(logs: List<String>) {
                 Spacer(Modifier.height(8.dp))
                 if (logs.isEmpty()) {
                     Text("Send a message to see the full operation trace here.",
-                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     logs.forEach { entry ->
                         val isSectionHeader = entry.contains("━━━")
                         Text(
                             entry,
-                            fontSize = if (isSectionHeader) 11.sp else 10.sp,
+                            fontSize = if (isSectionHeader) 13.sp else 12.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = if (isSectionHeader) FontWeight.Bold else FontWeight.Normal,
                             color = if (isSectionHeader)
@@ -478,5 +531,10 @@ fun DetailedLogCard(logs: List<String>) {
                 }
             }
         }
+    }
+
+    // Reset copied state after delay
+    LaunchedEffect(copied) {
+        if (copied) { delay(2000); copied = false }
     }
 }
