@@ -245,11 +245,15 @@ class LlmRouter(private val context: Context) {
                             ZeroClawService.logDetail("━━━ PASS 1 — MODEL REPLY ━━━")
                             ZeroClawService.logDetail("Reply (${reply.length} chars): ${reply.take(500)}")
 
-                            // ── Offline two-pass: real-time refusal OR known real-time query → fetch → re-ask ──
+                            // ── Offline two-pass: real-time refusal OR known real-time query OR garbage reply → fetch → re-ask ──
                             val needsWebData = entry.safeProvider == "offline" &&
-                                (isRealTimeRefusal(reply) || isRealTimeQuery(effectiveMessage))
+                                (isRealTimeRefusal(reply) || isRealTimeQuery(effectiveMessage) || isGarbageOfflineReply(reply, effectiveMessage))
                             if (needsWebData) {
-                                val reason = if (isRealTimeRefusal(reply)) "refusal" else "real-time query"
+                                val reason = when {
+                                    isRealTimeRefusal(reply) -> "refusal"
+                                    isGarbageOfflineReply(reply, effectiveMessage) -> "garbage reply"
+                                    else -> "real-time query"
+                                }
                                 ZeroClawService.log("OFFLINE: $reason — building direct reply from web data")
                                 ZeroClawService.logDetail("━━━ PASS 2 TRIGGERED ($reason) ━━━")
                                 ZeroClawService.logDetail("Pass 1 snippet: ${reply.take(200)}")
@@ -536,6 +540,40 @@ class LlmRouter(private val context: Context) {
                r.contains("above text") || r.contains("above data") ||
                (r.contains("i don't") && r.contains("information")) ||
                (r.contains("i do not") && r.contains("information"))
+    }
+
+    /**
+     * Detect garbage/hallucinated offline model replies — random URLs, irrelevant content,
+     * or replies that share zero keywords with the user's query. Small models like Gemma 2B
+     * frequently hallucinate URL fragments or unrelated text from their training data.
+     */
+    private fun isGarbageOfflineReply(reply: String, userMessage: String): Boolean {
+        val r = reply.trim()
+        // Reply is predominantly a URL or URL path (hallucinated link)
+        if (r.startsWith("/") || r.startsWith("http")) {
+            val urlRatio = r.count { it == '/' || it == '-' || it == '.' || it == ':' }.toFloat() / r.length.coerceAtLeast(1)
+            if (urlRatio > 0.15f) return true
+        }
+        // Reply contains mostly URL-like paths (model spat out a link mid-response)
+        val lines = r.lines().filter { it.isNotBlank() }
+        if (lines.size <= 2) {
+            val urlLines = lines.count { line ->
+                line.trim().let { it.startsWith("http") || it.startsWith("/") || it.startsWith("www.") }
+            }
+            if (urlLines > 0 && urlLines >= lines.size / 2 + 1) return true
+        }
+        // Very short reply with no overlap with query keywords → likely hallucination
+        if (r.length < 200) {
+            val queryWords = userMessage.lowercase().split(Regex("\\W+"))
+                .filter { it.length > 3 }
+                .toSet()
+            val replyWords = r.lowercase().split(Regex("\\W+"))
+                .filter { it.length > 3 }
+                .toSet()
+            val overlap = queryWords.intersect(replyWords)
+            if (queryWords.size >= 3 && overlap.isEmpty()) return true
+        }
+        return false
     }
 
     /** Detect queries that need real-time web data regardless of Pass 1 answer. */
