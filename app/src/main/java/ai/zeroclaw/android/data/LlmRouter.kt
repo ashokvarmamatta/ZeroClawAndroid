@@ -108,7 +108,7 @@ class LlmRouter(private val context: Context) {
         if (allKeys.isEmpty()) return null
         val entry = allKeys.first()
         return try {
-            val systemPrompt = "You are a data extraction assistant. Extract exactly what is asked. Be concise and factual."
+            val systemPrompt = "You are a data extraction assistant. The user will provide ALREADY-FETCHED web page content. This data is REAL and CURRENT — it was just scraped from a live website moments ago. Your ONLY job is to extract the requested information from the provided content. NEVER say you don't have access to real-time data — the data IS provided below. Extract exactly what is asked. Be concise and factual. Output ONLY the extracted data, no disclaimers."
             dispatchToProvider(prompt, entry, "extract_temp", systemPrompt = systemPrompt)
                 .takeIf { it.isNotBlank() }
         } catch (e: Exception) {

@@ -197,11 +197,14 @@ class WebScraperAgent(private val context: Context) {
         return try {
             val router = LlmRouter.getInstance(context)
             val cleaned = stripBoilerplate(rawContent)
-            val contentSnippet = cleaned.take(1000)
-            val prompt = """${agent.extractPrompt}
+            val contentSnippet = cleaned.take(2500)
+            val prompt = """INSTRUCTION: ${agent.extractPrompt}
 
-Content:
-$contentSnippet"""
+IMPORTANT: The following content was JUST FETCHED from ${agent.url} — it is real, live data. Extract the requested information from it. Do NOT say you lack real-time access.
+
+--- BEGIN FETCHED CONTENT ---
+$contentSnippet
+--- END FETCHED CONTENT ---"""
             ZeroClawService.log("AGENT[${agent.name}]: extracting with LLM (${contentSnippet.length} chars content)")
             val reply = router.extractOnly(prompt)
             if (reply != null) {
