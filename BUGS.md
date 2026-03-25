@@ -6,6 +6,21 @@
 
 ---
 
+## BUG-21 — Agent proactive messages not delivered to Telegram chat
+- **Phase:** Agent delivery (WebScraperAgent / TelegramBotManager)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** Agent logs show "Delivered 1601 chars → telegram/g" and "Telegram: invalid chatId 'g' for proactive message" — agent extraction and pipeline work correctly, but the message never appears in Telegram chat.
+- **Root Cause:** The agent's chatId was stored as `"g"` (non-numeric), which fails `toLongOrNull()` in `TelegramBotManager.sendProactiveMessage()`. The method silently returned without sending. No fallback mechanism existed to resolve a valid chatId from the connected bot.
+- **Fix (4 layers):**
+  1. **TelegramBotManager** — persists `lastKnownChatId` to SharedPreferences (`zeroclaw_telegram`) on every incoming message. Survives app restarts. `sendProactiveMessage()` auto-resolves blank/invalid chatId to this persisted chat — so agents "just work" when the bot is connected and the user has chatted with it at least once.
+  2. **ZeroClawService.onCreate()** — calls `TelegramBotManager.restoreLastChatId()` on startup so the persisted chat ID is available immediately, even before the first poll completes.
+  3. **WebScraperAgent** — new `resolveEffectiveChatId()` with 3-tier resolution: valid agent chatId → LlmRouter conversation history → TelegramBotManager persisted last chat.
+  4. **AgentCreateSheet** — added numeric validation for Telegram chatId field (rejects non-numeric values like `"g"`).
+- **Lesson:** Chat ID should be truly optional for connected channels. Persist the bot's last known chat so proactive delivery works without manual configuration.
+
+---
+
 ## BUG-12 — Wrong date injected into system prompt
 - **Phase:** AI pipeline (LlmRouter / SystemPromptManager)
 - **Status:** ✅ Fixed

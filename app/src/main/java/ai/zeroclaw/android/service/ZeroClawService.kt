@@ -119,6 +119,7 @@ class ZeroClawService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        TelegramBotManager.restoreLastChatId(this)
         telegramManager = TelegramBotManager(this)
         whatsappManager = TwilioWhatsAppManager(this)
         discordManager  = DiscordBotManager(this)

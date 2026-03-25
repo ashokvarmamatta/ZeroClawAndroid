@@ -281,9 +281,19 @@ private fun AgentCard(
                         maxLines = 1, fontFamily = FontFamily.Monospace)
                 }
 
-                // Channel + interval
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    InfoChip(channelEmoji(agent.channel) + " " + agent.channel.replaceFirstChar { it.uppercase() }, accentColor)
+                // Channel(s) + interval
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    // Show each bot channel
+                    val botChannels = agent.channel.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    botChannels.forEach { ch ->
+                        InfoChip("${channelEmoji(ch)} ${ch.replaceFirstChar { it.uppercase() }}", accentColor)
+                    }
+                    // Show channel targets count if any
+                    val targets = parseChannelTargets(agent.chatId)
+                    if (targets.isNotEmpty()) {
+                        InfoChip("📢 ${targets.size} target${if (targets.size > 1) "s" else ""}", Color(0xFFFFB74D))
+                    }
                     InfoChip("⏱ every ${formatInterval(agent.intervalMinutes)}", accentColor)
                     if (agent.onlyOnChange) InfoChip("△ on change", accentColor)
                 }

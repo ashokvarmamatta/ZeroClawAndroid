@@ -619,6 +619,18 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 | BUG-18 | 164 | JNI `nativeRemoveCallback` crash — MediaPipe LlmInference not thread-safe, concurrent agent + chat calls corrupted JNI global reference. Fixed with Mutex serialization + auto-destroy on JNI error | ✅ Fixed |
 | BUG-19 | 164 | Agent extraction returned web scraping tutorials instead of news — `router.call()` triggered Pass 2 web search with extraction prompt as query. Fixed by adding `LlmRouter.extractOnly()` that bypasses Pass 2 entirely | ✅ Fixed |
 | BUG-20 | 164 | RSS content truncated to 600 chars — only got XML copyright header, zero headlines. Increased to 2000 chars with boilerplate stripping | ✅ Fixed |
+| BUG-21 | 165 | Agent proactive messages not delivered to Telegram — chatId stored as non-numeric `"g"`, `toLongOrNull()` failed silently. Fixed with 3-tier chatId resolution + TelegramBotManager persisted last chat + seed from API on start | ✅ Fixed |
+
+---
+
+### Phase 165 — Multi-channel agent delivery ✅ DONE
+- **Bots + Channels delivery UI**: Completely redesigned the Delivery section in `AgentCreateSheet` with two sub-sections:
+  - **Bots**: Shows all bots configured in Settings (Telegram, Discord, Slack, WhatsApp, Signal) with checkboxes. Connected bots shown with green "Connected" badge. All connected bots auto-checked by default. No chat ID required — auto-resolves to bot's last known chat.
+  - **Channels**: Add specific chat/channel targets with IDs (e.g., specific Telegram group, Discord channel ID). Inline form with channel selector, chat ID input, known ID suggestions, and validation.
+- **Multi-channel delivery in WebScraperAgent**: Agent now delivers to ALL selected bots + channel targets in a single run. Status shows which channels succeeded/failed. Backward-compatible with legacy single-channel agents.
+- **Data model (backward-compatible)**: `channel` field stores comma-separated bot names (`"telegram,discord"`), `chatId` field stores `channel:id` pairs for specific targets (`"discord:123,slack:C456"`). Old single-channel values still work via legacy fallback path.
+- **TelegramBotManager seed**: On first polling start, fetches the most recent update from Telegram API (`offset=-1`) to seed the bot's chat ID immediately — agents can deliver without waiting for a new message. Chat ID persisted to SharedPreferences and restored on app restart.
+- **AgentsScreen**: Agent card now shows multiple channel chips with horizontal scroll, plus channel target count badge.
 
 ---
 

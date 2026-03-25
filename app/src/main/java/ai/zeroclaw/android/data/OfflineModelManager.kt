@@ -193,10 +193,10 @@ class OfflineModelManager private constructor(private val context: Context) {
             val inference = llmInference
                 ?: throw Exception("No offline model loaded — select one in Settings → API Keys")
 
-            // Guard against JNI crash: MediaPipe aborts the process if input > maxTokens.
-            // Rough estimate: 3 chars per token (conservative for English). Keep 80 % of budget
-            // for the prompt, leaving 20 % headroom for the output tokens.
-            val maxSafeChars = (MAX_TOKENS * 3 * 0.80).toInt()   // ≈ 2457 chars
+            // Guard against JNI crash: MediaPipe ABORTS the process (not catchable!) if
+            // input_size >= maxTokens. Real-world ratio is ~1.7 chars/token for mixed
+            // English+URLs+markup, NOT 3:1. Use 1.4 chars/token with 10% safety margin.
+            val maxSafeChars = (MAX_TOKENS * 1.4 * 0.90).toInt()   // ≈ 1290 chars
             val safePrompt = if (prompt.length > maxSafeChars) {
                 ZeroClawService.log("Offline: prompt truncated ${prompt.length} → $maxSafeChars chars (model limit)")
                 prompt.take(maxSafeChars)

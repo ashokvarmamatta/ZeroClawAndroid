@@ -4,7 +4,10 @@ import android.content.Context
 import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolSystem
+import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.tools.WebFetchTool
+import ai.zeroclaw.android.ui.ChannelTarget
+import ai.zeroclaw.android.ui.parseChannelTargets
 
 /**
  * WebScraperAgent — executes a single web scraper agent run.
@@ -13,7 +16,7 @@ import ai.zeroclaw.android.tools.WebFetchTool
  *  1. Fetch URL via WebFetchTool
  *  2. If extractPrompt set → use SummarizeTool or LlmRouter to extract insight
  *  3. Change detection — if onlyOnChange and content hash unchanged, skip
- *  4. Send result to configured channel via ZeroClawService.sendProactive()
+ *  4. Deliver to all selected bots + channel targets via ZeroClawService.sendProactive()
  */
 class WebScraperAgent(private val context: Context) {
 
@@ -23,9 +26,7 @@ class WebScraperAgent(private val context: Context) {
         ZeroClawService.log("AGENT[${agent.name}]: starting web scrape → ${agent.url}")
 
         // ── Step 1: Fetch ────────────────────────────────────────────────────
-        // Always use a fresh WebFetchTool instance so it picks up the latest client config
         val fetchTool = WebFetchTool()
-
         val fetchResult = fetchTool.execute(mapOf("url" to agent.url))
 
         if (!fetchResult.success) {
@@ -51,24 +52,9 @@ class WebScraperAgent(private val context: Context) {
             return
         }
 
-        // ── Step 4: Deliver ──────────────────────────────────────────────────
+        // ── Step 4: Deliver to all targets ───────────────────────────────────
         val header = buildHeader(agent)
         val message = "$header\n\n${content.take(MAX_MESSAGE_CHARS)}"
-
-        // Resolve chatId — if blank, use the most recent known chat for this channel
-        val effectiveChatId = if (agent.chatId.isNotBlank()) agent.chatId else {
-            val known = try { LlmRouter.getInstance(context).getKnownChatIds() } catch (_: Exception) { emptyMap() }
-            val ids = known[agent.channel]
-            if (ids.isNullOrEmpty()) {
-                val status = "No chat ID configured and no recent chats found for ${agent.channel}"
-                ZeroClawService.log("AGENT[${agent.name}]: $status")
-                agentManager.markRun(agent.id, newHash, status)
-                return
-            }
-            ids.first().also {
-                ZeroClawService.log("AGENT[${agent.name}]: using last known chat ID: $it")
-            }
-        }
 
         val svc = ZeroClawService.instance
         if (svc == null) {
@@ -78,9 +64,119 @@ class WebScraperAgent(private val context: Context) {
             return
         }
 
+        // Parse delivery targets:
+        // agent.channel = comma-separated bot names (e.g., "telegram,discord")
+        // agent.chatId = channel:id pairs for specific targets (e.g., "discord:123,slack:C456")
+        val botChannels = agent.channel.split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        val channelTargets = parseChannelTargets(agent.chatId)
+
+        if (botChannels.isEmpty() && channelTargets.isEmpty()) {
+            // Legacy fallback: treat channel as single bot, chatId as target
+            val chatId = resolveSingleChatId(agent.channel, agent.chatId, agent, newHash)
+            if (chatId != null) {
+                deliverToChannel(svc, agent, agent.channel, chatId, message, content.length, newHash)
+            }
+            return
+        }
+
+        val deliveredTo = mutableListOf<String>()
+        val errors = mutableListOf<String>()
+
+        // Deliver to each selected bot (auto-resolve chatId)
+        for (ch in botChannels) {
+            val chatId = resolveBotChatId(ch, agent)
+            if (chatId != null) {
+                try {
+                    svc.sendProactive(ch, chatId, message)
+                    deliveredTo.add("${channelEmoji(ch)}$ch")
+                } catch (e: Exception) {
+                    errors.add("$ch: ${e.message}")
+                }
+            } else {
+                errors.add("$ch: no chat available")
+            }
+        }
+
+        // Deliver to each specific channel target
+        for (target in channelTargets) {
+            try {
+                svc.sendProactive(target.channel, target.chatId, message)
+                deliveredTo.add("${channelEmoji(target.channel)}${target.channel}/${target.chatId.take(10)}")
+            } catch (e: Exception) {
+                errors.add("${target.channel}/${target.chatId}: ${e.message}")
+            }
+        }
+
+        // Build final status
+        val status = buildString {
+            if (deliveredTo.isNotEmpty()) {
+                append("Delivered ${content.length} chars → ${deliveredTo.joinToString(", ")}")
+            }
+            if (errors.isNotEmpty()) {
+                if (deliveredTo.isNotEmpty()) append(" | ")
+                append("Failed: ${errors.joinToString("; ")}")
+            }
+            if (deliveredTo.isEmpty() && errors.isEmpty()) {
+                append("No delivery targets available")
+            }
+        }
+
+        if (deliveredTo.isNotEmpty()) {
+            ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
+        } else {
+            ZeroClawService.log("AGENT[${agent.name}]: ✗ $status")
+        }
+        agentManager.markRun(agent.id, newHash, status)
+    }
+
+    /**
+     * Resolve chat ID for a bot channel (no user-specified ID).
+     * Uses LlmRouter history → TelegramBotManager last known chat → empty string for other channels.
+     */
+    private fun resolveBotChatId(channel: String, agent: AgentConfig): String? {
+        // 1. Try known chat IDs from LlmRouter conversation history
+        val known = try { LlmRouter.getInstance(context).getKnownChatIds() } catch (_: Exception) { emptyMap() }
+        val ids = known[channel]
+        if (!ids.isNullOrEmpty()) return ids.first()
+
+        // 2. For Telegram, use persisted last known chat from bot polling
+        if (channel == "telegram") {
+            val lastTgChat = TelegramBotManager.lastKnownChatId
+            if (lastTgChat != null) return lastTgChat.toString()
+            return null
+        }
+
+        // 3. Other channels — pass empty string, let channel manager handle
+        return ""
+    }
+
+    /**
+     * Legacy single-channel resolution for old agents that haven't been re-saved.
+     */
+    private fun resolveSingleChatId(channel: String, chatId: String, agent: AgentConfig, contentHash: Int): String? {
+        val ch = channel.lowercase()
+        if (chatId.isNotBlank()) {
+            if (ch == "telegram" && chatId.trim().toLongOrNull() == null) {
+                ZeroClawService.log("AGENT[${agent.name}]: chatId '${chatId}' not numeric — auto-resolving")
+            } else {
+                return chatId
+            }
+        }
+        return resolveBotChatId(ch, agent) ?: run {
+            ZeroClawService.log("AGENT[${agent.name}]: No chat available for $ch — send a message to the bot first")
+            agentManager.markRun(agent.id, contentHash, "No chat available for $ch")
+            null
+        }
+    }
+
+    private suspend fun deliverToChannel(
+        svc: ZeroClawService, agent: AgentConfig,
+        channel: String, chatId: String, message: String,
+        contentLength: Int, newHash: Int
+    ) {
         try {
-            svc.sendProactive(agent.channel, effectiveChatId, message)
-            val status = "Delivered ${content.length} chars → ${agent.channel}/${effectiveChatId}"
+            svc.sendProactive(channel, chatId, message)
+            val status = "Delivered $contentLength chars → $channel/$chatId"
             ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
             agentManager.markRun(agent.id, newHash, status)
         } catch (e: Exception) {
@@ -100,10 +196,8 @@ class WebScraperAgent(private val context: Context) {
     private suspend fun extractWithLlm(agent: AgentConfig, rawContent: String): String? {
         return try {
             val router = LlmRouter.getInstance(context)
-            // Strip common boilerplate that wastes token budget
             val cleaned = stripBoilerplate(rawContent)
-            // Use 2000 chars — extractOnly() will truncate further if needed for offline models
-            val contentSnippet = cleaned.take(2000)
+            val contentSnippet = cleaned.take(1000)
             val prompt = """${agent.extractPrompt}
 
 Content:
@@ -115,7 +209,6 @@ $contentSnippet"""
             }
             reply
         } catch (e: Throwable) {
-            // Catch Throwable (not just Exception) — MediaPipe JNI errors can throw Error
             ZeroClawService.log("AGENT[${agent.name}]: LLM extraction failed — ${e.message}")
             null
         }
@@ -124,7 +217,6 @@ $contentSnippet"""
     /** Strip RSS/XML boilerplate, copyright notices, and metadata that waste token budget */
     private fun stripBoilerplate(content: String): String {
         var text = content
-        // Remove common RSS boilerplate lines
         val boilerplatePhrases = listOf(
             "This XML feed is made available solely",
             "Any other use of the feed is expressly prohibited",
@@ -134,10 +226,8 @@ $contentSnippet"""
             "All rights reserved"
         )
         for (phrase in boilerplatePhrases) {
-            // Remove the sentence containing the phrase
             text = text.replace(Regex("[^.]*${Regex.escape(phrase)}[^.]*\\.?\\s*"), " ")
         }
-        // Collapse whitespace
         return text.replace(Regex("\\s+"), " ").trim()
     }
 
@@ -145,6 +235,15 @@ $contentSnippet"""
         val dtFmt = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.ENGLISH)
         dtFmt.timeZone = java.util.TimeZone.getDefault()
         return "🤖 *${agent.name}* — Web Scraper\n🔗 ${agent.url}\n🕐 ${dtFmt.format(java.util.Date())}"
+    }
+
+    private fun channelEmoji(channel: String) = when (channel.lowercase()) {
+        "telegram"  -> "✈️"
+        "discord"   -> "🎮"
+        "slack"     -> "💼"
+        "whatsapp"  -> "💬"
+        "email"     -> "📧"
+        else        -> "📤"
     }
 
     companion object {

@@ -19,7 +19,39 @@ class TelegramBotManager(private val context: Context) {
     private var running = false
     private var offset = 0L
 
+    private val prefs = context.getSharedPreferences("zeroclaw_telegram", Context.MODE_PRIVATE)
+
+    companion object {
+        private const val KEY_LAST_CHAT_ID = "last_known_chat_id"
+
+        /** Last chat ID seen from polling — used as default target for proactive messages. */
+        @Volatile var lastKnownChatId: Long? = null
+            private set
+
+        /** Load persisted chat ID (call once from service init). */
+        fun restoreLastChatId(context: Context) {
+            val prefs = context.getSharedPreferences("zeroclaw_telegram", Context.MODE_PRIVATE)
+            val saved = prefs.getLong(KEY_LAST_CHAT_ID, 0L)
+            if (saved != 0L) lastKnownChatId = saved
+        }
+    }
+
+    /** Persist + update the last known chat ID. */
+    private fun trackChatId(chatId: Long) {
+        lastKnownChatId = chatId
+        prefs.edit().putLong(KEY_LAST_CHAT_ID, chatId).apply()
+    }
+
     suspend fun startPolling(token: String) {
+        // Restore persisted chat ID on polling start
+        val saved = prefs.getLong(KEY_LAST_CHAT_ID, 0L)
+        if (saved != 0L) lastKnownChatId = saved
+
+        // Seed: if no chat ID known yet, peek at the most recent update to find one
+        if (lastKnownChatId == null) {
+            seedChatIdFromRecentUpdates(token)
+        }
+
         running = true
         ZeroClawService.log("Telegram polling started")
         while (running) {
@@ -34,6 +66,40 @@ class TelegramBotManager(private val context: Context) {
                 ZeroClawService.log("Telegram poll error: ${e.message}")
                 delay(5000)
             }
+        }
+    }
+
+    /**
+     * One-time seed: fetch the most recent Telegram update (offset=-1, no timeout)
+     * to discover the last chat ID. This lets agents deliver messages immediately
+     * on first start without waiting for the user to send a new message.
+     */
+    private suspend fun seedChatIdFromRecentUpdates(token: String) {
+        try {
+            val url = "https://api.telegram.org/bot$token/getUpdates?offset=-1&timeout=0"
+            val request = Request.Builder().url(url).build()
+            withContext(Dispatchers.IO) {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext
+                    val body = response.body?.string() ?: return@withContext
+                    val json = JSONObject(body)
+                    if (!json.getBoolean("ok")) return@withContext
+                    val result = json.getJSONArray("result")
+                    if (result.length() == 0) return@withContext
+                    // Get the most recent update
+                    val lastUpdate = result.getJSONObject(result.length() - 1)
+                    offset = lastUpdate.getLong("update_id") + 1
+                    val message = lastUpdate.optJSONObject("message") ?: return@withContext
+                    val chatId = message.optJSONObject("chat")?.optLong("id", 0L) ?: 0L
+                    if (chatId != 0L) {
+                        trackChatId(chatId)
+                        ZeroClawService.log("Telegram: seeded bot chat ID $chatId from recent history")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Non-fatal — polling will pick up chat IDs eventually
+            ZeroClawService.log("Telegram: seed fetch failed — ${e.message}")
         }
     }
 
@@ -64,6 +130,9 @@ class TelegramBotManager(private val context: Context) {
         val chatId = message.getJSONObject("chat").getLong("id")
         val text = message.optString("text", "").trim()
         if (text.isEmpty()) return
+
+        // Persist chat ID so agents can deliver here even after app restart
+        trackChatId(chatId)
 
         val username = message.optJSONObject("from")?.optString("username", "user") ?: "user"
         ZeroClawService.log("Telegram @$username: $text")
@@ -136,11 +205,18 @@ class TelegramBotManager(private val context: Context) {
 
     fun stop() { running = false }
 
-    /** Public API for proactive messaging from MessageTool/agents/crons. */
+    /**
+     * Public API for proactive messaging from MessageTool/agents/crons.
+     * If chatId is blank or invalid, automatically sends to the bot's last known chat.
+     */
     suspend fun sendProactiveMessage(token: String, chatId: String, text: String) {
-        val chatIdLong = chatId.toLongOrNull() ?: run {
-            ZeroClawService.log("Telegram: invalid chatId '$chatId' for proactive message")
+        // Resolve target: explicit chatId → last known bot chat
+        val chatIdLong = chatId.toLongOrNull() ?: lastKnownChatId ?: run {
+            ZeroClawService.log("Telegram: no chat available — send a message to the bot first")
             return
+        }
+        if (chatId.toLongOrNull() == null && chatId.isNotBlank()) {
+            ZeroClawService.log("Telegram: chatId '$chatId' not valid — using bot chat $chatIdLong")
         }
         sendMessage(token, chatIdLong, text)
     }

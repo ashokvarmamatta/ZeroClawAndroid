@@ -837,21 +837,23 @@ class LlmRouter(private val context: Context) {
                     .filter { it.length > 20 }
                     .take(10)
                     .joinToString("\n")
-                    .take(800)
+                    .take(400)
             }
         }
 
         // Build the text to give the model for summarization
+        // Total budget for offline: ~1290 chars. Prompt template ≈ 300 chars.
+        // Leave ~900 chars for data (split between fetch + search).
         val dataForModel = buildString {
             appendLine("Date: $currentDateTime")
             appendLine()
             if (fetchText.isNotBlank()) {
                 appendLine("Web page content:")
-                appendLine(fetchText)
+                appendLine(fetchText.take(400))
                 appendLine()
             }
             appendLine("Search results:")
-            appendLine(searchResult.content.take(800))
+            appendLine(searchResult.content.take(400))
         }.trim()
 
         ZeroClawService.logDetail("OFFLINE-SUM: data for model (${dataForModel.length} chars):\n${dataForModel.take(400)}")
@@ -2425,10 +2427,12 @@ class LlmRouter(private val context: Context) {
                 if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
             } + "\n"
         } else ""
-        // Offline models have a hard token limit (1024). Truncate message so that
-        // systemPrompt + historyText + message together stay within ~2200 chars.
+        // Offline models have a hard token limit (1024 tokens). MediaPipe ABORTS (not
+        // catchable!) if input_size >= maxTokens. Real ratio is ~1.7 chars/token for
+        // mixed content, NOT 3:1. Budget: 1024 tokens * 1.4 chars/token * 0.90 = ~1290 chars total.
+        val totalBudget = 1290
         val overhead = systemPrompt.length + historyText.length + 40 // "User: \nAssistant:" etc.
-        val maxMsgChars = (2200 - overhead).coerceAtLeast(200)
+        val maxMsgChars = (totalBudget - overhead).coerceAtLeast(200)
         val safeMessage = if (message.length > maxMsgChars) {
             ZeroClawService.log("Offline: message truncated ${message.length} → $maxMsgChars chars")
             message.take(maxMsgChars) + "…"
