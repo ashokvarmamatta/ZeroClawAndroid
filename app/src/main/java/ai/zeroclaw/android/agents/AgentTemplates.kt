@@ -4,6 +4,9 @@ package ai.zeroclaw.android.agents
  * AgentTemplate — a preset agent configuration that users can one-tap activate.
  * Templates have default URLs, prompts, and intervals; some allow user customization
  * (e.g. country, company name, job title).
+ *
+ * {query} placeholder in url and extractPrompt is replaced with the user's
+ * selected sub-categories or custom input at agent creation time.
  */
 data class AgentTemplate(
     val id: String,
@@ -43,8 +46,8 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         emoji = "📰",
         category = "News",
         description = "Get breaking news headlines from top sources",
-        url = "https://news.google.com/rss",
-        extractPrompt = "Extract the top 10 latest news headlines with brief summaries. Format as numbered list with headline and 1-line summary each.",
+        url = "https://news.google.com/rss/search?q={query}",
+        extractPrompt = "Extract the top 10 latest {query} news headlines with brief summaries. Only include news specifically about {query}. Format as numbered list: headline + 1-line summary each.",
         intervalMinutes = 60,
         subCategories = NEWS_CATEGORIES
     ),
@@ -68,8 +71,8 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         emoji = "📈",
         category = "Finance",
         description = "Track stock indices and market data for your country",
-        url = "https://www.google.com/finance/",
-        extractPrompt = "Extract top stock market indices, their current values, and % change today. Include any notable movers. Format as clean readable list.",
+        url = "https://www.google.com/search?q={query}+stock+index+price+today",
+        extractPrompt = "Extract current data for {query}. Show: index/stock name, current value, today's change (points and %), open, high, low. Format as clean readable list.",
         intervalMinutes = 60,
         needsUserInput = true,
         customFieldHint = "Enter index or stock (e.g. NIFTY 50, SENSEX, S&P 500, NASDAQ)",
@@ -88,7 +91,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Career",
         description = "Find latest job postings from Naukri, Indeed, LinkedIn & more",
         url = "https://www.google.com/search?q=latest+jobs+{query}",
-        extractPrompt = "Extract the latest job listings. For each job show: Job Title, Company, Location, and Source (Naukri/Indeed/LinkedIn etc). List at least 10 jobs. Format as clean numbered list.",
+        extractPrompt = "Extract the latest {query} job listings. For each job show: Job Title, Company, Location, and Source (Naukri/Indeed/LinkedIn etc). List at least 10 jobs. Format as clean numbered list.",
         intervalMinutes = 360,
         needsUserInput = true,
         customFieldHint = "Enter job title or skill (e.g. Android Developer, Data Scientist)"
@@ -102,7 +105,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Business",
         description = "Track news from specific companies (Apple, Samsung, etc.)",
         url = "https://www.google.com/search?q={query}+latest+news&tbm=nws",
-        extractPrompt = "Extract the latest news about this company. For each item show: Headline, Source, Date, and 1-line summary. List top 10 news items. Format cleanly.",
+        extractPrompt = "Extract the latest news specifically about {query}. For each item show: Headline, Source, Date, and 1-line summary. List top 10 news items. Format cleanly.",
         intervalMinutes = 180,
         needsUserInput = true,
         customFieldHint = "Enter company names (e.g. Apple, Samsung, Tesla)",
@@ -133,7 +136,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Utility",
         description = "Get daily weather forecast for your city",
         url = "https://wttr.in/{query}?format=3",
-        extractPrompt = "Provide today's weather: temperature, conditions, humidity, and rain chance. Include 3-day forecast if available.",
+        extractPrompt = "Provide today's weather for {query}: temperature, conditions, humidity, and rain chance. Include 3-day forecast if available.",
         intervalMinutes = 360,
         needsUserInput = true,
         customFieldHint = "Enter city name (e.g. Hyderabad, New York, London)",
@@ -147,8 +150,8 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         emoji = "⚽",
         category = "Sports",
         description = "Track live scores for cricket, football, and more",
-        url = "https://www.google.com/search?q=live+sports+scores+today",
-        extractPrompt = "Extract today's live and recent sports scores. Show: Sport, Teams, Score, Status (Live/Finished). Include cricket, football, and other major sports. Format as clean list.",
+        url = "https://www.google.com/search?q={query}+live+scores+results+today",
+        extractPrompt = "Extract today's live and recent {query} scores only. Show: Teams, Score, Status (Live/Finished), Competition/League name. Do NOT include other sports — only {query}. Format as clean list.",
         intervalMinutes = 30,
         onlyOnChange = false,
         subCategories = listOf("Cricket", "Football", "Basketball", "Tennis", "F1", "NFL", "IPL", "Premier League", "Champions League", "NBA")
@@ -185,8 +188,8 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         emoji = "💱",
         category = "Finance",
         description = "Track forex rates for major currency pairs",
-        url = "https://www.google.com/finance/quote/USD-INR",
-        extractPrompt = "Extract current exchange rates: USD/INR, EUR/INR, GBP/INR, USD/EUR, USD/JPY. Show rate and daily change %. Format as clean table.",
+        url = "https://www.google.com/search?q={query}+exchange+rate+today",
+        extractPrompt = "Extract current exchange rate for {query}. Show: rate, daily change %, 1-week trend. Format cleanly.",
         intervalMinutes = 240,
         subCategories = listOf("USD/INR", "EUR/INR", "GBP/INR", "USD/EUR", "USD/JPY", "AUD/USD", "USD/CAD", "CHF/USD")
     ),
@@ -199,7 +202,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Finance",
         description = "Track property prices and real estate news",
         url = "https://www.google.com/search?q={query}+real+estate+prices+latest",
-        extractPrompt = "Extract latest real estate news and property trends for the area. Include: average prices, market trend (up/down), notable developments. Format cleanly.",
+        extractPrompt = "Extract latest real estate news and property trends for {query}. Include: average prices, market trend (up/down), notable developments. Format cleanly.",
         intervalMinutes = 1440,
         needsUserInput = true,
         customFieldHint = "Enter city or area (e.g. Hyderabad, Mumbai, Bangalore)"
@@ -237,7 +240,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Utility",
         description = "Track daily petrol, diesel, and gas prices",
         url = "https://www.google.com/search?q={query}+petrol+diesel+price+today",
-        extractPrompt = "Extract today's fuel prices: Petrol, Diesel, CNG (if available). Show price per litre and change from yesterday. Format cleanly.",
+        extractPrompt = "Extract today's fuel prices in {query}: Petrol, Diesel, CNG (if available). Show price per litre and change from yesterday. Format cleanly.",
         intervalMinutes = 1440,
         needsUserInput = true,
         customFieldHint = "Enter city (e.g. Hyderabad, Delhi, Mumbai)"
@@ -288,7 +291,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Shopping",
         description = "Track best deals on Amazon, Flipkart, and more",
         url = "https://www.google.com/search?q={query}+best+deals+offers+discount+today",
-        extractPrompt = "Extract best deals and discounts available today. For each: Product, Original Price, Deal Price, Discount %, Store. List top 10 deals. Format cleanly.",
+        extractPrompt = "Extract best {query} deals and discounts available today. For each: Product, Original Price, Deal Price, Discount %, Store. List top 10 deals. Format cleanly.",
         intervalMinutes = 720,
         needsUserInput = true,
         customFieldHint = "Enter product category (e.g. Smartphones, Laptops, Electronics)"
@@ -302,7 +305,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Education",
         description = "Track exam results, admit cards, and admission notifications",
         url = "https://www.google.com/search?q={query}+exam+result+admit+card+latest",
-        extractPrompt = "Extract latest exam and admission updates. For each: Exam Name, Type (Result/Admit Card/Registration), Date, Official Website. List top 10.",
+        extractPrompt = "Extract latest {query} exam and admission updates. For each: Exam Name, Type (Result/Admit Card/Registration), Date, Official Website. List top 10.",
         intervalMinutes = 720,
         needsUserInput = true,
         customFieldHint = "Enter exam or board (e.g. JEE, NEET, UPSC, SSC, GATE)"
@@ -340,7 +343,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Travel",
         description = "Track flight prices for your preferred routes",
         url = "https://www.google.com/search?q=cheap+flights+{query}",
-        extractPrompt = "Extract cheapest flight options. For each: Airline, Price, Duration, Stops, Departure Time. List top 5 cheapest options. Format cleanly.",
+        extractPrompt = "Extract cheapest flight options for {query}. For each: Airline, Price, Duration, Stops, Departure Time. List top 5 cheapest options. Format cleanly.",
         intervalMinutes = 720,
         needsUserInput = true,
         customFieldHint = "Enter route (e.g. Hyderabad to Delhi, Mumbai to Bangalore)"
@@ -354,7 +357,7 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         category = "Government",
         description = "Track latest government schemes and welfare programs",
         url = "https://www.google.com/search?q=latest+government+schemes+{query}+2026",
-        extractPrompt = "Extract latest government schemes and programs. For each: Scheme Name, Benefits, Eligibility, How to Apply. List top 10. Format cleanly.",
+        extractPrompt = "Extract latest government schemes and programs in {query}. For each: Scheme Name, Benefits, Eligibility, How to Apply. List top 10. Format cleanly.",
         intervalMinutes = 1440,
         needsUserInput = true,
         customFieldHint = "Enter country or state (e.g. India, Telangana, Maharashtra)"

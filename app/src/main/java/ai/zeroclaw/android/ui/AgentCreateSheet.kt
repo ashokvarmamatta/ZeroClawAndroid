@@ -79,6 +79,37 @@ fun AgentCreateSheet(
     var customInput   by remember { mutableStateOf("") }
     var selectedSubs  by remember { mutableStateOf(setOf<String>()) }
 
+    // Live-update URL and extractPrompt when sub-categories or custom input change (new template only)
+    LaunchedEffect(selectedSubs, customInput) {
+        if (isTemplate && template != null && existing == null) {
+            val query = when {
+                customInput.isNotBlank() -> customInput.trim()
+                selectedSubs.isNotEmpty() -> selectedSubs.joinToString("+")
+                else -> ""
+            }
+            val queryLabel = when {
+                customInput.isNotBlank() -> customInput.trim()
+                selectedSubs.isNotEmpty() -> selectedSubs.joinToString(", ")
+                else -> ""
+            }
+            if (query.isNotBlank()) {
+                val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+                url = template.url.replace("{query}", encoded)
+                extractPrompt = template.extractPrompt.replace("{query}", queryLabel)
+                name = when {
+                    selectedSubs.size == 1 -> "${template.name} — ${selectedSubs.first()}"
+                    customInput.isNotBlank() -> "${template.name} — $customInput"
+                    selectedSubs.size > 1 -> "${template.name} — ${selectedSubs.size} categories"
+                    else -> template.name
+                }
+            } else {
+                url = template.url.replace("{query}", "")
+                extractPrompt = template.extractPrompt.replace("{query}", "")
+                name = template.name
+            }
+        }
+    }
+
     // ── Delivery state: Bots (multi-select) ──
     // For new agents: auto-check all connected bots. For edit: use saved selection.
     var selectedBots by remember(connectedBots) {
@@ -585,14 +616,23 @@ fun AgentCreateSheet(
                                 selectedSubs.isNotEmpty() -> selectedSubs.joinToString("+")
                                 else -> ""
                             }
+                            // Human-readable label for prompt (e.g. "Technology" or "Cricket, Football")
+                            val queryLabel = when {
+                                customInput.isNotBlank() -> customInput.trim()
+                                selectedSubs.isNotEmpty() -> selectedSubs.joinToString(", ")
+                                else -> ""
+                            }
                             if (query.isNotBlank()) {
                                 val encoded = java.net.URLEncoder.encode(query, "UTF-8")
                                 finalUrl = finalUrl.replace("{query}", encoded)
+                                // Replace {query} in extract prompt with readable label
+                                finalPrompt = finalPrompt.replace("{query}", queryLabel)
                                 finalName = if (selectedSubs.size == 1) "$finalName — ${selectedSubs.first()}"
                                             else if (customInput.isNotBlank()) "$finalName — $customInput"
                                             else finalName
                             } else {
                                 finalUrl = finalUrl.replace("{query}", "")
+                                finalPrompt = finalPrompt.replace("{query}", "")
                             }
                         }
 
