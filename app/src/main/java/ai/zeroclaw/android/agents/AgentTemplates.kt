@@ -58,10 +58,29 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         name = "Gold Price Tracker",
         emoji = "🥇",
         category = "Finance",
-        description = "Track live gold, silver, and commodity prices",
-        url = "https://www.google.com/finance/quote/GOLD-USD",
-        extractPrompt = "Extract current gold price in USD, today's change (up/down %), and any notable price movement. Also include silver price if available. Format cleanly.",
-        intervalMinutes = 120
+        description = "Track live gold, silver, copper, platinum & commodity prices",
+        url = "https://www.google.com/search?q={query}+price+today",
+        extractPrompt = "Extract current {query} price from the provided content. Show: current price, today's change (amount and %), open, high, low. If multiple units are available (per ounce, per gram, per kg) show all. Format cleanly as a price report.",
+        intervalMinutes = 120,
+        subCategories = listOf(
+            "Gold price in India INR per gram",
+            "Gold price in India INR per 10 grams",
+            "Gold price USD per ounce",
+            "Silver price in India INR per kg",
+            "Silver price USD per ounce",
+            "Copper price USD per pound",
+            "Platinum price USD per ounce",
+            "Palladium price USD per ounce",
+            "Crude Oil WTI price USD",
+            "Crude Oil Brent price USD",
+            "Natural Gas price USD",
+            "Aluminium price USD per ton",
+            "Zinc price USD per ton",
+            "Nickel price USD per ton",
+            "Gold price in UK GBP per gram",
+            "Gold price in Europe EUR per gram",
+            "Gold price in UAE AED per gram"
+        )
     ),
 
     // ── 3. Stock/Trade Tracker ──────────────────────────────────────────

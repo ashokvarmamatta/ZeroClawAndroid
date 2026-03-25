@@ -623,7 +623,7 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 
 ---
 
-### Phase 165 — Multi-channel agent delivery ✅ DONE
+### Phase 165 — Multi-channel agent delivery + template improvements ✅ DONE
 - **Bots + Channels delivery UI**: Completely redesigned the Delivery section in `AgentCreateSheet` with two sub-sections:
   - **Bots**: Shows all bots configured in Settings (Telegram, Discord, Slack, WhatsApp, Signal) with checkboxes. Connected bots shown with green "Connected" badge. All connected bots auto-checked by default. No chat ID required — auto-resolves to bot's last known chat.
   - **Channels**: Add specific chat/channel targets with IDs (e.g., specific Telegram group, Discord channel ID). Inline form with channel selector, chat ID input, known ID suggestions, and validation.
@@ -631,6 +631,51 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 - **Data model (backward-compatible)**: `channel` field stores comma-separated bot names (`"telegram,discord"`), `chatId` field stores `channel:id` pairs for specific targets (`"discord:123,slack:C456"`). Old single-channel values still work via legacy fallback path.
 - **TelegramBotManager seed**: On first polling start, fetches the most recent update from Telegram API (`offset=-1`) to seed the bot's chat ID immediately — agents can deliver without waiting for a new message. Chat ID persisted to SharedPreferences and restored on app restart.
 - **AgentsScreen**: Agent card now shows multiple channel chips with horizontal scroll, plus channel target count badge.
+- **Template category system fix**: Added `{query}` placeholder to all template URLs and extractPrompts. Categories now produce different results (e.g., "Technology" vs "AI & Machine Learning" in Latest News fetches different content). Live-updates URL, extractPrompt, and agent name as user toggles categories in `AgentCreateSheet`.
+- **LLM extraction "no real-time access" fix**: LLM was refusing to extract data from fetched content (saying "I don't have access to real-time data"). Fixed by updating system prompt in `LlmRouter.extractOnly()` to explicitly state "this data was JUST FETCHED from a live website" and wrapping content with `BEGIN/END FETCHED CONTENT` markers in `WebScraperAgent`. Increased content snippet from 1000→2500 chars.
+- **Gold Price Tracker template**: Expanded from single USD gold price to 17 sub-categories including: Gold (India INR/gram, INR/10g, USD/oz, GBP, EUR, AED), Silver (India INR/kg, USD/oz), Copper, Platinum, Palladium, Crude Oil (WTI + Brent), Natural Gas, Aluminium, Zinc, Nickel. Uses Google Search with `{query}` so each metal/country gets its own specific search.
+- **GitHub Actions workflow**: Added `build-and-release.yml` — builds debug + release APK, creates GitHub Release with artifacts, supports signed/unsigned builds, manual dispatch.
+
+---
+
+### Phase 166 — Free API Agents System (PLANNED — next session)
+> **Branch:** `agents-api-integration`
+> **Goal:** Research all free APIs that agents can use, document rate limits, and integrate them as proper agent data sources. Replace Google Search scraping with direct APIs where possible for more reliable data.
+
+**Research checklist — find free (unlimited or generous rate-limit) APIs for:**
+
+| Agent | API Candidate | Rate Limit | Notes |
+|-------|--------------|------------|-------|
+| **Gold/Commodities** | GoldAPI.io, Metals.live, MetalpriceAPI | ? | Need: gold, silver, copper, platinum by country/currency |
+| **Crypto Prices** | CoinGecko API (free), CoinCap, Binance public | 30 req/min (CoinGecko) | BTC, ETH, SOL, XRP etc. |
+| **Stock/Index** | Yahoo Finance API, Alpha Vantage (free tier), Twelve Data | 5 req/min (Alpha Vantage) | NIFTY, SENSEX, S&P 500 etc. |
+| **Currency/Forex** | ExchangeRate-API, Fixer.io (free), Open Exchange Rates | 1500/month (ExchangeRate) | USD/INR, EUR/USD etc. |
+| **Weather** | wttr.in (unlimited), OpenWeatherMap (free 1000/day) | Unlimited / 1000/day | Already using wttr.in |
+| **News** | NewsAPI.org (free 100/day), GNews.io, Currents API | 100/day (NewsAPI) | Category-filtered news |
+| **Earthquake/Disaster** | USGS GeoJSON (unlimited, public) | Unlimited | Already using this |
+| **Fuel Prices** | collectAPI, government open data portals | ? | India-specific needed |
+| **IPO/Stock Events** | Finnhub (free tier), SEC EDGAR | 60 req/min (Finnhub) | IPO calendar, earnings |
+| **GitHub Trending** | GitHub REST API (unauthenticated 60/hr, auth 5000/hr) | 60-5000/hr | Trending repos |
+| **Sports Scores** | ESPN API (unofficial), CricAPI, Football-Data.org | Varies | Cricket, football, F1 |
+| **Mutual Funds** | MFAPI.in (India, free, unlimited) | Unlimited | NAV data for Indian MFs |
+| **Flights** | Skyscanner API, Kiwi.com Tequila | ? | Price tracking |
+| **Movies/TV** | TMDb API (free, unlimited) | 40 req/10s | New releases, trending |
+| **YouTube Trending** | YouTube Data API v3 (free 10k units/day) | 10k units/day | Trending videos |
+
+**Implementation plan:**
+1. Create `agents/api/` package with one data source class per API
+2. Each data source: `suspend fun fetch(params: Map<String,String>): ApiResult`
+3. Add API key fields in Settings for APIs that need keys (most are free/no-key)
+4. `WebScraperAgent` gets a new path: if agent template has `apiSource` field → use direct API instead of web scrape + LLM extraction
+5. Add rate limit tracking per API: store last call timestamp, enforce minimum interval
+6. Add condition notes in agent creation UI: "This API allows 1 fetch per day" / "100 requests per day" etc.
+7. Fallback: if API fails or rate-limited → fall back to current Google Search scraping method
+
+**Conditions to document per API:**
+- Free tier limits (requests per minute/hour/day/month)
+- Whether API key is required (and how to get one)
+- Data freshness (real-time vs 15-min delay vs daily)
+- Geographic coverage (global vs India-only vs US-only)
 
 ---
 
