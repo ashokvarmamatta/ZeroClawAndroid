@@ -638,9 +638,34 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 
 ---
 
-### Phase 166 — Free API Agents System (PLANNED — next session)
+### Phase 166 — Free API Agents System ✅ DONE
 > **Branch:** `agents-api-integration`
 > **Goal:** Research all free APIs that agents can use, document rate limits, and integrate them as proper agent data sources. Replace Google Search scraping with direct APIs where possible for more reliable data.
+>
+> **Implemented:**
+> - Created `agents/api/` package with 10 free API data sources:
+>   - **CoinGecko** — Crypto prices (30 req/min, no key)
+>   - **CoinCap** — Alternative crypto data (200 req/min, no key)
+>   - **Metals.live** — Gold, silver, platinum, palladium spot prices (no key)
+>   - **ExchangeRate-API** — Currency exchange rates (~50 req/day free, no key)
+>   - **USGS Earthquake** — Earthquake data (unlimited, public government API)
+>   - **MFAPI.in** — Indian mutual fund NAV data (unlimited, no key)
+>   - **GitHub Trending** — Trending repos via search API (60 req/hr unauthenticated)
+>   - **wttr.in** — Weather data (unlimited, no key)
+>   - **Football-Data.org** — Football/soccer scores & standings (10 req/min free)
+>   - **Numbers API** — Fun number/date facts (unlimited)
+> - Created `ApiDataSource` interface + `ApiResult` + `ApiRateLimit` data classes
+> - Created `ApiRateLimiter` — per-API sliding window rate limit tracker
+> - Created `FreeApiRegistry` — maps template IDs to API sources, handles rate checking
+> - Created `HttpUtil.kt` — shared HTTP GET helper for all API sources
+> - Updated `AgentConfig` with `apiSource` field
+> - Updated `AgentManager.createWebScraper()` to accept `apiSource`
+> - Updated `AgentTemplate` with `apiSource` and `apiRateNote` fields
+> - Updated 8 existing templates with free API sources (crypto, gold, forex, weather, sports, earthquake, GitHub trending, mutual funds)
+> - Updated `WebScraperAgent.run()`: tries direct API first → falls back to web scraping + LLM extraction if API fails/rate-limited
+> - Updated `AgentCreateSheet` — shows green API badge with rate limit info
+> - Updated `AgentsScreen` — agent cards show ⚡API indicator for API-powered agents
+> - All API data sources return pre-formatted text → NO LLM extraction needed → faster, cheaper, more reliable
 
 **Research checklist — find free (unlimited or generous rate-limit) APIs for:**
 

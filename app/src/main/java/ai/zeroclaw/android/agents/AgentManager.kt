@@ -58,7 +58,8 @@ class AgentManager private constructor(context: Context) {
         chatId: String,
         extractPrompt: String,
         onlyOnChange: Boolean,
-        templateId: String? = null
+        templateId: String? = null,
+        apiSource: String? = null
     ): AgentConfig {
         val agent = AgentConfig(
             id = UUID.randomUUID().toString(),
@@ -75,7 +76,8 @@ class AgentManager private constructor(context: Context) {
             lastRunAt = 0L,
             lastContentHash = 0,
             lastStatus = "Not run yet",
-            templateId = templateId
+            templateId = templateId,
+            apiSource = apiSource
         )
         save(agent)
         return agent

@@ -1,6 +1,7 @@
 package ai.zeroclaw.android.agents
 
 import android.content.Context
+import ai.zeroclaw.android.agents.api.FreeApiRegistry
 import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolSystem
@@ -23,24 +24,58 @@ class WebScraperAgent(private val context: Context) {
     private val agentManager = AgentManager.getInstance(context)
 
     suspend fun run(agent: AgentConfig) {
-        ZeroClawService.log("AGENT[${agent.name}]: starting web scrape → ${agent.url}")
+        ZeroClawService.log("AGENT[${agent.name}]: starting run → ${agent.url}")
 
-        // ── Step 1: Fetch ────────────────────────────────────────────────────
-        val fetchTool = WebFetchTool()
-        val fetchResult = fetchTool.execute(mapOf("url" to agent.url))
-
-        if (!fetchResult.success) {
-            val status = "Fetch failed: ${fetchResult.error}"
-            ZeroClawService.log("AGENT[${agent.name}]: $status")
-            agentManager.markRun(agent.id, agent.lastContentHash, status)
-            return
+        // ── Step 1: Try direct free API first (Phase 166) ────────────────────
+        val apiParams = buildApiParams(agent)
+        val templateId = agent.templateId ?: agent.apiSource
+        val apiResult = try {
+            if (agent.apiSource != null) {
+                // Agent has explicit apiSource
+                val source = FreeApiRegistry.getSource(agent.apiSource)
+                if (source != null) {
+                    ZeroClawService.log("AGENT[${agent.name}]: trying direct API → ${source.displayName}")
+                    source.fetch(apiParams)
+                } else null
+            } else {
+                // Try by template ID
+                FreeApiRegistry.tryFetch(templateId, apiParams)
+            }
+        } catch (e: Exception) {
+            ZeroClawService.log("AGENT[${agent.name}]: API error, falling back to web scrape — ${e.message}")
+            null
         }
 
-        var content = fetchResult.content
+        var content: String
+        var usedApi = false
 
-        // ── Step 2: Extract / Summarize ──────────────────────────────────────
-        if (agent.extractPrompt.isNotBlank()) {
-            content = extractWithLlm(agent, content) ?: content
+        if (apiResult != null && apiResult.success) {
+            // Direct API succeeded — skip web scraping and LLM extraction
+            content = apiResult.content
+            usedApi = true
+            ZeroClawService.log("AGENT[${agent.name}]: direct API OK (${content.length} chars)")
+        } else {
+            // Fallback: web scrape + LLM extraction (original path)
+            if (apiResult != null && !apiResult.success) {
+                ZeroClawService.log("AGENT[${agent.name}]: API failed (${apiResult.error}), falling back to web scrape")
+            }
+
+            val fetchTool = WebFetchTool()
+            val fetchResult = fetchTool.execute(mapOf("url" to agent.url))
+
+            if (!fetchResult.success) {
+                val status = "Fetch failed: ${fetchResult.error}"
+                ZeroClawService.log("AGENT[${agent.name}]: $status")
+                agentManager.markRun(agent.id, agent.lastContentHash, status)
+                return
+            }
+
+            content = fetchResult.content
+
+            // ── Extract / Summarize via LLM ──────────────────────────────────
+            if (agent.extractPrompt.isNotBlank()) {
+                content = extractWithLlm(agent, content) ?: content
+            }
         }
 
         // ── Step 3: Change detection ─────────────────────────────────────────
@@ -53,7 +88,7 @@ class WebScraperAgent(private val context: Context) {
         }
 
         // ── Step 4: Deliver to all targets ───────────────────────────────────
-        val header = buildHeader(agent)
+        val header = buildHeader(agent, usedApi)
         val message = "$header\n\n${content.take(MAX_MESSAGE_CHARS)}"
 
         val svc = ZeroClawService.instance
@@ -234,10 +269,39 @@ $contentSnippet
         return text.replace(Regex("\\s+"), " ").trim()
     }
 
-    private fun buildHeader(agent: AgentConfig): String {
+    private fun buildHeader(agent: AgentConfig, usedApi: Boolean = false): String {
         val dtFmt = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.ENGLISH)
         dtFmt.timeZone = java.util.TimeZone.getDefault()
-        return "🤖 *${agent.name}* — Web Scraper\n🔗 ${agent.url}\n🕐 ${dtFmt.format(java.util.Date())}"
+        val sourceLabel = if (usedApi) "Free API" else "Web Scraper"
+        return "🤖 *${agent.name}* — $sourceLabel\n🔗 ${agent.url}\n🕐 ${dtFmt.format(java.util.Date())}"
+    }
+
+    /** Build params map for API data sources from agent config */
+    private fun buildApiParams(agent: AgentConfig): Map<String, String> {
+        val params = mutableMapOf<String, String>()
+        // Extract query from the URL or extractPrompt
+        val url = agent.url
+        val query = extractQueryFromUrl(url) ?: extractQueryFromPrompt(agent.extractPrompt) ?: agent.name
+        params["query"] = query
+        return params
+    }
+
+    private fun extractQueryFromUrl(url: String): String? {
+        // Try to get q= parameter from Google search URLs
+        val match = Regex("[?&]q=([^&]+)").find(url)
+        if (match != null) {
+            return java.net.URLDecoder.decode(match.groupValues[1], "UTF-8")
+                .replace("+", " ")
+                .replace(Regex("\\s+(price|today|latest|live|scores|results).*", RegexOption.IGNORE_CASE), "")
+                .trim()
+        }
+        return null
+    }
+
+    private fun extractQueryFromPrompt(prompt: String): String? {
+        // Look for specific keywords in extraction prompts
+        val match = Regex("\\{query\\}").find(prompt)
+        return if (match != null) null else null // {query} should already be replaced
     }
 
     private fun channelEmoji(channel: String) = when (channel.lowercase()) {

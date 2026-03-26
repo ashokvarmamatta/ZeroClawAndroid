@@ -21,5 +21,6 @@ data class AgentConfig(
     val lastRunAt: Long,
     val lastContentHash: Int,          // Hash of last delivered content for change detection
     val lastStatus: String,            // Human-readable last result summary
-    val templateId: String? = null     // ID of the template this agent was created from (null = custom)
+    val templateId: String? = null,    // ID of the template this agent was created from (null = custom)
+    val apiSource: String? = null      // Phase 166: free API source ID (e.g. "coingecko") — uses direct API instead of web scraping
 )

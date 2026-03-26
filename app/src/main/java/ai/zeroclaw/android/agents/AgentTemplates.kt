@@ -23,7 +23,11 @@ data class AgentTemplate(
     /** Placeholder text for user-customizable field (e.g. "Enter company name") */
     val customFieldHint: String = "",
     /** If true, URL has {query} placeholder replaced with user input */
-    val needsUserInput: Boolean = false
+    val needsUserInput: Boolean = false,
+    /** Phase 166: If set, use direct free API instead of web scraping. Maps to FreeApiRegistry source. */
+    val apiSource: String? = null,
+    /** Phase 166: Human-readable API rate limit note for the UI */
+    val apiRateNote: String? = null
 )
 
 /** News sub-categories — used by the "Latest News" template edit mode */
@@ -80,7 +84,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
             "Gold price in UK GBP per gram",
             "Gold price in Europe EUR per gram",
             "Gold price in UAE AED per gram"
-        )
+        ),
+        apiSource = "metals_live",
+        apiRateNote = "Metals.live: free, no key needed (USD spot prices)"
     ),
 
     // ── 3. Stock/Trade Tracker ──────────────────────────────────────────
@@ -144,7 +150,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         description = "Track Bitcoin, Ethereum, and top cryptocurrency prices",
         url = "https://www.google.com/finance/quote/BTC-USD",
         extractPrompt = "Extract current prices for top cryptocurrencies: Bitcoin, Ethereum, BNB, Solana, XRP. Show price in USD and 24h % change. Format as clean list.",
-        intervalMinutes = 120
+        intervalMinutes = 120,
+        apiSource = "coingecko",
+        apiRateNote = "CoinGecko free API: 30 req/min, no key needed"
     ),
 
     // ── 7. Weather Updates ──────────────────────────────────────────────
@@ -159,7 +167,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         intervalMinutes = 360,
         needsUserInput = true,
         customFieldHint = "Enter city name (e.g. Hyderabad, New York, London)",
-        onlyOnChange = false
+        onlyOnChange = false,
+        apiSource = "wttr_weather",
+        apiRateNote = "wttr.in: unlimited, no key needed"
     ),
 
     // ── 8. Sports Scores ────────────────────────────────────────────────
@@ -173,7 +183,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         extractPrompt = "Extract today's live and recent {query} scores only. Show: Teams, Score, Status (Live/Finished), Competition/League name. Do NOT include other sports — only {query}. Format as clean list.",
         intervalMinutes = 30,
         onlyOnChange = false,
-        subCategories = listOf("Cricket", "Football", "Basketball", "Tennis", "F1", "NFL", "IPL", "Premier League", "Champions League", "NBA")
+        subCategories = listOf("Cricket", "Football", "Basketball", "Tennis", "F1", "NFL", "IPL", "Premier League", "Champions League", "NBA"),
+        apiSource = "football_data",
+        apiRateNote = "Football-Data.org: 10 req/min, free tier"
     ),
 
     // ── 9. Anime & Manga Tracker ────────────────────────────────────────
@@ -210,7 +222,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         url = "https://www.google.com/search?q={query}+exchange+rate+today",
         extractPrompt = "Extract current exchange rate for {query}. Show: rate, daily change %, 1-week trend. Format cleanly.",
         intervalMinutes = 240,
-        subCategories = listOf("USD/INR", "EUR/INR", "GBP/INR", "USD/EUR", "USD/JPY", "AUD/USD", "USD/CAD", "CHF/USD")
+        subCategories = listOf("USD/INR", "EUR/INR", "GBP/INR", "USD/EUR", "USD/JPY", "AUD/USD", "USD/CAD", "CHF/USD"),
+        apiSource = "exchangerate",
+        apiRateNote = "ExchangeRate-API: ~50 req/day free, no key needed"
     ),
 
     // ── 12. Real Estate Tracker ─────────────────────────────────────────
@@ -236,7 +250,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         description = "Track trending repositories on GitHub",
         url = "https://github.com/trending",
         extractPrompt = "Extract top 10 trending GitHub repositories today. For each: Repo name, Language, Stars gained today, Short description. Format as numbered list.",
-        intervalMinutes = 720
+        intervalMinutes = 720,
+        apiSource = "github_trending",
+        apiRateNote = "GitHub API: 60 req/hr unauthenticated, no key needed"
     ),
 
     // ── 14. Movie & TV Releases ─────────────────────────────────────────
@@ -299,7 +315,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.geojson",
         extractPrompt = "Extract significant earthquakes from the past week. For each: Magnitude, Location, Depth, Date/Time. List all significant events. Format cleanly.",
         intervalMinutes = 360,
-        onlyOnChange = false
+        onlyOnChange = false,
+        apiSource = "usgs_earthquake",
+        apiRateNote = "USGS: unlimited, public government API, no key needed"
     ),
 
     // ── 19. E-commerce Deal Tracker ─────────────────────────────────────
@@ -351,7 +369,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         description = "Track NAV and returns of top mutual funds",
         url = "https://www.google.com/search?q=top+mutual+funds+NAV+today+india",
         extractPrompt = "Extract NAV and returns for top mutual funds. For each: Fund Name, NAV, 1-year Return %, Category. List top 10 performing funds. Format cleanly.",
-        intervalMinutes = 1440
+        intervalMinutes = 1440,
+        apiSource = "mfapi_india",
+        apiRateNote = "MFAPI.in: unlimited, free, India MF data"
     ),
 
     // ── 23. Flight Price Tracker ────────────────────────────────────────

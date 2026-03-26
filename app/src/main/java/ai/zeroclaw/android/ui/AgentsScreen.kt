@@ -257,7 +257,7 @@ private fun AgentCard(
                         Column {
                             Text(agent.name, fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp, color = Color.White)
-                            Text(agentTypeLabel(agent.type, agent.templateId),
+                            Text(agentTypeLabel(agent.type, agent.templateId, agent.apiSource),
                                 fontSize = 10.sp, color = accentColor)
                         }
                     }
@@ -474,14 +474,15 @@ private fun agentEmoji(type: String, templateId: String? = null): String {
     }
 }
 
-private fun agentTypeLabel(type: String, templateId: String? = null): String {
+private fun agentTypeLabel(type: String, templateId: String? = null, apiSource: String? = null): String {
+    val suffix = if (apiSource != null) " ⚡API" else ""
     if (templateId != null) {
         val tpl = AGENT_TEMPLATES.firstOrNull { it.id == templateId }
-        if (tpl != null) return tpl.category
+        if (tpl != null) return tpl.category + suffix
     }
     return when (type) {
-        AgentManager.TYPE_WEB_SCRAPER -> "Web Scraper"
-        else -> type
+        AgentManager.TYPE_WEB_SCRAPER -> "Web Scraper$suffix"
+        else -> type + suffix
     }
 }
 

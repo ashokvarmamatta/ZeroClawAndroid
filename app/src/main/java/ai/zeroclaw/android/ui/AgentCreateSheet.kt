@@ -188,6 +188,15 @@ fun AgentCreateSheet(
                         Text(
                             template?.description ?: "Periodically scrapes a URL and pushes updates to your channel",
                             fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                        // Phase 166: Show API source badge
+                        if (template?.apiSource != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "⚡ ${template.apiRateNote ?: "Direct API — no web scraping needed"}",
+                                fontSize = 10.sp,
+                                color = Color(0xFF4ADE80)
+                            )
+                        }
                     }
                 }
             }
@@ -647,7 +656,8 @@ fun AgentCreateSheet(
                             chatId = "", extractPrompt = "", onlyOnChange = true,
                             enabled = true, createdAt = System.currentTimeMillis(),
                             lastRunAt = 0L, lastContentHash = 0, lastStatus = "Not run yet",
-                            templateId = template?.id
+                            templateId = template?.id,
+                            apiSource = template?.apiSource
                         )).copy(
                             name = finalName,
                             url = finalUrl,
@@ -655,7 +665,8 @@ fun AgentCreateSheet(
                             channel = channelStr,
                             chatId = chatIdStr,
                             extractPrompt = finalPrompt,
-                            onlyOnChange = onlyOnChange
+                            onlyOnChange = onlyOnChange,
+                            apiSource = template?.apiSource ?: existing?.apiSource
                         )
                         onSave(config)
                     },
