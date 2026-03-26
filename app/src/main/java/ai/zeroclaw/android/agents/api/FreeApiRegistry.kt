@@ -22,7 +22,15 @@ object FreeApiRegistry {
             GitHubTrendingApi(),
             WttrWeatherApi(),
             FootballDataApi(),
-            NumbersApi()
+            NumbersApi(),
+            // Phase 167: New free API agents
+            NewsApi(),
+            AlphaVantageApi(),
+            TmdbApi(),
+            YouTubeTrendingApi(),
+            FuelPriceApi(),
+            IpoTrackerApi(),
+            FlightPriceApi()
         ).associateBy { it.sourceId }
     }
 
@@ -35,7 +43,15 @@ object FreeApiRegistry {
         "tpl_mutual_fund" to "mfapi_india",
         "tpl_github_trending" to "github_trending",
         "tpl_weather" to "wttr_weather",
-        "tpl_sports" to "football_data"
+        "tpl_sports" to "football_data",
+        // Phase 167: New mappings
+        "tpl_latest_news" to "gnews",
+        "tpl_trade_tracker" to "stock_index",
+        "tpl_movies" to "tmdb_movies",
+        "tpl_youtube_trending" to "youtube_trending",
+        "tpl_fuel_price" to "fuel_price",
+        "tpl_ipo_tracker" to "ipo_tracker",
+        "tpl_flights" to "flight_price"
     )
 
     /** Get data source by source ID */

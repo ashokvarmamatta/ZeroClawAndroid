@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -515,6 +516,13 @@ private fun AgentTemplateGallery(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val grouped = remember { getTemplatesByCategory() }
 
+    // Separate API-powered agents from web scraping agents
+    val apiTemplates = remember { AGENT_TEMPLATES.filter { it.apiSource != null } }
+    val scrapingTemplates = remember { AGENT_TEMPLATES.filter { it.apiSource == null } }
+    val apiByCategory = remember { apiTemplates.groupBy { it.category } }
+    val scrapingByCategory = remember { scrapingTemplates.groupBy { it.category } }
+    var selectedTab by remember { mutableIntStateOf(0) }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -525,17 +533,90 @@ private fun AgentTemplateGallery(
                 color = Color.White)
             Text("${AGENT_TEMPLATES.size} ready-made agents — tap to activate",
                 fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
+
+            // Tab row: API Agents vs Web Scraping
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color(0xFF152238),
+                contentColor = Color.White,
+                indicator = {
+                    TabRowDefaults.SecondaryIndicator(
+                        color = if (selectedTab == 0) Color(0xFF4CAF50) else Color(0xFF64B5F6)
+                    )
+                }
+            ) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("⚡", fontSize = 14.sp)
+                            Text("API Agents (${apiTemplates.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    selectedContentColor = Color(0xFF4CAF50),
+                    unselectedContentColor = Color.White.copy(alpha = 0.5f)
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("🕷️", fontSize = 14.sp)
+                            Text("Web Scraping (${scrapingTemplates.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    selectedContentColor = Color(0xFF64B5F6),
+                    unselectedContentColor = Color.White.copy(alpha = 0.5f)
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Description banner for selected tab
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selectedTab == 0) Color(0xFF1B3A2F) else Color(0xFF1A2540)
+                )
+            ) {
+                Row(modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (selectedTab == 0) "⚡" else "🕷️", fontSize = 18.sp)
+                    Column {
+                        Text(
+                            if (selectedTab == 0) "Direct Free API — Fast & Reliable"
+                            else "Web Scraping + LLM — Flexible",
+                            fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                            color = if (selectedTab == 0) Color(0xFF81C784) else Color(0xFF90CAF9)
+                        )
+                        Text(
+                            if (selectedTab == 0) "No API key needed. Data fetched directly from free public APIs."
+                            else "Scrapes web pages and uses AI to extract data. Works for any site.",
+                            fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            val currentGrouped = if (selectedTab == 0) apiByCategory else scrapingByCategory
 
             LazyColumn(
                 modifier = Modifier.weight(1f, fill = false).heightIn(max = 500.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                grouped.forEach { (category, templates) ->
+                currentGrouped.forEach { (category, templates) ->
                     item {
                         Text(category.uppercase(), fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64B5F6),
+                            color = if (selectedTab == 0) Color(0xFF81C784) else Color(0xFF64B5F6),
                             letterSpacing = 1.sp,
                             modifier = Modifier.padding(top = 4.dp, bottom = 4.dp))
                     }
@@ -589,9 +670,15 @@ private fun TemplateItem(template: AgentTemplate, onClick: () -> Unit) {
                     color = Color.White.copy(alpha = 0.6f), maxLines = 2)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(top = 4.dp)) {
+                    if (template.apiSource != null) InfoChip("⚡ API", Color(0xFF4CAF50))
                     InfoChip("⏱ ${formatInterval(template.intervalMinutes)}", Color(0xFF64B5F6))
                     if (template.needsUserInput) InfoChip("✏️ Customizable", Color(0xFFFFB74D))
                     if (template.subCategories.isNotEmpty()) InfoChip("📂 ${template.subCategories.size} options", Color(0xFF81C784))
+                }
+                if (template.apiRateNote != null) {
+                    Text(template.apiRateNote, fontSize = 9.sp,
+                        color = Color(0xFF4CAF50).copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 2.dp))
                 }
             }
             Icon(Icons.Default.ChevronRight, null,

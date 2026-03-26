@@ -139,7 +139,7 @@ fun HomeScreen(
                     offlineModel   = offlineModelName
                 )
             }
-            item { LogCard(statusLogs) }
+            item { LogCard(statusLogs, tunnelUrl) }
             item { DetailedLogCard(detailLogs) }
         }
     }
@@ -373,11 +373,69 @@ fun StatusRow(label: String, value: String, ok: Boolean) {
 }
 
 @Composable
-fun LogCard(logs: List<String>) {
+fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
     var expanded by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
+    var showServerAddress by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     val displayed = if (expanded) logs.reversed() else logs.takeLast(20).reversed()
+
+    // Resolve ZeroClaw service URL and local IP
+    val settings = remember { ai.zeroclaw.android.data.AppSettings(context) }
+    val zeroClawUrl = remember {
+        try { kotlinx.coroutines.runBlocking { settings.getAll().zeroClawUrl } }
+        catch (_: Exception) { "http://127.0.0.1:3000" }
+    }
+    val localIp = remember {
+        try {
+            java.net.NetworkInterface.getNetworkInterfaces()?.toList()
+                ?.flatMap { it.inetAddresses.toList() }
+                ?.firstOrNull { !it.isLoopbackAddress && it is java.net.Inet4Address }
+                ?.hostAddress ?: "127.0.0.1"
+        } catch (_: Exception) { "127.0.0.1" }
+    }
+    val lanUrl = remember(localIp) {
+        val port = zeroClawUrl.substringAfterLast(":").takeWhile { it.isDigit() }
+        "http://$localIp:${port.ifBlank { "3000" }}"
+    }
+
+    // Derive WebChat URL from local IP
+    val webChatUrl = remember(localIp) { "http://$localIp:8088" }
+    val isServiceLive = ZeroClawService.isRunning
+
+    // Server address dialog
+    if (showServerAddress) {
+        AlertDialog(
+            onDismissRequest = { showServerAddress = false },
+            icon = { Icon(Icons.Default.Dns, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Live Server Address", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (!isServiceLive) {
+                        Text("Service is not running. Start the service to generate live URLs.",
+                            fontSize = 12.sp, color = Color(0xFFE53935))
+                    } else {
+                        Text("Connect other apps to ZeroClaw using:",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    ServerAddressRow("ZeroClaw Service", lanUrl, clipboardManager)
+                    if (ZeroClawService.webChatRunning) {
+                        ServerAddressRow("WebChat Server", webChatUrl, clipboardManager)
+                    }
+                    if (tunnelUrl.startsWith("http")) {
+                        ServerAddressRow("Public URL (tunnel)", tunnelUrl, clipboardManager)
+                    }
+                    ServerAddressRow("Localhost", zeroClawUrl, clipboardManager)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showServerAddress = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
 
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -386,6 +444,28 @@ fun LogCard(logs: List<String>) {
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("Live Logs", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Show Live Server Address button
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        modifier = Modifier.clickable { showServerAddress = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.Dns, null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(12.dp))
+                            Text(
+                                "Server Address",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
                     if (logs.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -536,5 +616,52 @@ fun DetailedLogCard(logs: List<String>) {
     // Reset copied state after delay
     LaunchedEffect(copied) {
         if (copied) { delay(2000); copied = false }
+    }
+}
+
+@Composable
+private fun ServerAddressRow(
+    label: String,
+    address: String,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager
+) {
+    var copied by remember { mutableStateOf(false) }
+    Column {
+        Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                address,
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f)
+            )
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = if (copied) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.clickable {
+                    clipboardManager.setText(AnnotatedString(address))
+                    copied = true
+                }
+            ) {
+                Text(
+                    if (copied) "Copied!" else "Copy",
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (copied) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+    LaunchedEffect(copied) {
+        if (copied) { delay(1500); copied = false }
     }
 }

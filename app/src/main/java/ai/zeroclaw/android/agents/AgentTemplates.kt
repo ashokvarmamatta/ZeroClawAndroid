@@ -53,7 +53,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         url = "https://news.google.com/rss/search?q={query}",
         extractPrompt = "Extract the top 10 latest {query} news headlines with brief summaries. Only include news specifically about {query}. Format as numbered list: headline + 1-line summary each.",
         intervalMinutes = 60,
-        subCategories = NEWS_CATEGORIES
+        subCategories = NEWS_CATEGORIES,
+        apiSource = "gnews",
+        apiRateNote = "GNews/Currents/Google RSS: free, no key needed"
     ),
 
     // ── 2. Gold & Commodity Tracker ─────────────────────────────────────
@@ -105,7 +107,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
             "NIFTY 50", "SENSEX", "S&P 500", "NASDAQ", "DOW JONES",
             "FTSE 100", "DAX", "NIKKEI 225", "HANG SENG", "ASX 200",
             "CAC 40", "KOSPI", "SHANGHAI", "IBOVESPA", "TSX"
-        )
+        ),
+        apiSource = "stock_index",
+        apiRateNote = "Yahoo Finance: free, no key needed"
     ),
 
     // ── 4. Jobs Tracker ─────────────────────────────────────────────────
@@ -264,7 +268,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         description = "Track new movie and TV show releases",
         url = "https://www.google.com/search?q=new+movies+and+tv+shows+releasing+this+week",
         extractPrompt = "Extract latest movie and TV show releases this week. For each: Title, Platform (Netflix/Prime/Theater), Genre, Release Date. List top 10.",
-        intervalMinutes = 1440
+        intervalMinutes = 1440,
+        apiSource = "tmdb_movies",
+        apiRateNote = "TMDb/IMDb: free, trending movies & TV"
     ),
 
     // ── 15. Fuel Price Tracker ──────────────────────────────────────────
@@ -278,7 +284,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         extractPrompt = "Extract today's fuel prices in {query}: Petrol, Diesel, CNG (if available). Show price per litre and change from yesterday. Format cleanly.",
         intervalMinutes = 1440,
         needsUserInput = true,
-        customFieldHint = "Enter city (e.g. Hyderabad, Delhi, Mumbai)"
+        customFieldHint = "Enter city (e.g. Hyderabad, Delhi, Mumbai)",
+        apiSource = "fuel_price",
+        apiRateNote = "GoodReturns: free, India fuel prices, no key needed"
     ),
 
     // ── 16. AI & ML News ────────────────────────────────────────────────
@@ -302,7 +310,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         description = "Track upcoming and recent IPOs",
         url = "https://www.google.com/search?q=upcoming+IPO+this+week+latest",
         extractPrompt = "Extract upcoming and recent IPOs. For each: Company Name, Issue Price, Open/Close Date, Listing Date, GMP (if available), Subscription Status. Format as clean list.",
-        intervalMinutes = 720
+        intervalMinutes = 720,
+        apiSource = "ipo_tracker",
+        apiRateNote = "Finnhub: 60 req/min free, IPO calendar"
     ),
 
     // ── 18. Earthquake & Disaster Alerts ────────────────────────────────
@@ -357,7 +367,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         description = "Track trending videos on YouTube",
         url = "https://www.google.com/search?q=youtube+trending+videos+today",
         extractPrompt = "Extract top 10 trending YouTube videos today. For each: Title, Channel, Views, Duration (if available). Format as numbered list.",
-        intervalMinutes = 720
+        intervalMinutes = 720,
+        apiSource = "youtube_trending",
+        apiRateNote = "YouTube: free trending page, no key needed"
     ),
 
     // ── 22. Mutual Fund & SIP Tracker ───────────────────────────────────
@@ -385,7 +397,9 @@ val AGENT_TEMPLATES: List<AgentTemplate> = listOf(
         extractPrompt = "Extract cheapest flight options for {query}. For each: Airline, Price, Duration, Stops, Departure Time. List top 5 cheapest options. Format cleanly.",
         intervalMinutes = 720,
         needsUserInput = true,
-        customFieldHint = "Enter route (e.g. Hyderabad to Delhi, Mumbai to Bangalore)"
+        customFieldHint = "Enter route (e.g. Hyderabad to Delhi, Mumbai to Bangalore)",
+        apiSource = "flight_price",
+        apiRateNote = "Aviationstack: free, flight routes & schedules"
     ),
 
     // ── 24. Government Schemes Tracker ──────────────────────────────────
