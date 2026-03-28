@@ -126,19 +126,48 @@ class LlmRouter(private val context: Context) {
      */
     /**
      * Raw LLM generation — no agent pipeline, no chat history, no tools.
-     * @param jsonMode If true, forces JSON output mode (responseMimeType) for providers that support it.
-     * @param maxTokens Override max output tokens (default uses provider's max for structured output).
+     * Uses the same waterfall failover as call() — tries all enabled keys and their
+     * selected models in order. Skips offline models (can't do structured JSON).
      */
     suspend fun rawGenerate(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 8192): String {
-        val allKeys = keyManager.loadKeys().filter { it.enabled }
+        val allKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider != "offline" }
         if (allKeys.isEmpty()) {
             return "No API keys configured."
         }
-        val entry = allKeys.first()
-        val model = entry.safePreferredModel
-        ZeroClawService.log("RawGenerate: ${prompt.take(80)}… (model=$model, json=$jsonMode, maxTokens=$maxTokens)")
         val rawSystemPrompt = "You are a data assistant. Follow the user's instructions exactly. Output ONLY what is requested, no extra commentary."
-        return dispatchToProviderRaw(prompt, entry, model = model, systemPrompt = rawSystemPrompt, jsonMode = jsonMode, maxTokens = maxTokens)
+        val errors = mutableListOf<String>()
+
+        for (entry in allKeys) {
+            val provider = entry.safeProvider
+            val label = entry.safeLabel.ifBlank { provider }
+
+            // Build model list — same logic as call()
+            val modelsToTry = when {
+                entry.safeSelectedModels.isNotEmpty() -> entry.safeSelectedModels
+                entry.safePreferredModel.isNotBlank() -> listOf(entry.safePreferredModel)
+                else -> listOf("") // let provider pick default
+            }
+
+            for (model in modelsToTry) {
+                val modelName = model.ifBlank { "(default)" }
+                try {
+                    ZeroClawService.log("RawGenerate: trying $label/$modelName (json=$jsonMode, maxTokens=$maxTokens)")
+                    val result = dispatchToProviderRaw(prompt, entry, model = model, systemPrompt = rawSystemPrompt, jsonMode = jsonMode, maxTokens = maxTokens)
+                    if (result.isNotBlank()) {
+                        ZeroClawService.log("RawGenerate: success via $label/$modelName (${result.length} chars)")
+                        return result
+                    }
+                } catch (e: Exception) {
+                    val errMsg = e.message ?: "Unknown error"
+                    val isRateLimit = errMsg.contains("429") || errMsg.contains("quota", ignoreCase = true) || errMsg.contains("503")
+                    ZeroClawService.log("RawGenerate: $label/$modelName failed — $errMsg${if (isRateLimit) " (rate limit, trying next)" else ""}")
+                    errors.add("$label/$modelName: $errMsg")
+                    // Continue to next model/key
+                }
+            }
+        }
+
+        throw Exception("All API keys/models failed: ${errors.joinToString("; ")}")
     }
 
     /**
