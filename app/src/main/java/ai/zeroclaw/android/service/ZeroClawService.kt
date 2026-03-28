@@ -335,19 +335,15 @@ class ZeroClawService : Service() {
                 log("LINE: no token set — go to Settings")
             }
 
-            // Web Chat
-            if (settings.webChatEnabled) {
-                launch {
-                    try {
-                        webChatServer.start()
-                        webChatRunning = true
-                        log("WebChat: server started on :8088")
-                    } catch (e: Exception) {
-                        log("WebChat error: ${e.message}")
-                    }
+            // Web Chat — always start so external apps (e.g. AutomationVideoGen) can reach /api/chat
+            launch {
+                try {
+                    webChatServer.start()
+                    webChatRunning = true
+                    log("WebChat: server started on :8088")
+                } catch (e: Exception) {
+                    log("WebChat error: ${e.message}")
                 }
-            } else {
-                log("WebChat: disabled — enable in Settings")
             }
 
             // Cron task checker — runs every 60 seconds

@@ -63,14 +63,31 @@ class WebChatServer(private val context: Context) {
             }
 
             when {
+                requestLine.startsWith("GET /api/discover") -> {
+                    sendJson(out, JSONObject()
+                        .put("service", "zeroclaw")
+                        .put("version", "1.0")
+                        .put("port", 8088)
+                        .put("endpoints", org.json.JSONArray().put("/api/chat").put("/api/generate").put("/api/discover"))
+                    )
+                }
                 requestLine.startsWith("GET / ") || requestLine.startsWith("GET /chat") -> {
                     sendHtml(out, chatPage())
                 }
-                requestLine.startsWith("POST /api/chat") -> {
+                requestLine.startsWith("POST /api/generate") || requestLine.startsWith("POST /api/chat") -> {
                     val bodyChars = CharArray(contentLength)
-                    if (contentLength > 0) reader.read(bodyChars, 0, contentLength)
-                    val body = String(bodyChars)
-                    handleChatApi(out, body)
+                    var totalRead = 0
+                    while (totalRead < contentLength) {
+                        val n = reader.read(bodyChars, totalRead, contentLength - totalRead)
+                        if (n <= 0) break
+                        totalRead += n
+                    }
+                    val body = String(bodyChars, 0, totalRead)
+                    if (requestLine.startsWith("POST /api/generate")) {
+                        handleGenerateApi(out, body)
+                    } else {
+                        handleChatApi(out, body)
+                    }
                 }
                 else -> {
                     val response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
@@ -104,6 +121,34 @@ class WebChatServer(private val context: Context) {
             sendJson(out, JSONObject().put("reply", reply))
         } catch (e: Exception) {
             ZeroClawService.log("WebChat: API error — ${e.message}")
+            sendJson(out, JSONObject().put("error", e.message ?: "Unknown error"))
+        }
+    }
+
+    /**
+     * POST /api/generate — raw LLM generation, no agent pipeline.
+     * Request:  {"prompt": "...", "session_id": "optional"}
+     * Response: {"text": "raw LLM output"}
+     */
+    private suspend fun handleGenerateApi(out: java.io.OutputStream, body: String) {
+        try {
+            val json = JSONObject(body)
+            val prompt = json.optString("prompt", json.optString("message", "")).trim()
+            val jsonMode = json.optBoolean("json_mode", false)
+            val maxTokens = json.optInt("max_tokens", 8192)
+
+            if (prompt.isBlank()) {
+                sendJson(out, JSONObject().put("error", "Empty prompt"))
+                return
+            }
+
+            ZeroClawService.log("Generate: ${prompt.take(100)}… (json=$jsonMode, maxTokens=$maxTokens)")
+            val text = llmRouter.rawGenerate(prompt, jsonMode = jsonMode, maxTokens = maxTokens)
+            ZeroClawService.log("Generate: response sent (${text.length} chars)")
+
+            sendJson(out, JSONObject().put("text", text))
+        } catch (e: Exception) {
+            ZeroClawService.log("Generate: error — ${e.message}")
             sendJson(out, JSONObject().put("error", e.message ?: "Unknown error"))
         }
     }

@@ -227,6 +227,54 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 - **ThinkingMode** — extended reasoning (Claude extended thinking, OpenAI o1/o3)
 - **ConversationSummarizer** — automatic context compression
 
+### 🌐 API Server for External Apps (Port 8088)
+
+ZeroClaw exposes an HTTP API server on port **8088** that external Android apps or services can use to access its LLM capabilities.
+
+#### Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/discover` | Service discovery — returns version, port, available endpoints |
+| `POST` | `/api/chat` | Full agent pipeline — system prompt, tools, chat history, thinking mode |
+| `POST` | `/api/generate` | **Raw LLM generation** — no agent pipeline, no tools, no history |
+| `GET` | `/` or `/chat` | Built-in web chat UI (browser) |
+
+#### `/api/generate` — Raw Generation
+Designed for external apps that need clean, structured LLM output (e.g., JSON arrays) without ZeroClaw's agent pipeline interfering.
+
+```json
+// Request
+POST /api/generate
+{
+  "prompt": "List 10 anime like Naruto. Return ONLY a JSON array...",
+  "json_mode": true,
+  "max_tokens": 8192
+}
+
+// Response
+{
+  "text": "[{\"title\": \"One Piece\", ...}, ...]"
+}
+```
+
+**Parameters:**
+- `prompt` (string, required) — The raw prompt to send to the LLM
+- `json_mode` (boolean, optional) — Forces `responseMimeType: application/json` for Gemini, `response_format: json_object` for OpenAI-compatible providers
+- `max_tokens` (integer, optional, default 8192) — Maximum output tokens
+
+#### `/api/discover` — Service Discovery
+```json
+// Response
+{
+  "service": "zeroclaw",
+  "version": "1.0",
+  "port": 8088,
+  "endpoints": ["/api/chat", "/api/generate", "/api/discover"]
+}
+```
+
+The server starts automatically with the ZeroClaw service and is accessible on the device's LAN IP (e.g., `http://10.0.0.105:8088`).
+
 ### 💬 11 Messaging Channels (Phases 103-109)
 - **Telegram** (+ group chat support via Phase 140)
 - **WhatsApp** (Twilio)

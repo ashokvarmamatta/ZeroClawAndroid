@@ -419,14 +419,13 @@ fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
                         Text("Connect other apps to ZeroClaw using:",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    // API address (port 8088) — this is what external apps should use
+                    ServerAddressRow("API (for apps)", webChatUrl, clipboardManager)
                     ServerAddressRow("ZeroClaw Service", lanUrl, clipboardManager)
-                    if (ZeroClawService.webChatRunning) {
-                        ServerAddressRow("WebChat Server", webChatUrl, clipboardManager)
-                    }
                     if (tunnelUrl.startsWith("http")) {
                         ServerAddressRow("Public URL (tunnel)", tunnelUrl, clipboardManager)
                     }
-                    ServerAddressRow("Localhost", zeroClawUrl, clipboardManager)
+                    ServerAddressRow("Localhost", "http://127.0.0.1:8088", clipboardManager)
                 }
             },
             confirmButton = {
