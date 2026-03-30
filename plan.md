@@ -239,6 +239,95 @@
 
 ---
 
+## 🔌 Phase 164 Detail: Connect Any App to ZeroClaw API
+
+### Quick Connect (any app that supports custom OpenAI base URL)
+```
+Base URL:  http://<DEVICE_IP>:8088/v1
+API Key:   zc-no-key-needed
+Model:     zeroclaw
+```
+Replace `<DEVICE_IP>` with the phone's LAN IP (shown in app: Live Logs → Server Address).
+If using a tunnel (ngrok/Cloudflare), use the tunnel URL instead for remote access.
+
+### Endpoints
+| Method | Path | Format | What It Does |
+|--------|------|--------|-------------|
+| `POST` | `/v1/chat/completions` | OpenAI-compatible | **Full agent pipeline** — 36+ tools, memory, thinking mode, multi-provider failover. Drop-in OpenAI replacement. |
+| `GET` | `/v1/models` | OpenAI-compatible | Returns model list (`zeroclaw`). |
+| `POST` | `/api/chat` | ZeroClaw native | Simple chat with session memory. |
+| `POST` | `/api/generate` | ZeroClaw native | Raw LLM output — no tools, no history. Supports `json_mode`. |
+| `GET` | `/api/discover` | ZeroClaw native | Service discovery — version, port, all endpoints. |
+| `GET` | `/` | HTML | Browser-based chat UI. |
+
+### cURL Examples
+
+**OpenAI-compatible (recommended — works with any GPT wrapper):**
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer zc-no-key-needed" \
+  -d '{"model":"zeroclaw","messages":[{"role":"user","content":"Hello!"}],"max_tokens":8192}'
+```
+
+**Response format (standard OpenAI):**
+```json
+{
+  "id": "chatcmpl-zc1719849600000",
+  "object": "chat.completion",
+  "created": 1719849600,
+  "model": "zeroclaw",
+  "choices": [{"index":0,"message":{"role":"assistant","content":"Hello! How can I help?"},"finish_reason":"stop"}],
+  "usage": {"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}
+}
+```
+
+**Simple chat API:**
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello!","session_id":"my_app"}'
+# Response: {"reply":"Hello! How can I help?"}
+```
+
+**Raw generate (no tools, no history):**
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/api/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"List 5 colors as JSON","json_mode":true,"max_tokens":8192}'
+# Response: {"text":"[\"red\",\"blue\",\"green\",\"yellow\",\"purple\"]"}
+```
+
+### SDK Integration
+
+**Python (OpenAI SDK):**
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://<DEVICE_IP>:8088/v1", api_key="zc-no-key-needed")
+r = client.chat.completions.create(model="zeroclaw", messages=[{"role":"user","content":"Hello"}])
+print(r.choices[0].message.content)
+```
+
+**JavaScript (OpenAI SDK):**
+```javascript
+import OpenAI from 'openai';
+const client = new OpenAI({baseURL:'http://<DEVICE_IP>:8088/v1', apiKey:'zc-no-key-needed'});
+const r = await client.chat.completions.create({model:'zeroclaw', messages:[{role:'user',content:'Hello'}]});
+console.log(r.choices[0].message.content);
+```
+
+### Compatible Apps & Tools
+Continue.dev, Cursor, Open WebUI, LangChain, LlamaIndex, AutoGen, CrewAI, Aider, any app with `OPENAI_API_BASE` env var support — just set the base URL and it works.
+
+### What the connected app gets
+All 36+ AI tools (web search, weather, translate, image gen, calculator, RSS, GitHub, email, smart home, etc.), multi-provider LLM failover, vector memory, thinking mode, conversation history, and the full agent pipeline — the connected app doesn't need to know about any of this, it just sends messages and gets intelligent responses.
+
+### Files Changed
+- `WebChatServer.kt` — added `POST /v1/chat/completions`, `GET /v1/models`, `OPTIONS` CORS preflight
+- `HomeScreen.kt` — added `CurlGeneratorDialog` composable with 3 tabs (OpenAI / Chat / Generate), copy-to-clipboard, Python/JS code snippets
+
+---
+
 ## 🆕 Phase 85-140 Detail: OpenClaw-Inspired Features
 
 ### Source: [OpenClaw](https://github.com/openclaw/openclaw.git)
@@ -725,3 +814,4 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 2. Upload this `plan.md` file
 3. Say: *"Continue building ZeroClawAndroid from plan.md — resume at first step that is NOT marked ✅ DONE"*
 4. Claude will read the plan and continue exactly where you left off.
+d

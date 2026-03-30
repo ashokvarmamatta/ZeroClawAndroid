@@ -229,51 +229,237 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 
 ### 🌐 API Server for External Apps (Port 8088)
 
-ZeroClaw exposes an HTTP API server on port **8088** that external Android apps or services can use to access its LLM capabilities.
+ZeroClaw exposes an HTTP API server on port **8088** that any app can connect to and get full AI access — chat, tools, memory, agents, everything ZeroClaw can do.
 
-#### Endpoints
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/discover` | Service discovery — returns version, port, available endpoints |
-| `POST` | `/api/chat` | Full agent pipeline — system prompt, tools, chat history, thinking mode |
-| `POST` | `/api/generate` | **Raw LLM generation** — no agent pipeline, no tools, no history |
-| `GET` | `/` or `/chat` | Built-in web chat UI (browser) |
+#### Quick Connect — Any App in 30 Seconds
 
-#### `/api/generate` — Raw Generation
-Designed for external apps that need clean, structured LLM output (e.g., JSON arrays) without ZeroClaw's agent pipeline interfering.
+Any app that supports a **custom OpenAI base URL** can connect instantly:
 
+| Setting | Value |
+|---------|-------|
+| **Base URL** | `http://<DEVICE_IP>:8088/v1` |
+| **API Key** | `zc-no-key-needed` (any non-empty string works) |
+| **Model** | `zeroclaw` |
+
+That's it. The app now has access to all of ZeroClaw's capabilities: 36+ AI tools, web search, memory, image generation, code execution, and all configured LLM providers with automatic failover.
+
+#### cURL — Test It Right Now
+
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer zc-no-key-needed" \
+  -d '{
+  "model": "zeroclaw",
+  "messages": [
+    {"role": "system", "content": "You are a helpful AI assistant powered by ZeroClaw."},
+    {"role": "user", "content": "Search the web for today'\''s top tech news and summarize them"}
+  ],
+  "max_tokens": 8192
+}'
+```
+
+Replace `<DEVICE_IP>` with your phone's LAN IP (shown in the app under **Live Logs → Server Address**). If you have a tunnel (ngrok/Cloudflare), use the tunnel URL instead for access from anywhere.
+
+#### All Endpoints
+
+| Method | Endpoint | Format | Description |
+|--------|----------|--------|-------------|
+| `POST` | `/v1/chat/completions` | OpenAI-compatible | **Full AI agent pipeline** — tools, memory, chat history, thinking mode. Drop-in replacement for OpenAI API. |
+| `GET` | `/v1/models` | OpenAI-compatible | Returns available models (zeroclaw). |
+| `POST` | `/api/chat` | ZeroClaw native | Simple chat with session memory. |
+| `POST` | `/api/generate` | ZeroClaw native | Raw LLM generation — no agent pipeline, no tools. |
+| `GET` | `/api/discover` | ZeroClaw native | Service discovery — version, port, endpoints. |
+| `GET` | `/` or `/chat` | HTML | Built-in web chat UI (open in browser). |
+
+---
+
+#### Endpoint 1: OpenAI-Compatible — `/v1/chat/completions` (Recommended)
+
+**This is the recommended endpoint.** It speaks the standard OpenAI API format, so any app, library, or tool that works with OpenAI will work with ZeroClaw with zero code changes.
+
+**Request:**
 ```json
-// Request
-POST /api/generate
+POST /v1/chat/completions
 {
-  "prompt": "List 10 anime like Naruto. Return ONLY a JSON array...",
-  "json_mode": true,
+  "model": "zeroclaw",
+  "messages": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What's the weather in Tokyo?"}
+  ],
   "max_tokens": 8192
 }
+```
+Headers: `Content-Type: application/json`, `Authorization: Bearer <any-string>`
 
-// Response
+**Response:**
+```json
 {
-  "text": "[{\"title\": \"One Piece\", ...}, ...]"
+  "id": "chatcmpl-zc1719849600000",
+  "object": "chat.completion",
+  "created": 1719849600,
+  "model": "zeroclaw",
+  "choices": [{
+    "index": 0,
+    "message": {"role": "assistant", "content": "The current weather in Tokyo is 24°C, partly cloudy..."},
+    "finish_reason": "stop"
+  }],
+  "usage": {"prompt_tokens": 25, "completion_tokens": 180, "total_tokens": 205}
 }
 ```
 
-**Parameters:**
-- `prompt` (string, required) — The raw prompt to send to the LLM
-- `json_mode` (boolean, optional) — Forces `responseMimeType: application/json` for Gemini, `response_format: json_object` for OpenAI-compatible providers
+**What happens behind the scenes:** ZeroClaw receives the message → detects it needs a weather tool → calls WeatherTool → gets live weather data → LLM formats the response → returns in OpenAI format. The calling app doesn't need to know any of this.
+
+---
+
+#### Endpoint 2: Chat API — `/api/chat`
+
+Simple chat endpoint with session-based conversation memory.
+
+**Request:**
+```json
+POST /api/chat
+{"message": "Hello, who are you?", "session_id": "my_app_user_123"}
+```
+
+**Response:**
+```json
+{"reply": "I'm ZeroClaw, your AI assistant! I have access to 36+ tools including web search, weather, translation, image generation, and more. How can I help?"}
+```
+
+Each unique `session_id` maintains its own conversation history — the AI remembers previous messages in the same session.
+
+---
+
+#### Endpoint 3: Raw Generate — `/api/generate`
+
+Direct LLM generation without the agent pipeline (no tools, no memory, no chat history). Use this when you need clean, predictable output.
+
+**Request:**
+```json
+POST /api/generate
+{
+  "prompt": "List 10 anime similar to Naruto. Return ONLY a JSON array of objects with title and genre.",
+  "json_mode": true,
+  "max_tokens": 8192
+}
+```
+
+**Response:**
+```json
+{"text": "[{\"title\": \"One Piece\", \"genre\": \"Action/Adventure\"}, ...]"}
+```
+
+Parameters:
+- `prompt` (string, required) — The raw prompt
+- `json_mode` (boolean, optional) — Forces JSON output format
 - `max_tokens` (integer, optional, default 8192) — Maximum output tokens
 
-#### `/api/discover` — Service Discovery
+---
+
+#### Connect from Python
+
+```python
+# Using OpenAI SDK (recommended — works with any OpenAI-compatible library)
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://<DEVICE_IP>:8088/v1",
+    api_key="zc-no-key-needed"
+)
+
+# Chat with full agent capabilities (web search, tools, memory)
+response = client.chat.completions.create(
+    model="zeroclaw",
+    messages=[
+        {"role": "system", "content": "You are a helpful AI assistant."},
+        {"role": "user", "content": "Search the web for the latest Python 3.13 features"}
+    ]
+)
+print(response.choices[0].message.content)
+
+# --- OR using requests (simple chat) ---
+import requests
+
+r = requests.post("http://<DEVICE_IP>:8088/api/chat", json={
+    "message": "What's 2+2?",
+    "session_id": "python_app"
+})
+print(r.json()["reply"])
+```
+
+#### Connect from JavaScript / Node.js
+
+```javascript
+// Using OpenAI SDK
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://<DEVICE_IP>:8088/v1',
+  apiKey: 'zc-no-key-needed'
+});
+
+const response = await client.chat.completions.create({
+  model: 'zeroclaw',
+  messages: [{ role: 'user', content: 'Translate "hello world" to Japanese, Spanish, and French' }]
+});
+console.log(response.choices[0].message.content);
+
+// --- OR using fetch (simple chat) ---
+const res = await fetch('http://<DEVICE_IP>:8088/api/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ message: 'Hello!', session_id: 'js_app' })
+});
+const data = await res.json();
+console.log(data.reply);
+```
+
+#### Connect from Any OpenAI-Compatible App
+
+These apps/tools can connect to ZeroClaw by setting a custom base URL:
+
+| App / Tool | Where to set Base URL |
+|------------|----------------------|
+| **Continue.dev** (VS Code AI) | `~/.continue/config.json` → `apiBase` |
+| **Cursor** | Settings → Models → OpenAI API Base |
+| **Open WebUI** | Admin → Connections → OpenAI API Base URL |
+| **LangChain** | `ChatOpenAI(base_url="...")` |
+| **LlamaIndex** | `OpenAI(api_base="...")` |
+| **AutoGen** | `config_list` → `base_url` |
+| **CrewAI** | `LLM(base_url="...")` |
+| **Aider** | `--openai-api-base` flag |
+| **Shell scripts** | `OPENAI_API_BASE` env var |
+| **Any OpenAI SDK app** | Set `base_url` / `api_base` parameter |
+
+#### Generate cURL from the App
+
+In the ZeroClaw app: **Home Screen → Live Logs → Server Address → Generate cURL**. This generates ready-to-paste cURL commands with your device's actual IP/tunnel URL pre-filled. Includes tabs for OpenAI-compatible, Chat API, and Generate API formats with Python/JS code snippets.
+
+#### Service Discovery — `/api/discover`
 ```json
-// Response
+GET /api/discover
+// Response:
 {
   "service": "zeroclaw",
   "version": "1.0",
   "port": 8088,
-  "endpoints": ["/api/chat", "/api/generate", "/api/discover"]
+  "endpoints": ["/api/chat", "/api/generate", "/api/discover", "/v1/chat/completions", "/v1/models"]
 }
 ```
 
-The server starts automatically with the ZeroClaw service and is accessible on the device's LAN IP (e.g., `http://10.0.0.105:8088`).
+#### What the Connected App Gets Access To
+
+When any app connects to ZeroClaw via the API, it gets access to **everything** ZeroClaw can do:
+
+- **36+ AI tools** — web search, weather, translate, image gen, calculator, RSS, QR codes, file manager, calendar, contacts, location, GitHub, Notion, email, Spotify, smart home, and more
+- **Multi-provider LLM failover** — OpenAI, Gemini, Anthropic, OpenRouter (400+ models), Ollama, offline models — with automatic failover if one fails
+- **Vector memory** — the AI remembers context across conversations (per session)
+- **Thinking mode** — extended chain-of-thought reasoning for complex problems
+- **Agent pipeline** — system prompts, tool auto-detection, multi-step tool chains
+- **Conversation history** — per-session context maintained on the server side
+
+The server starts automatically with the ZeroClaw service and is accessible on the device's LAN IP (e.g., `http://10.0.0.105:8088`). Use a tunnel (ngrok/Cloudflare) for public internet access.
 
 ### 💬 11 Messaging Channels (Phases 103-109)
 - **Telegram** (+ group chat support via Phase 140)

@@ -731,7 +731,7 @@ private fun CurlGeneratorDialog(
     {"role": "system", "content": "You are a helpful AI assistant powered by ZeroClaw."},
     {"role": "user", "content": "Hello!"}
   ],
-  "max_tokens": 4096
+  "max_tokens": 8192
 }'""",
             // Tab 1: ZeroClaw native chat API
             """curl -X POST "$effectiveUrl/api/chat" \
