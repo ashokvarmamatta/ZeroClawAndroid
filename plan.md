@@ -239,6 +239,10 @@
 | | | |
 | | **── AI SMART EXTRACTION (Phase 165) ──** | |
 | **165** | **AgentCreateSheet — AI Smart Extract: text field for user to describe what they need, "AI Analyze" button that fetches URL → AI checks if content exists → shows formatted preview with editable output template → fetch type selector (HTTP/RSS/WebView) with retry → WebView headless fallback when HTTP fails** | ✅ DONE |
+| **166** | **Agent extraction formatting — extractWithLlm() strict prompt: output ONLY requested data in Telegram Markdown (*bold*, bullets, numbered lists), no preamble/disclaimers. cleanExtractedReply() post-processor strips leaked filler. AI Analyze preview matches delivery format** | ✅ DONE |
+| **167** | **Persist fetch type & format — AgentConfig gets fetchType (http/rss/webview) and formatPreview fields. Edit mode pre-fills all AI Smart Extract state. WebScraperAgent uses saved fetchType for fetching. Agent cards show fetch type & AI Format badges** | ✅ DONE |
+| **168** | **JS-rendered page detection — AI Analyze detects when HTTP fetch returns empty values (SPAs like groww.in) and sets found=false with suggest_webview. Auto-switches to WebView. Editable format preview (OutlinedTextField). "Show live data" button lists all extractable values. "Copy all" button for raw fetched data. WebView warning panel** | ✅ DONE |
+| **169** | **Bottom sheet scroll fix — all ModalBottomSheets (AgentCreateSheet, AgentTemplateGallery, ToolTestSheet, ModelSelector) set dragHandle=null to prevent dismiss-on-scroll conflict. Added explicit close (X) buttons to all sheet headers instead** | ✅ DONE |
 
 ---
 
