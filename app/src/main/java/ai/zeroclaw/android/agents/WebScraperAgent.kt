@@ -60,11 +60,21 @@ class WebScraperAgent(private val context: Context) {
                 ZeroClawService.log("AGENT[${agent.name}]: API failed (${apiResult.error}), falling back to web scrape")
             }
 
-            val fetchTool = WebFetchTool()
-            val fetchResult = fetchTool.execute(mapOf("url" to agent.url))
+            // Use the saved fetch type (http/rss/webview) — fallback to http
+            val fetchMethod = agent.safeFetchType
+            ZeroClawService.log("AGENT[${agent.name}]: fetching via ${fetchMethod.uppercase()}")
+            val fetchResult = when (fetchMethod) {
+                "rss" -> try {
+                    ai.zeroclaw.android.tools.RssFeedTool().execute(mapOf("url" to agent.url, "limit" to "10"))
+                } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to agent.url)) }
+                "webview" -> try {
+                    ai.zeroclaw.android.tools.WebViewTool(context).execute(mapOf("action" to "fetch", "url" to agent.url, "wait_ms" to "3000"))
+                } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to agent.url)) }
+                else -> WebFetchTool().execute(mapOf("url" to agent.url))
+            }
 
             if (!fetchResult.success) {
-                val status = "Fetch failed: ${fetchResult.error}"
+                val status = "Fetch failed ($fetchMethod): ${fetchResult.error}"
                 ZeroClawService.log("AGENT[${agent.name}]: $status")
                 agentManager.markRun(agent.id, agent.lastContentHash, status)
                 return

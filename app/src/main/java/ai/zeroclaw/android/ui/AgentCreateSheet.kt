@@ -135,13 +135,15 @@ fun AgentCreateSheet(
     var testResult   by remember { mutableStateOf<String?>(null) }
     var testSuccess  by remember { mutableStateOf(false) }
 
-    // AI Smart Extract state
-    var aiQuery by remember { mutableStateOf("") }               // What user wants to extract
+    // AI Smart Extract state — pre-fill from existing agent when editing
+    var aiQuery by remember { mutableStateOf(existing?.extractPrompt ?: "") }
     var aiAnalyzing by remember { mutableStateOf(false) }
-    var aiFetchType by remember { mutableStateOf("http") }       // "http" | "rss" | "webview"
+    var aiFetchType by remember { mutableStateOf(existing?.safeFetchType ?: "http") }
     var aiRawContent by remember { mutableStateOf<String?>(null) }
-    var aiContentFound by remember { mutableStateOf<Boolean?>(null) }
-    var aiFormatPreview by remember { mutableStateOf<String?>(null) }
+    var aiContentFound by remember { mutableStateOf(
+        if (existing?.safeFormatPreview?.isNotBlank() == true) true else null
+    ) }
+    var aiFormatPreview by remember { mutableStateOf(existing?.safeFormatPreview?.ifBlank { null }) }
     var aiError by remember { mutableStateOf<String?>(null) }
 
     // All bot definitions
@@ -930,7 +932,9 @@ Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
                             chatId = chatIdStr,
                             extractPrompt = finalPrompt,
                             onlyOnChange = onlyOnChange,
-                            apiSource = template?.apiSource ?: existing?.apiSource
+                            apiSource = template?.apiSource ?: existing?.apiSource,
+                            fetchType = aiFetchType,
+                            formatPreview = aiFormatPreview
                         )
                         onSave(config)
                     },

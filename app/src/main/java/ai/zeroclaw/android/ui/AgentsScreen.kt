@@ -297,6 +297,15 @@ private fun AgentCard(
                     }
                     InfoChip("⏱ every ${formatInterval(agent.intervalMinutes)}", accentColor)
                     if (agent.onlyOnChange) InfoChip("△ on change", accentColor)
+                    // Show fetch type if not default HTTP
+                    val fetchLabel = when (agent.safeFetchType) {
+                        "rss" -> "RSS"
+                        "webview" -> "WebView"
+                        else -> null
+                    }
+                    if (fetchLabel != null) InfoChip("🔗 $fetchLabel", Color(0xFF64B5F6))
+                    // Show format indicator if AI format was saved
+                    if (agent.safeFormatPreview.isNotBlank()) InfoChip("✨ AI Format", Color(0xFFCE93D8))
                 }
 
                 // Last status

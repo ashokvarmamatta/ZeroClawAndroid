@@ -22,5 +22,10 @@ data class AgentConfig(
     val lastContentHash: Int,          // Hash of last delivered content for change detection
     val lastStatus: String,            // Human-readable last result summary
     val templateId: String? = null,    // ID of the template this agent was created from (null = custom)
-    val apiSource: String? = null      // Phase 166: free API source ID (e.g. "coingecko") — uses direct API instead of web scraping
-)
+    val apiSource: String? = null,     // Phase 166: free API source ID (e.g. "coingecko") — uses direct API instead of web scraping
+    val fetchType: String? = null,     // Phase 165: fetch method — "http" | "rss" | "webview" (null = "http")
+    val formatPreview: String? = null  // Phase 165: AI-generated format preview shown to user — persisted so user can review/edit later
+) {
+    val safeFetchType: String get() = fetchType ?: "http"
+    val safeFormatPreview: String get() = formatPreview ?: ""
+}
