@@ -236,27 +236,31 @@ class WebScraperAgent(private val context: Context) {
             val router = LlmRouter.getInstance(context)
             val cleaned = stripBoilerplate(rawContent)
             val contentSnippet = cleaned.take(2500)
-            val prompt = """INSTRUCTION: ${agent.extractPrompt}
+            val prompt = """You are a data extraction bot. Your ONLY job is to extract EXACTLY what the user asked for — nothing more, nothing less.
 
-IMPORTANT: The following content was JUST FETCHED from ${agent.url} — it is real, live data. Extract the requested information from it. Do NOT say you lack real-time access.
+USER ASKED FOR: ${agent.extractPrompt}
 
-FORMAT RULES — you MUST follow these:
-1. Use Telegram Markdown formatting for a clean, readable message:
-   - *bold* for headers and key labels
-   - Use bullet points (• or -) for lists
-   - Use line breaks between sections
-   - Use numbers (1. 2. 3.) for ordered items
-2. Structure the output with clear sections and headers
-3. Include actual data values, numbers, and names from the content — not placeholders
-4. Keep the output concise but complete — no filler text, no "here is the data" preamble
-5. Start directly with the formatted data
+STRICT RULES:
+- Output ONLY the requested data in a clean formatted message
+- Do NOT add any explanation, introduction, summary, or commentary
+- Do NOT add "Here is...", "Based on...", "I found...", "The data shows..." or any preamble
+- Do NOT add source attribution, disclaimers, or footer text
+- Do NOT include raw HTML, URLs, or page metadata unless the user specifically asked for links
+- Do NOT repeat the question or instruction back
+- Use Telegram Markdown: *bold* for headers/labels, • for bullet points, numbered lists for ordered items
+- Include line breaks between sections for readability
+- Use ONLY actual data values from the content below
+- If the content doesn't have what was asked for, output only: "No matching data found"
 
---- BEGIN FETCHED CONTENT ---
+FETCHED CONTENT FROM ${agent.url}:
 $contentSnippet
---- END FETCHED CONTENT ---"""
+
+OUTPUT (start directly with the data):"""
             ZeroClawService.log("AGENT[${agent.name}]: extracting with LLM (${contentSnippet.length} chars content)")
-            val reply = router.extractOnly(prompt)
+            var reply = router.extractOnly(prompt)
             if (reply != null) {
+                // Strip any preamble the LLM might have added despite instructions
+                reply = cleanExtractedReply(reply)
                 ZeroClawService.log("AGENT[${agent.name}]: extraction OK (${reply.length} chars)")
             }
             reply
@@ -264,6 +268,33 @@ $contentSnippet
             ZeroClawService.log("AGENT[${agent.name}]: LLM extraction failed — ${e.message}")
             null
         }
+    }
+
+    /** Remove common LLM preamble/filler that leaks through despite prompt instructions */
+    private fun cleanExtractedReply(reply: String): String {
+        var text = reply.trim()
+        // Strip common preamble patterns
+        val preamblePatterns = listOf(
+            Regex("^(?:Here(?:'s| is| are) (?:the |your |)(?:extracted |requested |)(?:data|information|content|results?))[:\\s]*", RegexOption.IGNORE_CASE),
+            Regex("^(?:Based on (?:the |)(?:fetched |)(?:content|data|page)[,:\\s]+)", RegexOption.IGNORE_CASE),
+            Regex("^(?:I (?:found|extracted|got) (?:the following|this)[:\\s]*)", RegexOption.IGNORE_CASE),
+            Regex("^(?:The (?:fetched |extracted |)(?:content|data|page) (?:shows|contains|includes)[:\\s]*)", RegexOption.IGNORE_CASE),
+            Regex("^(?:From (?:the |)(?:fetched |)(?:content|URL|page|data)[,:\\s]+)", RegexOption.IGNORE_CASE),
+            Regex("^(?:Sure[!,.]?\\s*(?:Here(?:'s| is| are)[:\\s]*)?)"),
+            Regex("^(?:OUTPUT[:\\s]*)", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in preamblePatterns) {
+            text = text.replace(pattern, "").trim()
+        }
+        // Strip trailing disclaimers/source lines
+        val trailingPatterns = listOf(
+            Regex("\\n+(?:Source|Data source|Note|Disclaimer|\\*Note)[:\\s].*$", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
+            Regex("\\n+(?:This data|The above|All data|Data (?:is |was )).*$", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+        )
+        for (pattern in trailingPatterns) {
+            text = text.replace(pattern, "").trim()
+        }
+        return text
     }
 
     /** Strip RSS/XML boilerplate, copyright notices, and metadata that waste token budget */
