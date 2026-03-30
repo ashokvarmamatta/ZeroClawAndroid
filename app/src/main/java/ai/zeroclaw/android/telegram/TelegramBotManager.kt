@@ -63,6 +63,11 @@ class TelegramBotManager(private val context: Context) {
         val message = update.optJSONObject("message") ?: return
         val chatId = message.getJSONObject("chat").getLong("id")
         val text = message.optString("text", "").trim()
+
+        // Persist last-known chat ID for proactive messaging (agents/crons)
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+            .edit().putString("telegram_last_chat_id", chatId.toString()).apply()
+
         if (text.isEmpty()) return
 
         val username = message.optJSONObject("from")?.optString("username", "user") ?: "user"

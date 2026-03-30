@@ -99,6 +99,11 @@ class IrcBotManager(private val context: Context) {
         val target = match.groupValues[2]
         val message = match.groupValues[3].trim()
 
+        // Persist last-known target (channel or nick) for proactive messaging
+        val lastTarget = if (target.startsWith("#")) target else sender
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+            .edit().putString("irc_last_target", lastTarget).apply()
+
         if (message.isBlank()) return
 
         // For channel messages, only respond if mentioned
@@ -139,6 +144,25 @@ class IrcBotManager(private val context: Context) {
             } catch (e: Exception) {
                 ZeroClawService.log("IRC: reply error — ${e.message}")
             }
+        }
+    }
+
+    /** Public API for proactive messaging from agents. */
+    fun sendProactiveMessage(target: String, text: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // IRC has ~512 char line limit
+                val lines = text.split("\n")
+                for (line in lines.take(10)) {
+                    if (line.isNotBlank()) {
+                        val chunks = line.chunked(400)
+                        for (chunk in chunks) {
+                            send("PRIVMSG $target :$chunk")
+                            delay(500)
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 

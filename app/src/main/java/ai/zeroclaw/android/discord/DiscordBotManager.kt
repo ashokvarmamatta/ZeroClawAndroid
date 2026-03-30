@@ -189,6 +189,11 @@ class DiscordBotManager(private val context: Context) {
 
         val channelId = data.getString("channel_id")
         val username = author.optString("username", "user")
+
+        // Persist last-known channel ID for proactive messaging
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+            .edit().putString("discord_last_channel_id", channelId).apply()
+
         val userId = author.optString("id", "unknown")
 
         ZeroClawService.log("Discord @$username: $content")

@@ -56,6 +56,7 @@ class AgentManager private constructor(context: Context) {
         intervalMinutes: Int,
         channel: String,
         chatId: String,
+        connectedChannels: List<String> = emptyList(),
         extractPrompt: String,
         onlyOnChange: Boolean
     ): AgentConfig {
@@ -67,6 +68,7 @@ class AgentManager private constructor(context: Context) {
             intervalMinutes = intervalMinutes.coerceAtLeast(5),
             channel = channel,
             chatId = chatId,
+            connectedChannels = connectedChannels,
             extractPrompt = extractPrompt,
             onlyOnChange = onlyOnChange,
             enabled = true,

@@ -129,6 +129,10 @@ class MatrixBotManager(private val context: Context) {
                     if (msgType == "m.text" && msgBody.isNotBlank()) {
                         ZeroClawService.log("Matrix @$sender in $roomId: $msgBody")
 
+                        // Persist last-known room ID for proactive messaging
+                        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+                            .edit().putString("matrix_last_room_id", roomId).apply()
+
                         try {
                             val reply = llmRouter.call(msgBody, chatId = "matrix_$sender")
                             sendMessage(roomId, reply)
@@ -156,6 +160,11 @@ class MatrixBotManager(private val context: Context) {
             .put(json.toString().toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(request).execute().close()
+    }
+
+    /** Public API for proactive messaging from agents. */
+    fun sendProactiveMessage(roomId: String, text: String) {
+        sendMessage(roomId, text)
     }
 
     fun stop() {

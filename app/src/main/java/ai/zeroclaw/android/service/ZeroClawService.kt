@@ -434,19 +434,126 @@ class ZeroClawService : Service() {
      * Used by MessageTool to deliver notifications from agents/crons.
      */
     suspend fun sendProactive(channel: String, chatId: String, text: String) {
-        log("PROACTIVE: sending to $channel/$chatId — ${text.take(60)}")
+        log("PROACTIVE: sending to $channel/${chatId.ifBlank { "(connected)" }} — ${text.take(60)}")
         when (channel.lowercase()) {
             "telegram" -> {
-                // Delegate to telegram manager via direct API call using stored token
                 val settings = ai.zeroclaw.android.data.AppSettings(this).getAll()
                 if (settings.telegramToken.isBlank()) {
                     log("PROACTIVE: Telegram token not configured")
                     return
                 }
-                telegramManager.sendProactiveMessage(settings.telegramToken, chatId, text)
+                val targetChatId = chatId.ifBlank {
+                    // Use last-known chat ID from SharedPreferences (saved on first incoming message)
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("telegram_last_chat_id", null) ?: run {
+                        log("PROACTIVE: Telegram connected but no chat ID known yet — send a message to the bot first")
+                        return
+                    }
+                }
+                telegramManager.sendProactiveMessage(settings.telegramToken, targetChatId, text)
             }
-            "discord" -> discordManager.sendProactiveMessage(chatId, text)
-            "slack" -> slackManager.sendProactiveMessage(chatId, text)
+            "discord" -> {
+                val targetChatId = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("discord_last_channel_id", null) ?: run {
+                        log("PROACTIVE: Discord connected but no channel ID known yet — send a message to the bot first")
+                        return
+                    }
+                }
+                discordManager.sendProactiveMessage(targetChatId, text)
+            }
+            "slack" -> {
+                val targetChatId = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("slack_last_channel_id", null) ?: run {
+                        log("PROACTIVE: Slack connected but no channel ID known yet — send a message to the bot first")
+                        return
+                    }
+                }
+                slackManager.sendProactiveMessage(targetChatId, text)
+            }
+            "whatsapp" -> {
+                val settings = ai.zeroclaw.android.data.AppSettings(this).getAll()
+                if (settings.twilioSid.isBlank()) {
+                    log("PROACTIVE: WhatsApp (Twilio) not configured")
+                    return
+                }
+                val targetChatId = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("whatsapp_last_chat_id", null) ?: run {
+                        log("PROACTIVE: WhatsApp connected but no number known yet — send a message to the bot first")
+                        return
+                    }
+                }
+                whatsappManager.sendProactiveMessage(settings, targetChatId, text)
+            }
+            "signal" -> {
+                val settings = ai.zeroclaw.android.data.AppSettings(this).getAll()
+                if (settings.signalApiUrl.isBlank()) {
+                    log("PROACTIVE: Signal not configured")
+                    return
+                }
+                val target = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("signal_last_number", null) ?: run {
+                        log("PROACTIVE: Signal connected but no number known yet")
+                        return
+                    }
+                }
+                signalManager.sendProactiveMessage(target, text)
+            }
+            "matrix" -> {
+                val target = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("matrix_last_room_id", null) ?: run {
+                        log("PROACTIVE: Matrix connected but no room ID known yet")
+                        return
+                    }
+                }
+                matrixManager.sendProactiveMessage(target, text)
+            }
+            "irc" -> {
+                val target = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("irc_last_target", null) ?: run {
+                        log("PROACTIVE: IRC connected but no target known yet")
+                        return
+                    }
+                }
+                ircManager.sendProactiveMessage(target, text)
+            }
+            "teams" -> {
+                val target = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("teams_last_conversation_id", null) ?: run {
+                        log("PROACTIVE: Teams connected but no conversation known yet")
+                        return
+                    }
+                }
+                val serviceUrl = getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                    .getString("teams_last_service_url", "") ?: ""
+                teamsManager.sendProactiveMessage(serviceUrl, target, text)
+            }
+            "twitch" -> {
+                val target = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("twitch_last_channel", null) ?: run {
+                        log("PROACTIVE: Twitch connected but no channel known yet")
+                        return
+                    }
+                }
+                twitchManager.sendProactiveMessage(target, text)
+            }
+            "line" -> {
+                val target = chatId.ifBlank {
+                    getSharedPreferences("zeroclaw_prefs", MODE_PRIVATE)
+                        .getString("line_last_source_id", null) ?: run {
+                        log("PROACTIVE: LINE connected but no source known yet")
+                        return
+                    }
+                }
+                lineManager.sendProactiveMessage(target, text)
+            }
             else -> log("PROACTIVE: unknown channel $channel")
         }
     }

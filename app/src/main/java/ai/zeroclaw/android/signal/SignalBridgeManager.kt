@@ -68,6 +68,11 @@ class SignalBridgeManager(private val context: Context) {
         running = false
     }
 
+    /** Public API for proactive messaging from agents. */
+    fun sendProactiveMessage(recipient: String, text: String) {
+        sendMessage(recipient, text)
+    }
+
     private fun checkHealth(): Boolean {
         return try {
             val request = Request.Builder()
@@ -106,6 +111,10 @@ class SignalBridgeManager(private val context: Context) {
 
     private suspend fun handleMessage(msg: SignalMessage) {
         ZeroClawService.log("Signal ${msg.sender}: ${msg.text}")
+
+        // Persist last-known number for proactive messaging
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+            .edit().putString("signal_last_number", msg.sender).apply()
 
         try {
             val reply = llmRouter.call(msg.text, chatId = "signal_${msg.sender}")

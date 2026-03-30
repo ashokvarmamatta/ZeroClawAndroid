@@ -143,6 +143,10 @@ class SlackBotManager(private val context: Context) {
                         val msgText = event.optString("text", "").trim()
                         val channel = event.optString("channel", "")
 
+                        // Persist last-known channel ID for proactive messaging
+                        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+                            .edit().putString("slack_last_channel_id", channel).apply()
+
                         // Ignore bot's own messages
                         if (userId == botUserId || msgText.isBlank()) return
 

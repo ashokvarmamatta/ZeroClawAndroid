@@ -14,6 +14,7 @@ data class AgentConfig(
     val intervalMinutes: Int,          // How often to run (min 5)
     val channel: String,               // "telegram" | "discord" | "slack" | "whatsapp" | "email"
     val chatId: String,                // Destination chat/channel/email
+    val connectedChannels: List<String> = emptyList(),  // Connected bots from Settings to also deliver to
     val extractPrompt: String,         // Optional: what to extract/summarize (blank = full content)
     val onlyOnChange: Boolean,         // Only push if content changed since last run
     val enabled: Boolean,

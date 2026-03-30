@@ -109,15 +109,22 @@ class LineBotManager(private val context: Context) {
                 val text = message.optString("text", "").trim()
                 val replyToken = event.optString("replyToken", "")
                 val source = event.optJSONObject("source")
-                val userId = source?.optString("userId", "user") ?: "user"
+                val sourceId = source?.optString("groupId") 
+                    ?: source?.optString("roomId") 
+                    ?: source?.optString("userId") 
+                    ?: "user"
+
+                // Persist last-known source ID for proactive messaging
+                context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+                    .edit().putString("line_last_source_id", sourceId).apply()
 
                 if (msgType == "text" && text.isNotBlank() && replyToken.isNotBlank()) {
-                    ZeroClawService.log("LINE @$userId: $text")
+                    ZeroClawService.log("LINE @$sourceId: $text")
 
                     try {
-                        val reply = llmRouter.call(text, chatId = "line_$userId")
+                        val reply = llmRouter.call(text, chatId = "line_$sourceId")
                         replyMessage(replyToken, reply)
-                        ZeroClawService.log("LINE: reply sent to $userId")
+                        ZeroClawService.log("LINE: reply sent to $sourceId")
                     } catch (e: Exception) {
                         ZeroClawService.log("LINE: reply error — ${e.message}")
                         runCatching { replyMessage(replyToken, "⚠️ Error: ${e.message?.take(200)}") }
@@ -149,6 +156,32 @@ class LineBotManager(private val context: Context) {
             .post(json.toString().toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(request).execute().close()
+    }
+
+    /** Public API for proactive messaging from agents. */
+    fun sendProactiveMessage(to: String, text: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val chunks = text.chunked(5000).take(5)
+                val messages = JSONArray()
+                for (chunk in chunks) {
+                    messages.put(JSONObject().apply {
+                        put("type", "text")
+                        put("text", chunk)
+                    })
+                }
+                val json = JSONObject().apply {
+                    put("to", to)
+                    put("messages", messages)
+                }
+                val request = Request.Builder()
+                    .url("https://api.line.me/v2/bot/message/push")
+                    .header("Authorization", "Bearer $channelToken")
+                    .post(json.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                client.newCall(request).execute().close()
+            } catch (_: Exception) {}
+        }
     }
 
     fun stop() {

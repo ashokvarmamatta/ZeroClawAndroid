@@ -62,16 +62,34 @@ class WebScraperAgent(private val context: Context) {
             return
         }
 
-        try {
-            svc.sendProactive(agent.channel, agent.chatId, message)
-            val status = "Delivered ${content.length} chars → ${agent.channel}/${agent.chatId}"
-            ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
-            agentManager.markRun(agent.id, newHash, status)
-        } catch (e: Exception) {
-            val status = "Delivery error: ${e.message}"
-            ZeroClawService.log("AGENT[${agent.name}]: ✗ $status")
-            agentManager.markRun(agent.id, newHash, status)
+        val deliveryResults = mutableListOf<String>()
+
+        // Deliver to connected channels (bots already configured in Settings)
+        for (ch in agent.connectedChannels) {
+            try {
+                svc.sendProactive(ch, "", message)
+                deliveryResults.add("✓ $ch (connected)")
+                ZeroClawService.log("AGENT[${agent.name}]: ✓ Delivered → connected $ch")
+            } catch (e: Exception) {
+                deliveryResults.add("✗ $ch: ${e.message}")
+                ZeroClawService.log("AGENT[${agent.name}]: ✗ connected $ch error: ${e.message}")
+            }
         }
+
+        // Deliver to manually specified channel+chatId (if provided)
+        if (agent.chatId.isNotBlank()) {
+            try {
+                svc.sendProactive(agent.channel, agent.chatId, message)
+                deliveryResults.add("✓ ${agent.channel}/${agent.chatId}")
+                ZeroClawService.log("AGENT[${agent.name}]: ✓ Delivered → ${agent.channel}/${agent.chatId}")
+            } catch (e: Exception) {
+                deliveryResults.add("✗ ${agent.channel}: ${e.message}")
+                ZeroClawService.log("AGENT[${agent.name}]: ✗ ${agent.channel}/${agent.chatId} error: ${e.message}")
+            }
+        }
+
+        val status = "Delivered ${content.length} chars → ${deliveryResults.joinToString(", ")}"
+        agentManager.markRun(agent.id, newHash, status)
     }
 
     /**

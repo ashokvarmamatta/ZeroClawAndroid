@@ -75,6 +75,209 @@ class LlmRouter(private val context: Context) {
 
     // ── Main entry point — waterfall failover ─────────────────────────────────
 
+    suspend fun rawGenerate(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 8192): String {
+        val allKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider != "offline" }
+        if (allKeys.isEmpty()) {
+            return "No API keys configured."
+        }
+
+        val rawSystemPrompt = "You are a data assistant. Follow the user's instructions exactly. Output only what is requested, with no extra commentary."
+        val errors = mutableListOf<String>()
+
+        for (entry in allKeys) {
+            val modelsToTry = when {
+                entry.safeSelectedModels.isNotEmpty() -> entry.safeSelectedModels
+                entry.safePreferredModel.isNotBlank() -> listOf(entry.safePreferredModel)
+                else -> listOf("")
+            }
+
+            for (model in modelsToTry) {
+                val modelName = model.ifBlank { "(default)" }
+                try {
+                    ZeroClawService.log("RawGenerate: trying ${entry.safeLabel}/$modelName (json=$jsonMode, maxTokens=$maxTokens)")
+                    val result = dispatchToProviderRaw(
+                        message = prompt,
+                        entry = entry,
+                        model = model,
+                        systemPrompt = rawSystemPrompt,
+                        jsonMode = jsonMode,
+                        maxTokens = maxTokens,
+                    )
+                    if (result.isNotBlank()) {
+                        ZeroClawService.log("RawGenerate: success via ${entry.safeLabel}/$modelName (${result.length} chars)")
+                        return result
+                    }
+                } catch (e: Exception) {
+                    val errorMessage = e.message ?: "Unknown error"
+                    errors += "${entry.safeLabel}/$modelName: $errorMessage"
+                    ZeroClawService.log("RawGenerate: ${entry.safeLabel}/$modelName failed - $errorMessage")
+                }
+            }
+        }
+
+        throw Exception("All API keys/models failed: ${errors.joinToString("; ")}")
+    }
+
+    private suspend fun dispatchToProviderRaw(
+        message: String,
+        entry: ApiKeyEntry,
+        model: String,
+        systemPrompt: String,
+        jsonMode: Boolean,
+        maxTokens: Int,
+    ): String {
+        val useModel = model.ifBlank { entry.safePreferredModel }
+        return when (entry.safeProvider) {
+            "gemini" -> callGeminiRaw(message, entry.safeApiKey, useModel, systemPrompt, jsonMode, maxTokens)
+            "anthropic" -> callAnthropicRaw(message, entry.safeApiKey, useModel, systemPrompt, maxTokens)
+            else -> callOpenAICompatibleRaw(message, entry.safeApiKey, entry.safeProvider, entry.safeBaseUrl, useModel, systemPrompt, jsonMode, maxTokens)
+        }
+    }
+
+    private suspend fun callGeminiRaw(
+        message: String,
+        apiKey: String,
+        model: String,
+        systemPrompt: String,
+        jsonMode: Boolean,
+        maxTokens: Int,
+    ): String {
+        val useModel = model.ifBlank { "gemini-2.5-flash-preview-04-17" }.ifBlank { "gemini-1.5-flash" }
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$useModel:generateContent?key=$apiKey"
+        val body = JSONObject().apply {
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply { put("text", message) })
+                    })
+                })
+            })
+            put("systemInstruction", JSONObject().apply {
+                put("parts", JSONArray().apply {
+                    put(JSONObject().apply { put("text", systemPrompt) })
+                })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("maxOutputTokens", maxTokens)
+                put("temperature", 0.7)
+                if (jsonMode) put("responseMimeType", "application/json")
+            })
+        }.toString()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Content-Type", "application/json")
+            .post(body.toRequestBody())
+            .build()
+        return withContext(Dispatchers.IO) {
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: throw Exception("Empty body")
+                val json = JSONObject(responseBody)
+                if (!response.isSuccessful) {
+                    throw Exception("[${response.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${response.code}"}")
+                }
+                val candidates = json.optJSONArray("candidates") ?: throw Exception("No candidates")
+                candidates.optJSONObject(0)?.optJSONObject("content")
+                    ?.getJSONArray("parts")
+                    ?.getJSONObject(0)
+                    ?.getString("text")
+                    ?.trim()
+                    ?: throw Exception("No text in response")
+            }
+        }
+    }
+
+    private suspend fun callAnthropicRaw(
+        message: String,
+        apiKey: String,
+        model: String,
+        systemPrompt: String,
+        maxTokens: Int,
+    ): String {
+        val useModel = model.ifBlank { "claude-haiku-4-5-20251001" }
+        val body = JSONObject().apply {
+            put("model", useModel)
+            put("max_tokens", maxTokens)
+            put("system", systemPrompt)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", message)
+                })
+            })
+        }.toString()
+        val request = Request.Builder()
+            .url("https://api.anthropic.com/v1/messages")
+            .addHeader("x-api-key", apiKey)
+            .addHeader("anthropic-version", "2023-06-01")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toRequestBody())
+            .build()
+        return withContext(Dispatchers.IO) {
+            client.newCall(request).execute().use { response ->
+                val json = JSONObject(response.body?.string() ?: throw Exception("Empty body"))
+                if (!response.isSuccessful) {
+                    throw Exception("[${response.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${response.code}"}")
+                }
+                json.getJSONArray("content").getJSONObject(0).getString("text").trim()
+            }
+        }
+    }
+
+    private suspend fun callOpenAICompatibleRaw(
+        message: String,
+        apiKey: String,
+        provider: String,
+        baseUrl: String,
+        model: String,
+        systemPrompt: String,
+        jsonMode: Boolean,
+        maxTokens: Int,
+    ): String {
+        val resolvedBase = baseUrl.ifBlank {
+            if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+        }.trimEnd('/')
+        val useModel = model.ifBlank {
+            if (provider == "openrouter") "openai/gpt-4o-mini" else "gpt-4o-mini"
+        }
+        val body = JSONObject().apply {
+            put("model", useModel)
+            put("max_tokens", maxTokens)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "system")
+                    put("content", systemPrompt)
+                })
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", message)
+                })
+            })
+            if (jsonMode) {
+                put("response_format", JSONObject().put("type", "json_object"))
+            }
+        }.toString()
+        val request = Request.Builder()
+            .url("$resolvedBase/chat/completions")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toRequestBody())
+            .build()
+        return withContext(Dispatchers.IO) {
+            client.newCall(request).execute().use { response ->
+                val json = JSONObject(response.body?.string() ?: throw Exception("Empty body"))
+                if (!response.isSuccessful) {
+                    throw Exception("[${response.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${response.code}"}")
+                }
+                json.getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+                    .trim()
+            }
+        }
+    }
+
     suspend fun call(userMessage: String, chatId: String = "default"): String {
         val allKeys = keyManager.loadKeys().filter { it.enabled }
         if (allKeys.isEmpty()) {

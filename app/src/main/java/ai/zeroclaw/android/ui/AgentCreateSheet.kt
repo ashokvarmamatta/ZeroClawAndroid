@@ -46,18 +46,47 @@ fun AgentCreateSheet(
     var extractPrompt by remember { mutableStateOf(existing?.extractPrompt ?: "") }
     var onlyOnChange  by remember { mutableStateOf(existing?.onlyOnChange ?: true) }
 
+    // Connected channels state — which connected bots are checked for delivery
+    var selectedConnectedChannels by remember {
+        mutableStateOf(existing?.connectedChannels?.toSet() ?: emptySet())
+    }
+
     // Validation errors
-    var nameError   by remember { mutableStateOf<String?>(null) }
-    var urlError    by remember { mutableStateOf<String?>(null) }
-    var chatIdError by remember { mutableStateOf<String?>(null) }
+    var nameError     by remember { mutableStateOf<String?>(null) }
+    var urlError      by remember { mutableStateOf<String?>(null) }
+    var chatIdError   by remember { mutableStateOf<String?>(null) }
+    var deliveryError by remember { mutableStateOf<String?>(null) }
 
     // Test fetch state
     var testLoading  by remember { mutableStateOf(false) }
     var testResult   by remember { mutableStateOf<String?>(null) }
     var testSuccess  by remember { mutableStateOf(false) }
 
+    // ── Load connected channels from AppSettings ────────────────────────────
+    data class ConnectedChannelInfo(val key: String, val label: String, val connected: Boolean)
+
+    var connectedChannelInfos by remember { mutableStateOf<List<ConnectedChannelInfo>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        val settings = ai.zeroclaw.android.data.AppSettings(context).getAll()
+        connectedChannelInfos = listOf(
+            ConnectedChannelInfo("telegram",  "Telegram",  settings.telegramToken.isNotBlank()),
+            ConnectedChannelInfo("discord",   "Discord",   settings.discordToken.isNotBlank()),
+            ConnectedChannelInfo("slack",     "Slack",     settings.slackToken.isNotBlank()),
+            ConnectedChannelInfo("whatsapp",  "WhatsApp",  settings.twilioSid.isNotBlank()),
+            ConnectedChannelInfo("signal",    "Signal",    settings.signalApiUrl.isNotBlank()),
+            ConnectedChannelInfo("matrix",    "Matrix",    settings.matrixConfig.isNotBlank()),
+            ConnectedChannelInfo("irc",       "IRC",       settings.ircConfig.isNotBlank()),
+            ConnectedChannelInfo("teams",     "Teams",     settings.teamsConfig.isNotBlank()),
+            ConnectedChannelInfo("twitch",    "Twitch",    settings.twitchConfig.isNotBlank()),
+            ConnectedChannelInfo("line",      "LINE",      settings.lineToken.isNotBlank()),
+            ConnectedChannelInfo("webchat",   "WebChat",   settings.webChatEnabled),
+        )
+    }
+
     val channels = listOf("telegram", "discord", "slack", "whatsapp", "email")
     val accentColor = Color(0xFF1E88E5)
+    val connectedColor = Color(0xFF4CAF50)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -147,11 +176,134 @@ fun AgentCreateSheet(
                 }
             }
 
-            // ── Section: Delivery ──────────────────────────────────────────
+            // ── Section: Delivery — Connected Bots ─────────────────────────
             item { SectionLabel("Delivery", accentColor) }
 
+            // Connected Bots subsection
             item {
-                Text("Channel", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                val hasAnyConnected = connectedChannelInfos.any { it.connected }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Hub, null, tint = connectedColor,
+                            modifier = Modifier.size(16.dp))
+                        Text("Connected Bots", fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold, color = Color.White)
+                    }
+                    Text("Select from bots you've already configured in Settings",
+                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+
+                    if (!hasAnyConnected) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White.copy(alpha = 0.04f)
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Default.Info, null,
+                                    tint = Color.White.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(16.dp))
+                                Text("No bots connected yet — set up channels in Settings first",
+                                    fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+
+                    connectedChannelInfos.forEach { info ->
+                        val isChecked = info.key in selectedConnectedChannels
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (info.connected) {
+                                if (isChecked) connectedColor.copy(alpha = 0.12f)
+                                else Color.White.copy(alpha = 0.04f)
+                            } else Color.White.copy(alpha = 0.02f),
+                            modifier = Modifier.fillMaxWidth().then(
+                                if (info.connected) Modifier.clickable {
+                                    deliveryError = null
+                                    selectedConnectedChannels = if (isChecked) {
+                                        selectedConnectedChannels - info.key
+                                    } else {
+                                        selectedConnectedChannels + info.key
+                                    }
+                                } else Modifier
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = if (info.connected) { checked ->
+                                        deliveryError = null
+                                        selectedConnectedChannels = if (checked) {
+                                            selectedConnectedChannels + info.key
+                                        } else {
+                                            selectedConnectedChannels - info.key
+                                        }
+                                    } else null,
+                                    enabled = info.connected,
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = connectedColor,
+                                        checkmarkColor = Color.White
+                                    ),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    channelEmoji(info.key),
+                                    fontSize = 18.sp,
+                                    modifier = Modifier.width(24.dp)
+                                )
+                                Text(
+                                    info.label,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (info.connected) Color.White else Color.White.copy(alpha = 0.35f),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (info.connected)
+                                        connectedColor.copy(alpha = 0.15f)
+                                    else Color.White.copy(alpha = 0.06f)
+                                ) {
+                                    Text(
+                                        if (info.connected) "Connected" else "Not set up",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (info.connected)
+                                            connectedColor
+                                        else Color.White.copy(alpha = 0.3f),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Custom delivery (optional manual channel + chatId) ─────────
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Send, null, tint = accentColor,
+                            modifier = Modifier.size(14.dp))
+                        Text("Custom Delivery (optional)", fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold, color = accentColor)
+                    }
+                    Text("Send to a specific chat/channel ID, in addition to the connected bots above",
+                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                }
+            }
+
+            item {
+                Text("Channel", fontSize = 12.sp, color = accentColor.copy(alpha = 0.7f), fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()) {
@@ -174,12 +326,30 @@ fun AgentCreateSheet(
                 FormField(
                     label = chatIdLabel(channel),
                     value = chatId,
-                    onValueChange = { chatId = it; chatIdError = null },
+                    onValueChange = { chatId = it; chatIdError = null; deliveryError = null },
                     placeholder = chatIdPlaceholder(channel),
                     error = chatIdError,
                     accent = accentColor,
                     leadingIcon = { Text(channelEmoji(channel), fontSize = 16.sp) }
                 )
+            }
+
+            // Delivery error (no target selected)
+            if (deliveryError != null) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEF5350).copy(alpha = 0.1f)
+                    ) {
+                        Row(modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Warning, null,
+                                tint = Color(0xFFEF5350), modifier = Modifier.size(14.dp))
+                            Text(deliveryError!!, fontSize = 11.sp, color = Color(0xFFEF5350))
+                        }
+                    }
+                }
             }
 
             // ── Section: Extraction (optional) ─────────────────────────────
@@ -328,10 +498,16 @@ fun AgentCreateSheet(
                         if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
                             urlError = "Enter a valid URL starting with http:// or https://"; ok = false
                         }
-                        if (chatId.isBlank()) {
-                            chatIdError = "${chatIdLabel(channel)} is required"; ok = false
-                        } else if (channel == "telegram" && chatId.contains(":") && chatId.length > 20) {
-                            chatIdError = "This looks like a bot token, not a Chat ID. Your Chat ID is a number like 123456789 or -1001234567890"; ok = false
+                        // Validate delivery: need at least one connected channel OR a manual chatId
+                        val hasConnected = selectedConnectedChannels.isNotEmpty()
+                        val hasManual = chatId.isNotBlank()
+                        if (!hasConnected && !hasManual) {
+                            deliveryError = "Select at least one connected bot or enter a custom Chat ID"
+                            ok = false
+                        }
+                        if (hasManual && channel == "telegram" && chatId.contains(":") && chatId.length > 20) {
+                            chatIdError = "This looks like a bot token, not a Chat ID. Your Chat ID is a number like 123456789 or -1001234567890"
+                            ok = false
                         }
                         if (!ok) return@Button
 
@@ -340,15 +516,17 @@ fun AgentCreateSheet(
                             id = UUID.randomUUID().toString(),
                             name = "", type = AgentManager.TYPE_WEB_SCRAPER,
                             url = "", intervalMinutes = 60, channel = "",
-                            chatId = "", extractPrompt = "", onlyOnChange = true,
+                            chatId = "", connectedChannels = emptyList(),
+                            extractPrompt = "", onlyOnChange = true,
                             enabled = true, createdAt = System.currentTimeMillis(),
                             lastRunAt = 0L, lastContentHash = 0, lastStatus = "Not run yet"
                         )).copy(
                             name = name.trim(),
                             url = url.trim(),
                             intervalMinutes = intervalMins,
-                            channel = channel,
+                            channel = if (hasManual) channel else "",
                             chatId = chatId.trim(),
+                            connectedChannels = selectedConnectedChannels.toList(),
                             extractPrompt = extractPrompt.trim(),
                             onlyOnChange = onlyOnChange
                         )
@@ -491,5 +669,12 @@ private fun channelEmoji(channel: String) = when (channel.lowercase()) {
     "slack"     -> "💼"
     "whatsapp"  -> "💬"
     "email"     -> "📧"
+    "signal"    -> "🔒"
+    "matrix"    -> "🟢"
+    "irc"       -> "💻"
+    "teams"     -> "🏢"
+    "twitch"    -> "🎬"
+    "line"      -> "🟩"
+    "webchat"   -> "🌐"
     else        -> "📤"
 }

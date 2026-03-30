@@ -88,6 +88,11 @@ class TwilioWhatsAppManager(private val context: Context) {
         val params = parseFormData(body)
         val from = params["From"] ?: return
         val messageBody = params["Body"] ?: return
+
+        // Persist last-known number for proactive messaging
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+            .edit().putString("whatsapp_last_chat_id", from).apply()
+
         ZeroClawService.log("WhatsApp from $from: $messageBody")
 
         // LlmRouter handles all provider logic + failover
@@ -129,6 +134,11 @@ class TwilioWhatsAppManager(private val context: Context) {
         writer.println()
         writer.println(body)
         writer.flush()
+    }
+
+    /** Public API for proactive message delivery from agents. */
+    suspend fun sendProactiveMessage(settings: SettingsData, to: String, body: String) {
+        sendTwilioMessage(settings, to, body)
     }
 
     fun stop() {

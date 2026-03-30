@@ -5,6 +5,113 @@
 
 ---
 
+## 📍 Current State (as of 2026-03-30)
+
+| Item | Detail |
+|------|--------|
+| **Active branch** | `codex/zeroclaw-api-metagen-fix` |
+| **Based on** | same commit as `origin/master` (`ffc52df`) |
+| **Build status** | ✅ `:app:compileDebugKotlin` passes |
+| **Paired automation app branch** | `codex/zeroclaw-metagen-fix` in `C:\Users\user\AndroidStudioProjects\automationVIdeoGen-android` |
+
+---
+
+## 🔧 Session: ZeroClaw API MetaGen Fix (`codex/zeroclaw-api-metagen-fix`)
+
+### Problem
+The automation video-gen app was timing out (30 s) on metadata-generation requests because:
+1. ZeroClaw's HTTP server only exposed `/api/chat`, which goes through the full agent/tool-loop path — slow for simple JSON generation.
+2. There was no lightweight discovery endpoint so the automation app couldn't quickly check if ZeroClaw was alive.
+3. The automation app had no fast-probe mechanism, so a stale IP caused a full 30-second hang.
+
+### Solution Implemented in ZeroClaw
+
+#### `webchat/WebChatServer.kt` — Two new HTTP endpoints
+
+**`GET /api/discover`** (lines ~66-73)
+```kotlin
+requestLine.startsWith("GET /api/discover") -> {
+    sendJson(out, JSONObject()
+        .put("service", "zeroclaw")
+        .put("version", "1.0")
+        .put("port", 8088)
+        .put("endpoints", JSONArray().put("/api/chat").put("/api/generate").put("/api/discover"))
+    )
+}
+```
+Purpose: Lets the automation app probe ZeroClaw in ≤3s. Returns `{"service":"zeroclaw"}` which is the canonical check.
+
+**`POST /api/generate`** (lines ~77-148)
+```kotlin
+requestLine.startsWith("POST /api/generate") -> {
+    handleGenerateApi(out, body)
+}
+```
+Request body:
+```json
+{ "prompt": "...", "session_id": "autom_xxx", "json_mode": true, "max_tokens": 8192 }
+```
+Response:
+```json
+{ "text": "...generated JSON..." }
+```
+- Calls `llmRouter.rawGenerate(prompt, jsonMode, maxTokens)` — bypasses conversation history, agent profiles, tool loop — much faster than `/api/chat`
+- Error response: `{ "error": "..." }`
+
+**Updated routing block** — same `when{}` now handles: `/api/discover`, `GET /` or `GET /chat`, `POST /api/generate` OR `POST /api/chat`
+
+#### `data/LlmRouter.kt` — `rawGenerate()` function (lines ~78-119)
+
+New public suspend function:
+```kotlin
+suspend fun rawGenerate(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 8192): String
+```
+
+Behavior:
+- Iterates all enabled non-offline API keys
+- For each key, iterates selected models
+- `dispatchToProviderRaw()` routes to `callGeminiRaw()`, `callAnthropicRaw()`, or `callOpenAICompatibleRaw()`
+- Each provider function builds a minimal request (no history, no system prompt injection, just the prompt + optional JSON mode)
+- Returns first non-blank response, throws if all fail with concatenated error list
+
+**Supporting private functions also added:**
+| Function | Provider |
+|----------|----------|
+| `callGeminiRaw(message, apiKey, model, systemPrompt, jsonMode, maxTokens)` | Gemini REST |
+| `callAnthropicRaw(message, apiKey, model, systemPrompt, maxTokens)` | Anthropic |
+| `callOpenAICompatibleRaw(message, apiKey, provider, baseUrl, model, systemPrompt, jsonMode, maxTokens)` | OpenAI/OpenRouter/custom |
+| `dispatchToProviderRaw(message, entry, model, systemPrompt, jsonMode, maxTokens)` | Router |
+
+The system prompt used for raw generation: `"You are a data assistant. Follow the user's instructions exactly. Output only what is requested, with no extra commentary."`
+
+### Files Changed
+
+| File | Change Type | Why |
+|------|-------------|-----|
+| `webchat/WebChatServer.kt` | MODIFY | Added `GET /api/discover` and `POST /api/generate` handlers |
+| `data/LlmRouter.kt` | MODIFY | Added `rawGenerate()` + 4 supporting private functions |
+
+> **Important:** All other files changed in the diff vs `origin/master` (agents, UI, tools) are **pre-existing** feature branches merged before this branch was created — NOT touched in this session.
+
+### What's LEFT to do (next session)
+
+- [ ] End-to-end real test: automation app pings `/api/discover` → calls `/api/generate` → gets metadata JSON
+- [ ] Verify `rawGenerate()` returns valid JSON when `jsonMode=true` with Gemini
+- [ ] Commit both branches
+- [ ] Optional: add `GET /api/status` endpoint with running key count and uptime
+
+---
+
+## 🔗 Paired Automation Project
+
+See `C:\Users\user\AndroidStudioProjects\automationVIdeoGen-android\plan.md` → Section **"Session: ZeroClaw MetaGen Timeout Fix"**
+
+The two branches work together:
+- **ZeroClaw (`codex/zeroclaw-api-metagen-fix`)**: exposes `/api/discover` + `/api/generate`
+- **Automation app (`codex/zeroclaw-metagen-fix`)**: probes `/api/discover` before calling `/api/generate`
+
+---
+
 ## 🔗 Source Repositories (IMPORTANT — analyse these before implementing new features)
 
 | Repo | URL | Purpose |

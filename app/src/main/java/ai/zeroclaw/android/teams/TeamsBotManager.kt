@@ -122,6 +122,12 @@ class TeamsBotManager(private val context: Context) {
         val serviceUrl = activity.optString("serviceUrl", "")
         val activityId = activity.optString("id", "")
 
+        // Persist last-known conversation info for proactive messaging
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE).edit()
+            .putString("teams_last_conversation_id", conversationId)
+            .putString("teams_last_service_url", serviceUrl)
+            .apply()
+
         ZeroClawService.log("Teams @$userName: $text")
 
         try {
@@ -170,6 +176,16 @@ class TeamsBotManager(private val context: Context) {
 
     private fun ensureToken() {
         if (System.currentTimeMillis() > tokenExpiry) refreshToken()
+    }
+
+    /** Public API for proactive messaging from agents. */
+    fun sendProactiveMessage(serviceUrl: String, conversationId: String, text: String) {
+        if (serviceUrl.isBlank() || conversationId.isBlank()) return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                sendReply(serviceUrl, conversationId, "", text)
+            } catch (_: Exception) {}
+        }
     }
 
     fun stop() {

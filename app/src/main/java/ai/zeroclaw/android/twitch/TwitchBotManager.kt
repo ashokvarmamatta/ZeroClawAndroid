@@ -126,6 +126,10 @@ class TwitchBotManager(private val context: Context) {
         val channel = channelMatch.groupValues[1]
         val message = channelMatch.groupValues[2].trim()
 
+        // Persist last-known channel for proactive messaging
+        context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)
+            .edit().putString("twitch_last_channel", channel).apply()
+
         if (message.isBlank()) return
 
         // Only respond when mentioned or in DM
@@ -156,6 +160,20 @@ class TwitchBotManager(private val context: Context) {
             } catch (e: Exception) {
                 ZeroClawService.log("Twitch: reply error — ${e.message}")
             }
+        }
+    }
+
+    /** Public API for proactive messaging from agents. */
+    fun sendProactiveMessage(channel: String, text: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Twitch 500 char limit
+                val chunks = text.replace("\n", " ").chunked(450)
+                for (chunk in chunks.take(3)) {
+                    send("PRIVMSG $channel :$chunk")
+                    delay(1500)
+                }
+            } catch (_: Exception) {}
         }
     }
 
