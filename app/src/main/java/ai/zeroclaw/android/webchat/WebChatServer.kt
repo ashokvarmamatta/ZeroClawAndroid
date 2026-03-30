@@ -62,27 +62,47 @@ class WebChatServer(private val context: Context) {
                 }
             }
 
+            // Read body for POST requests
+            val body = if (requestLine.startsWith("POST") && contentLength > 0) {
+                val bodyChars = CharArray(contentLength)
+                var totalRead = 0
+                while (totalRead < contentLength) {
+                    val n = reader.read(bodyChars, totalRead, contentLength - totalRead)
+                    if (n <= 0) break
+                    totalRead += n
+                }
+                String(bodyChars, 0, totalRead)
+            } else ""
+
+            // Handle OPTIONS preflight for CORS
+            if (requestLine.startsWith("OPTIONS")) {
+                val resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                out.write(resp.toByteArray())
+            }
+
             when {
                 requestLine.startsWith("GET /api/discover") -> {
                     sendJson(out, JSONObject()
                         .put("service", "zeroclaw")
                         .put("version", "1.0")
                         .put("port", 8088)
-                        .put("endpoints", org.json.JSONArray().put("/api/chat").put("/api/generate").put("/api/discover"))
+                        .put("endpoints", org.json.JSONArray()
+                            .put("/api/chat").put("/api/generate").put("/api/discover")
+                            .put("/v1/chat/completions").put("/v1/models"))
                     )
+                }
+                // OpenAI-compatible: GET /v1/models
+                requestLine.startsWith("GET /v1/models") -> {
+                    handleOpenAIModels(out)
+                }
+                // OpenAI-compatible: POST /v1/chat/completions
+                requestLine.startsWith("POST /v1/chat/completions") -> {
+                    handleOpenAIChatCompletions(out, body)
                 }
                 requestLine.startsWith("GET / ") || requestLine.startsWith("GET /chat") -> {
                     sendHtml(out, chatPage())
                 }
                 requestLine.startsWith("POST /api/generate") || requestLine.startsWith("POST /api/chat") -> {
-                    val bodyChars = CharArray(contentLength)
-                    var totalRead = 0
-                    while (totalRead < contentLength) {
-                        val n = reader.read(bodyChars, totalRead, contentLength - totalRead)
-                        if (n <= 0) break
-                        totalRead += n
-                    }
-                    val body = String(bodyChars, 0, totalRead)
                     if (requestLine.startsWith("POST /api/generate")) {
                         handleGenerateApi(out, body)
                     } else {
@@ -223,6 +243,103 @@ inp.focus();
 </body>
 </html>
     """.trimIndent()
+
+    /**
+     * GET /v1/models — OpenAI-compatible model listing.
+     * Returns a single "zeroclaw" model so any OpenAI-compatible client can connect.
+     */
+    private fun handleOpenAIModels(out: java.io.OutputStream) {
+        val model = JSONObject()
+            .put("id", "zeroclaw")
+            .put("object", "model")
+            .put("created", System.currentTimeMillis() / 1000)
+            .put("owned_by", "zeroclaw-android")
+
+        val result = JSONObject()
+            .put("object", "list")
+            .put("data", org.json.JSONArray().put(model))
+
+        sendJson(out, result)
+    }
+
+    /**
+     * POST /v1/chat/completions — OpenAI-compatible chat completions endpoint.
+     * Accepts standard OpenAI request format: {"model":"...", "messages":[...]}
+     * Returns standard OpenAI response format so any app/tool that speaks OpenAI API
+     * can use ZeroClaw as its AI backend.
+     */
+    private suspend fun handleOpenAIChatCompletions(out: java.io.OutputStream, body: String) {
+        try {
+            val json = JSONObject(body)
+            val messages = json.optJSONArray("messages")
+            if (messages == null || messages.length() == 0) {
+                sendOpenAIError(out, "messages array is required", 400)
+                return
+            }
+
+            // Extract the last user message as the prompt
+            var userMessage = ""
+            var sessionId = "openai_compat"
+            for (i in messages.length() - 1 downTo 0) {
+                val msg = messages.getJSONObject(i)
+                if (msg.optString("role") == "user") {
+                    userMessage = msg.optString("content", "")
+                    break
+                }
+            }
+
+            if (userMessage.isBlank()) {
+                sendOpenAIError(out, "No user message found in messages array", 400)
+                return
+            }
+
+            // Build conversation context from all messages for multi-turn
+            val chatId = "openai_$sessionId"
+
+            ZeroClawService.log("OpenAI-compat: ${userMessage.take(80)}...")
+            val reply = llmRouter.call(userMessage, chatId = chatId)
+            ZeroClawService.log("OpenAI-compat: reply sent (${reply.length} chars)")
+
+            // Build OpenAI-compatible response
+            val completionId = "chatcmpl-zc${System.currentTimeMillis()}"
+            val choice = JSONObject()
+                .put("index", 0)
+                .put("message", JSONObject()
+                    .put("role", "assistant")
+                    .put("content", reply))
+                .put("finish_reason", "stop")
+
+            val usage = JSONObject()
+                .put("prompt_tokens", userMessage.length / 4)  // approximate
+                .put("completion_tokens", reply.length / 4)
+                .put("total_tokens", (userMessage.length + reply.length) / 4)
+
+            val result = JSONObject()
+                .put("id", completionId)
+                .put("object", "chat.completion")
+                .put("created", System.currentTimeMillis() / 1000)
+                .put("model", "zeroclaw")
+                .put("choices", org.json.JSONArray().put(choice))
+                .put("usage", usage)
+
+            sendJson(out, result)
+        } catch (e: Exception) {
+            ZeroClawService.log("OpenAI-compat: error — ${e.message}")
+            sendOpenAIError(out, e.message ?: "Unknown error", 500)
+        }
+    }
+
+    private fun sendOpenAIError(out: java.io.OutputStream, message: String, code: Int) {
+        val error = JSONObject()
+            .put("error", JSONObject()
+                .put("message", message)
+                .put("type", "invalid_request_error")
+                .put("code", code))
+        val bytes = error.toString().toByteArray()
+        val response = "HTTP/1.1 $code Error\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
+        out.write(response.toByteArray())
+        out.write(bytes)
+    }
 
     fun stop() {
         running = false

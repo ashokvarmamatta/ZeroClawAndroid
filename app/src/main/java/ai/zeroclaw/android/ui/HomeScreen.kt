@@ -377,6 +377,7 @@ fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
     var expanded by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     var showServerAddress by remember { mutableStateOf(false) }
+    var showCurlDialog by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val displayed = if (expanded) logs.reversed() else logs.takeLast(20).reversed()
@@ -404,6 +405,11 @@ fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
     val webChatUrl = remember(localIp) { "http://$localIp:8088" }
     val isServiceLive = ZeroClawService.isRunning
 
+    // Determine the best base URL for cURL commands
+    val curlBaseUrl = remember(webChatUrl, tunnelUrl) {
+        if (tunnelUrl.startsWith("http")) tunnelUrl else webChatUrl
+    }
+
     // Server address dialog
     if (showServerAddress) {
         AlertDialog(
@@ -426,6 +432,29 @@ fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
                         ServerAddressRow("Public URL (tunnel)", tunnelUrl, clipboardManager)
                     }
                     ServerAddressRow("Localhost", "http://127.0.0.1:8088", clipboardManager)
+
+                    Spacer(Modifier.height(4.dp))
+                    // Generate cURL button
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF238636),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showServerAddress = false
+                                showCurlDialog = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Code, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Generate cURL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -433,6 +462,17 @@ fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
                     Text("Close")
                 }
             }
+        )
+    }
+
+    // cURL generation dialog
+    if (showCurlDialog) {
+        CurlGeneratorDialog(
+            baseUrl = curlBaseUrl,
+            localUrl = webChatUrl,
+            tunnelUrl = tunnelUrl,
+            clipboardManager = clipboardManager,
+            onDismiss = { showCurlDialog = false }
         )
     }
 
@@ -662,5 +702,279 @@ private fun ServerAddressRow(
     }
     LaunchedEffect(copied) {
         if (copied) { delay(1500); copied = false }
+    }
+}
+
+@Composable
+private fun CurlGeneratorDialog(
+    @Suppress("UNUSED_PARAMETER") baseUrl: String,
+    localUrl: String,
+    tunnelUrl: String,
+    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+    onDismiss: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("OpenAI Compatible", "Chat API", "Generate API")
+
+    // Use tunnel URL if available, otherwise local
+    val effectiveUrl = if (tunnelUrl.startsWith("http")) tunnelUrl else localUrl
+
+    val curlCommands = remember(effectiveUrl) {
+        listOf(
+            // Tab 0: OpenAI-compatible (works with any app that supports custom OpenAI base URL)
+            """curl -X POST "$effectiveUrl/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer zc-no-key-needed" \
+  -d '{
+  "model": "zeroclaw",
+  "messages": [
+    {"role": "system", "content": "You are a helpful AI assistant powered by ZeroClaw."},
+    {"role": "user", "content": "Hello!"}
+  ],
+  "max_tokens": 4096
+}'""",
+            // Tab 1: ZeroClaw native chat API
+            """curl -X POST "$effectiveUrl/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "message": "Hello!",
+  "session_id": "my_app_session"
+}'""",
+            // Tab 2: Raw generate API
+            """curl -X POST "$effectiveUrl/api/generate" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "prompt": "Explain quantum computing in simple terms",
+  "json_mode": false,
+  "max_tokens": 8192
+}'"""
+        )
+    }
+
+    val descriptions = listOf(
+        "Use this in any app that supports custom OpenAI API base URL (ChatGPT wrappers, IDE plugins, LangChain, etc.). Set base URL to: $effectiveUrl/v1",
+        "Simple chat endpoint with session memory. Each session_id maintains separate conversation history.",
+        "Raw LLM generation without agent pipeline. Supports JSON mode for structured output."
+    )
+
+    val configSnippets = remember(effectiveUrl) {
+        listOf(
+            // OpenAI SDK config
+            """# Python (OpenAI SDK)
+from openai import OpenAI
+client = OpenAI(
+    base_url="$effectiveUrl/v1",
+    api_key="zc-no-key-needed"
+)
+response = client.chat.completions.create(
+    model="zeroclaw",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+
+# JavaScript (fetch)
+const res = await fetch("$effectiveUrl/v1/chat/completions", {
+  method: "POST",
+  headers: {"Content-Type": "application/json", "Authorization": "Bearer zc-no-key-needed"},
+  body: JSON.stringify({model: "zeroclaw", messages: [{role: "user", content: "Hello!"}]})
+});
+const data = await res.json();""",
+            // Chat API snippet
+            """# Python
+import requests
+r = requests.post("$effectiveUrl/api/chat",
+    json={"message": "Hello!", "session_id": "my_session"})
+print(r.json()["reply"])
+
+# JavaScript
+const res = await fetch("$effectiveUrl/api/chat", {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({message: "Hello!", session_id: "my_session"})
+});
+const data = await res.json();""",
+            // Generate API snippet
+            """# Python
+import requests
+r = requests.post("$effectiveUrl/api/generate",
+    json={"prompt": "Explain AI", "max_tokens": 8192})
+print(r.json()["text"])"""
+        )
+    }
+
+    var copiedCurl by remember { mutableStateOf(false) }
+    var copiedSnippet by remember { mutableStateOf(false) }
+    var showSnippet by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Code, contentDescription = null, tint = Color(0xFF238636)) },
+        title = { Text("Generate cURL", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Copy a cURL command to connect any app to ZeroClaw AI:",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                // Tab selector
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (selectedTab == index)
+                                MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    selectedTab = index
+                                    copiedCurl = false
+                                    copiedSnippet = false
+                                    showSnippet = false
+                                }
+                        ) {
+                            Text(
+                                title,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (selectedTab == index)
+                                    MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // Description
+                Text(descriptions[selectedTab],
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 15.sp)
+
+                // cURL command box
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0D1117)
+                ) {
+                    Text(
+                        curlCommands[selectedTab],
+                        modifier = Modifier.padding(10.dp),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color(0xFF58A6FF),
+                        lineHeight = 14.sp
+                    )
+                }
+
+                // Copy cURL button
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (copiedCurl) Color(0xFF4CAF50) else Color(0xFF238636),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            clipboardManager.setText(AnnotatedString(curlCommands[selectedTab]))
+                            copiedCurl = true
+                        }
+                ) {
+                    Text(
+                        if (copiedCurl) "Copied to clipboard!" else "Copy cURL",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+
+                // Show code snippets toggle
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showSnippet = !showSnippet }
+                ) {
+                    Text(
+                        if (showSnippet) "Hide code snippets" else "Show code snippets (Python/JS)",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+
+                if (showSnippet) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0D1117)
+                    ) {
+                        Text(
+                            configSnippets[selectedTab],
+                            modifier = Modifier.padding(10.dp),
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFFC9D1D9),
+                            lineHeight = 13.sp
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                clipboardManager.setText(AnnotatedString(configSnippets[selectedTab]))
+                                copiedSnippet = true
+                            }
+                    ) {
+                        Text(
+                            if (copiedSnippet) "Copied!" else "Copy code snippet",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+
+                // Base URL reminder
+                if (selectedTab == 0) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1A237E).copy(alpha = 0.2f)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("Quick Setup for any app:", fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold, color = Color(0xFF90CAF9))
+                            Spacer(Modifier.height(4.dp))
+                            Text("Base URL: $effectiveUrl/v1", fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace, color = Color(0xFF64B5F6))
+                            Text("API Key: zc-no-key-needed", fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace, color = Color(0xFF64B5F6))
+                            Text("Model: zeroclaw", fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace, color = Color(0xFF64B5F6))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+
+    LaunchedEffect(copiedCurl) {
+        if (copiedCurl) { delay(2000); copiedCurl = false }
+    }
+    LaunchedEffect(copiedSnippet) {
+        if (copiedSnippet) { delay(2000); copiedSnippet = false }
     }
 }

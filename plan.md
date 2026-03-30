@@ -233,6 +233,9 @@
 | **161** | **Summarizer prompt improvement — simpler directive language for small models ("Do NOT say the data is missing"), removed FETCHED DATA delimiters** | ✅ DONE |
 | **162** | **Extended summarizer refusal patterns — "available in the text", "has not occurred", "based on...the text...not", "no evidence/indication"** | ✅ DONE |
 | **163** | **Log UI improvements — increased DetailedLogCard font 10/11sp→12/13sp, LiveLogs 11sp→12sp; added Copy button to both log cards with 2s "Copied!" feedback** | ✅ DONE |
+| | | |
+| | **── CURL API ACCESS GENERATOR (Phase 164) ──** | |
+| **164** | **HomeScreen LiveLog — "Generate cURL" button in Server Address dialog: generates OpenAI-compatible cURL commands for /api/chat and /api/generate endpoints so any external app (GPT wrappers, IDE plugins, scripts) can connect to ZeroClaw as an AI backend. Adds /v1/chat/completions & /v1/models OpenAI-compatible endpoints to WebChatServer. Curl dialog with copy-to-clipboard for chat, generate, and OpenAI-compatible formats** | ✅ DONE |
 
 ---
 
