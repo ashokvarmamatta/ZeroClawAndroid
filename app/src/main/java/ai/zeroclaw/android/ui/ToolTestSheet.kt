@@ -85,6 +85,10 @@ fun ToolTestSheet(
                         fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF9A9A))
                 }
             }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "Close",
+                    tint = Color.White.copy(alpha = 0.7f))
+            }
         }
 
         // Disabled warning banner

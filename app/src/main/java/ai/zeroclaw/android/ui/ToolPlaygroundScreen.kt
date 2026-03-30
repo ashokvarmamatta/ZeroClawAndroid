@@ -215,15 +215,7 @@ fun ToolPlaygroundScreen(onBack: () -> Unit) {
         ModalBottomSheet(
             onDismissRequest = { selectedTool = null },
             containerColor = Color(0xFF12122A),
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 12.dp, bottom = 8.dp)
-                        .width(40.dp).height(4.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.2f))
-                )
-            }
+            dragHandle = null
         ) {
             ToolTestSheet(
                 tool = tool,
@@ -238,7 +230,8 @@ fun ToolPlaygroundScreen(onBack: () -> Unit) {
     if (showModelPicker) {
         ModalBottomSheet(
             onDismissRequest = { showModelPicker = false },
-            containerColor = Color(0xFF12122A)
+            containerColor = Color(0xFF12122A),
+            dragHandle = null
         ) {
             ModelSelectorSheet(
                 apiKeys = apiKeys,

@@ -535,13 +535,22 @@ private fun AgentTemplateGallery(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF0D1B2A)
+        containerColor = Color(0xFF0D1B2A),
+        dragHandle = null
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
-            Text("Agent Templates", fontWeight = FontWeight.Bold, fontSize = 20.sp,
-                color = Color.White)
-            Text("${AGENT_TEMPLATES.size} ready-made agents — tap to activate",
-                fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Agent Templates", fontWeight = FontWeight.Bold, fontSize = 20.sp,
+                        color = Color.White)
+                    Text("${AGENT_TEMPLATES.size} ready-made agents — tap to activate",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close",
+                        tint = Color.White.copy(alpha = 0.6f))
+                }
+            }
             Spacer(Modifier.height(12.dp))
 
             // Tab row: API Agents vs Web Scraping

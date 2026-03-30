@@ -177,26 +177,20 @@ fun AgentCreateSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Color(0xFF0D1117),
-        dragHandle = {
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.Center) {
-                Surface(shape = RoundedCornerShape(2.dp),
-                    color = Color.White.copy(alpha = 0.2f),
-                    modifier = Modifier.width(36.dp).height(4.dp)) {}
-            }
-        }
+        dragHandle = null
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header
+            // Header with close button
             item {
                 Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    modifier = Modifier.fillMaxWidth()) {
                     Text(template?.emoji ?: "🕷️", fontSize = 28.sp)
-                    Column {
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             when {
                                 isEdit -> "Edit Agent"
@@ -216,6 +210,11 @@ fun AgentCreateSheet(
                                 color = Color(0xFF4ADE80)
                             )
                         }
+                    }
+                    // Close button
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close",
+                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                     }
                 }
             }
