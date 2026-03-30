@@ -23,6 +23,8 @@ import ai.zeroclaw.android.agents.NEWS_CATEGORIES
 import ai.zeroclaw.android.data.AppSettings
 import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.tools.WebFetchTool
+import ai.zeroclaw.android.tools.WebViewTool
+import ai.zeroclaw.android.tools.RssFeedTool
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -132,6 +134,15 @@ fun AgentCreateSheet(
     var testLoading  by remember { mutableStateOf(false) }
     var testResult   by remember { mutableStateOf<String?>(null) }
     var testSuccess  by remember { mutableStateOf(false) }
+
+    // AI Smart Extract state
+    var aiQuery by remember { mutableStateOf("") }               // What user wants to extract
+    var aiAnalyzing by remember { mutableStateOf(false) }
+    var aiFetchType by remember { mutableStateOf("http") }       // "http" | "rss" | "webview"
+    var aiRawContent by remember { mutableStateOf<String?>(null) }
+    var aiContentFound by remember { mutableStateOf<Boolean?>(null) }
+    var aiFormatPreview by remember { mutableStateOf<String?>(null) }
+    var aiError by remember { mutableStateOf<String?>(null) }
 
     // All bot definitions
     val allBots = listOf(
@@ -454,17 +465,18 @@ fun AgentCreateSheet(
                 }
             }
 
-            // ── Section: Extraction (optional) ─────────────────────────────
-            item { SectionLabel("Content Extraction (optional)", accentColor) }
+            // ── Section: AI Smart Extract ─────────────────────────────────
+            item { SectionLabel("AI Smart Extract", accentColor) }
 
+            // What do you need? text field
             item {
-                Text("What to extract", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                Text("What do you need from this URL?", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
-                    value = extractPrompt,
-                    onValueChange = { extractPrompt = it },
+                    value = aiQuery,
+                    onValueChange = { aiQuery = it; aiError = null; aiContentFound = null; aiFormatPreview = null },
                     placeholder = {
-                        Text("e.g. extract the top 5 headlines and their summaries",
+                        Text("e.g. I need today's top 5 tech news with title, summary, and link",
                             fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f))
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -480,7 +492,284 @@ fun AgentCreateSheet(
                     )
                 )
                 Spacer(Modifier.height(4.dp))
-                Text("Leave blank to push the full page text. When set, the AI will extract only the relevant content before delivering.",
+                Text("Describe what data you want extracted. AI will fetch the URL, check if the content is available, and create an extraction format for you.",
+                    fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f), lineHeight = 14.sp)
+            }
+
+            // Fetch type selector
+            item {
+                Text("Fetch Method", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                val fetchTypes = listOf(
+                    Triple("http", "HTTP", "Standard web fetch — fast, works for most sites"),
+                    Triple("rss", "RSS/Atom", "RSS feed parser — best for news/blog feeds"),
+                    Triple("webview", "WebView", "Headless browser — for JavaScript-rendered pages")
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    fetchTypes.forEach { (id, label, desc) ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (aiFetchType == id) accentColor.copy(alpha = 0.15f)
+                                    else Color.White.copy(alpha = 0.03f),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                aiFetchType = id
+                                // Reset results when switching fetch type
+                                aiContentFound = null
+                                aiFormatPreview = null
+                                aiError = null
+                                aiRawContent = null
+                                testResult = null
+                                testSuccess = false
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                RadioButton(
+                                    selected = aiFetchType == id,
+                                    onClick = {
+                                        aiFetchType = id
+                                        aiContentFound = null; aiFormatPreview = null; aiError = null; aiRawContent = null
+                                        testResult = null; testSuccess = false
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                                    Text(desc, fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f))
+                                }
+                                if (aiFetchType == id) {
+                                    Icon(Icons.Default.CheckCircle, null, tint = accentColor, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // AI Analyze button
+            item {
+                val canAnalyze = url.startsWith("http://") || url.startsWith("https://")
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = {
+                            if (!canAnalyze) {
+                                urlError = "Enter a valid URL first"; return@Button
+                            }
+                            if (aiQuery.isBlank()) {
+                                aiError = "Describe what you need first"; return@Button
+                            }
+                            aiAnalyzing = true
+                            aiError = null
+                            aiContentFound = null
+                            aiFormatPreview = null
+                            aiRawContent = null
+                            testResult = null
+
+                            scope.launch {
+                                try {
+                                    // Step 1: Fetch URL with selected method
+                                    val fetchResult = when (aiFetchType) {
+                                        "rss" -> {
+                                            try {
+                                                RssFeedTool().execute(mapOf("url" to url.trim(), "limit" to "10"))
+                                            } catch (_: Exception) {
+                                                WebFetchTool().execute(mapOf("url" to url.trim()))
+                                            }
+                                        }
+                                        "webview" -> {
+                                            try {
+                                                WebViewTool(context).execute(mapOf("action" to "fetch", "url" to url.trim(), "wait_ms" to "3000"))
+                                            } catch (_: Exception) {
+                                                WebFetchTool().execute(mapOf("url" to url.trim()))
+                                            }
+                                        }
+                                        else -> WebFetchTool().execute(mapOf("url" to url.trim()))
+                                    }
+
+                                    if (!fetchResult.success || fetchResult.content.isBlank()) {
+                                        aiContentFound = false
+                                        aiError = "Could not fetch content from this URL using ${aiFetchType.uppercase()}. Try a different fetch method."
+                                        testResult = fetchResult.error ?: "Empty response"
+                                        testSuccess = false
+                                        aiAnalyzing = false
+                                        return@launch
+                                    }
+
+                                    val rawContent = fetchResult.content
+                                    aiRawContent = rawContent
+                                    testResult = rawContent.take(600).trimEnd() +
+                                        if (rawContent.length > 600) "\n\n…(${rawContent.length} chars total)" else ""
+                                    testSuccess = true
+
+                                    // Step 2: AI analyzes if content matches what user asked for
+                                    val router = LlmRouter.getInstance(context)
+                                    val analyzePrompt = """You are analyzing web page content to check if it contains what the user needs.
+
+USER WANTS: ${aiQuery.trim()}
+URL: ${url.trim()}
+
+FETCHED CONTENT (first 2500 chars):
+${rawContent.take(2500)}
+
+TASK: Analyze if the fetched content contains or can provide what the user asked for.
+
+Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
+{"found": true/false, "explanation": "brief explanation of what was found or why not", "format": "if found=true, show a formatted template of how the extracted data would look. Use the actual data from the content to create a realistic preview. Use clear sections with headers/bullets."}"""
+
+                                    val aiReply = router.rawGenerate(analyzePrompt, jsonMode = true, maxTokens = 2048)
+
+                                    // Parse AI response
+                                    try {
+                                        val json = org.json.JSONObject(aiReply)
+                                        val found = json.optBoolean("found", false)
+                                        val explanation = json.optString("explanation", "")
+                                        val format = json.optString("format", "")
+
+                                        aiContentFound = found
+                                        if (found && format.isNotBlank()) {
+                                            aiFormatPreview = format
+                                            // Auto-fill extractPrompt from user's query
+                                            if (extractPrompt.isBlank()) {
+                                                extractPrompt = aiQuery.trim()
+                                            }
+                                        } else if (!found) {
+                                            aiError = "Content not found: $explanation\n\nTry a different URL or switch the fetch method."
+                                        }
+                                    } catch (_: Exception) {
+                                        // AI didn't return valid JSON — use raw reply
+                                        aiContentFound = true
+                                        aiFormatPreview = aiReply.take(1500)
+                                        if (extractPrompt.isBlank()) {
+                                            extractPrompt = aiQuery.trim()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    aiError = "Analysis failed: ${e.message}"
+                                    aiContentFound = false
+                                }
+                                aiAnalyzing = false
+                            }
+                        },
+                        enabled = !aiAnalyzing && canAnalyze,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF7C4DFF),
+                            disabledContainerColor = Color(0xFF7C4DFF).copy(alpha = 0.3f)
+                        )
+                    ) {
+                        if (aiAnalyzing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp),
+                                color = Color.White, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Analyzing…", fontWeight = FontWeight.Bold, color = Color.White)
+                        } else {
+                            Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("AI Analyze", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                    }
+
+                    // Error message
+                    aiError?.let { err ->
+                        Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFF2A0A0A)) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.Cancel, null, tint = Color(0xFFEF9A9A), modifier = Modifier.size(14.dp))
+                                    Text("Not available", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEF9A9A))
+                                }
+                                Text(err, fontSize = 11.sp, color = Color(0xFFEF9A9A).copy(alpha = 0.8f), lineHeight = 15.sp)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Try switching the fetch method above and click AI Analyze again.",
+                                    fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                            }
+                        }
+                    }
+
+                    // Success — content found + format preview
+                    if (aiContentFound == true && aiFormatPreview != null) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF0A2A0A)) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF81C784), modifier = Modifier.size(16.dp))
+                                    Text("Content found! Here's how data will look:", fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold, color = Color(0xFF81C784))
+                                }
+                                // Format preview
+                                Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF0D1117)) {
+                                    Text(aiFormatPreview!!,
+                                        modifier = Modifier.padding(10.dp),
+                                        fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFC9D1D9), lineHeight = 15.sp)
+                                }
+                                Text("You can edit the extraction prompt below to customize the output format.",
+                                    fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                            }
+                        }
+                    }
+
+                    // Fetched content preview (from any method)
+                    testResult?.let { res ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (testSuccess) Color(0xFF0A2A0A) else Color(0xFF2A0A0A)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(
+                                        if (testSuccess) Icons.Default.CheckCircle else Icons.Default.Cancel,
+                                        null,
+                                        tint = if (testSuccess) Color(0xFF81C784) else Color(0xFFEF9A9A),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        if (testSuccess) "Raw fetch preview (${aiFetchType.uppercase()}):" else "Fetch failed (${aiFetchType.uppercase()}):",
+                                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                        color = if (testSuccess) Color(0xFF81C784) else Color(0xFFEF9A9A)
+                                    )
+                                }
+                                Text(
+                                    res, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                    color = Color.White.copy(alpha = 0.75f), lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Section: Extraction Prompt (editable) ─────────────────────
+            item { SectionLabel("Extraction Prompt", accentColor) }
+
+            item {
+                Text("What to extract", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = extractPrompt,
+                    onValueChange = { extractPrompt = it },
+                    placeholder = {
+                        Text("Auto-filled by AI Analyze, or type your own extraction prompt",
+                            fontSize = 12.sp, color = Color.White.copy(alpha = 0.3f))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 2, maxLines = 4,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = accentColor,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                        cursorColor = accentColor,
+                        focusedContainerColor = Color.White.copy(alpha = 0.04f),
+                        unfocusedContainerColor = Color.White.copy(alpha = 0.02f)
+                    )
+                )
+                Spacer(Modifier.height(4.dp))
+                Text("This prompt tells the AI what to extract from the fetched page content. Edit to customize your output format.",
                     fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f), lineHeight = 14.sp)
             }
 
@@ -508,8 +797,8 @@ fun AgentCreateSheet(
                 }
             }
 
-            // ── Test Fetch ─────────────────────────────────────────────────
-            item { SectionLabel("Test", accentColor) }
+            // ── Test Fetch (manual, all methods) ──────────────────────────
+            item { SectionLabel("Manual Test", accentColor) }
 
             item {
                 val canTest = url.startsWith("http://") || url.startsWith("https://")
@@ -523,7 +812,15 @@ fun AgentCreateSheet(
                             testResult = null
                             testLoading = true
                             scope.launch {
-                                val r = WebFetchTool().execute(mapOf("url" to url.trim()))
+                                val r = when (aiFetchType) {
+                                    "rss" -> try {
+                                        RssFeedTool().execute(mapOf("url" to url.trim(), "limit" to "10"))
+                                    } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to url.trim())) }
+                                    "webview" -> try {
+                                        WebViewTool(context).execute(mapOf("action" to "fetch", "url" to url.trim(), "wait_ms" to "3000"))
+                                    } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to url.trim())) }
+                                    else -> WebFetchTool().execute(mapOf("url" to url.trim()))
+                                }
                                 testSuccess = r.success
                                 testResult = if (r.success) {
                                     r.content.take(600).trimEnd() +
@@ -546,44 +843,11 @@ fun AgentCreateSheet(
                             CircularProgressIndicator(modifier = Modifier.size(16.dp),
                                 color = accentColor, strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
-                            Text("Fetching…", fontWeight = FontWeight.SemiBold)
+                            Text("Fetching via ${aiFetchType.uppercase()}…", fontWeight = FontWeight.SemiBold)
                         } else {
                             Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Test Fetch URL", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    // Result preview
-                    testResult?.let { res ->
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (testSuccess) Color(0xFF0A2A0A) else Color(0xFF2A0A0A)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(
-                                        if (testSuccess) Icons.Default.CheckCircle else Icons.Default.Cancel,
-                                        null,
-                                        tint = if (testSuccess) Color(0xFF81C784) else Color(0xFFEF9A9A),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        if (testSuccess) "Fetch successful — content preview:" else "Fetch failed:",
-                                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                                        color = if (testSuccess) Color(0xFF81C784) else Color(0xFFEF9A9A)
-                                    )
-                                }
-                                Text(
-                                    res,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color.White.copy(alpha = 0.75f),
-                                    lineHeight = 14.sp
-                                )
-                            }
+                            Text("Test Fetch (${aiFetchType.uppercase()})", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }

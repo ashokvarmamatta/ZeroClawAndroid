@@ -236,6 +236,9 @@
 | | | |
 | | **── CURL API ACCESS GENERATOR (Phase 164) ──** | |
 | **164** | **HomeScreen LiveLog — "Generate cURL" button in Server Address dialog: generates OpenAI-compatible cURL commands for /api/chat and /api/generate endpoints so any external app (GPT wrappers, IDE plugins, scripts) can connect to ZeroClaw as an AI backend. Adds /v1/chat/completions & /v1/models OpenAI-compatible endpoints to WebChatServer. Curl dialog with copy-to-clipboard for chat, generate, and OpenAI-compatible formats** | ✅ DONE |
+| | | |
+| | **── AI SMART EXTRACTION (Phase 165) ──** | |
+| **165** | **AgentCreateSheet — AI Smart Extract: text field for user to describe what they need, "AI Analyze" button that fetches URL → AI checks if content exists → shows formatted preview with editable output template → fetch type selector (HTTP/RSS/WebView) with retry → WebView headless fallback when HTTP fails** | ✅ DONE |
 
 ---
 
