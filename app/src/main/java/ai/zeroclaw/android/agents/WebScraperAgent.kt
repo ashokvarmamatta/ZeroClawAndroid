@@ -226,6 +226,9 @@ class WebScraperAgent(private val context: Context) {
      * Calls the model DIRECTLY — no Pass 2 web search, no tool enrichment,
      * no chat history. This prevents the agent from getting irrelevant
      * web search results instead of extracting from the actual fetched content.
+     *
+     * The prompt now explicitly asks for Telegram Markdown formatting so
+     * the delivered message looks structured and readable in chat apps.
      * Returns null on failure so caller can fall back to raw content.
      */
     private suspend fun extractWithLlm(agent: AgentConfig, rawContent: String): String? {
@@ -236,6 +239,17 @@ class WebScraperAgent(private val context: Context) {
             val prompt = """INSTRUCTION: ${agent.extractPrompt}
 
 IMPORTANT: The following content was JUST FETCHED from ${agent.url} — it is real, live data. Extract the requested information from it. Do NOT say you lack real-time access.
+
+FORMAT RULES — you MUST follow these:
+1. Use Telegram Markdown formatting for a clean, readable message:
+   - *bold* for headers and key labels
+   - Use bullet points (• or -) for lists
+   - Use line breaks between sections
+   - Use numbers (1. 2. 3.) for ordered items
+2. Structure the output with clear sections and headers
+3. Include actual data values, numbers, and names from the content — not placeholders
+4. Keep the output concise but complete — no filler text, no "here is the data" preamble
+5. Start directly with the formatted data
 
 --- BEGIN FETCHED CONTENT ---
 $contentSnippet

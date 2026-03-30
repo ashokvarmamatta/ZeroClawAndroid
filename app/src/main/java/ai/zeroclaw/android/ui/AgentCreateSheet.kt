@@ -617,7 +617,7 @@ ${rawContent.take(2500)}
 TASK: Analyze if the fetched content contains or can provide what the user asked for.
 
 Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
-{"found": true/false, "explanation": "brief explanation of what was found or why not", "format": "if found=true, show a formatted template of how the extracted data would look. Use the actual data from the content to create a realistic preview. Use clear sections with headers/bullets."}"""
+{"found": true/false, "explanation": "brief explanation of what was found or why not", "format": "if found=true, show a formatted preview using Telegram Markdown: *bold* for headers/labels, bullet points (• or -) for lists, numbered lists for ordered items, line breaks between sections. Use ACTUAL data from the content — not placeholders. Start directly with the data, no preamble."}"""
 
                                     val aiReply = router.rawGenerate(analyzePrompt, jsonMode = true, maxTokens = 2048)
 
