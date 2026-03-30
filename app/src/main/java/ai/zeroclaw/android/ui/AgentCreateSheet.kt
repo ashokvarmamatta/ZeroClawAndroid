@@ -11,7 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,7 @@ fun AgentCreateSheet(
     val isTemplate = template != null
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val clipboardManager = LocalClipboardManager.current
 
     // Detect connected bots and known chat IDs
     var connectedBots by remember { mutableStateOf(mapOf<String, Boolean>()) }
@@ -145,6 +148,9 @@ fun AgentCreateSheet(
     ) }
     var aiFormatPreview by remember { mutableStateOf(existing?.safeFormatPreview?.ifBlank { null }) }
     var aiError by remember { mutableStateOf<String?>(null) }
+    var aiValuesLoading by remember { mutableStateOf(false) }
+    var aiValuesList by remember { mutableStateOf<String?>(null) }
+    var copiedFetchData by remember { mutableStateOf(false) }
 
     // All bot definitions
     val allBots = listOf(
@@ -608,7 +614,7 @@ fun AgentCreateSheet(
 
                                     // Step 2: AI analyzes if content matches what user asked for
                                     val router = LlmRouter.getInstance(context)
-                                    val analyzePrompt = """You are analyzing web page content to check if it contains what the user needs.
+                                    val analyzePrompt = """You are analyzing fetched web page content to check if it contains ACTUAL data the user needs.
 
 USER WANTS: ${aiQuery.trim()}
 URL: ${url.trim()}
@@ -616,10 +622,15 @@ URL: ${url.trim()}
 FETCHED CONTENT (first 2500 chars):
 ${rawContent.take(2500)}
 
-TASK: Analyze if the fetched content contains or can provide what the user asked for.
+CRITICAL RULES FOR ANALYSIS:
+- Check if the fetched content has ACTUAL numeric values, real data, real names — not just page titles or descriptions
+- If the content only has page titles, navigation text, meta descriptions, or promotional text but NO actual data values → set found=false
+- If you would need to use 0, 0.00, N/A, or placeholder values because the real values are NOT in the content → set found=false
+- JavaScript-heavy sites (stock trackers, dashboards, SPAs) often return HTML without data via HTTP — if you see no real values, the page likely needs a browser/WebView to render
+- ONLY set found=true if you can fill the format with REAL values from the fetched content
 
 Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
-{"found": true/false, "explanation": "brief explanation of what was found or why not", "format": "if found=true, show a formatted preview using Telegram Markdown: *bold* for headers/labels, bullet points (• or -) for lists, numbered lists for ordered items, line breaks between sections. Use ACTUAL data from the content — not placeholders. Start directly with the data, no preamble."}"""
+{"found": true/false, "explanation": "what actual data was found OR why not (e.g. 'page is JavaScript-rendered, no actual values in HTML')", "suggest_webview": true/false, "format": "if found=true ONLY: formatted preview using Telegram Markdown with REAL values from the content. Use *bold* for labels, • for bullets. If found=false, leave empty string."}"""
 
                                     val aiReply = router.rawGenerate(analyzePrompt, jsonMode = true, maxTokens = 2048)
 
@@ -628,17 +639,28 @@ Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
                                         val json = org.json.JSONObject(aiReply)
                                         val found = json.optBoolean("found", false)
                                         val explanation = json.optString("explanation", "")
+                                        val suggestWebview = json.optBoolean("suggest_webview", false)
                                         val format = json.optString("format", "")
 
                                         aiContentFound = found
                                         if (found && format.isNotBlank()) {
                                             aiFormatPreview = format
-                                            // Auto-fill extractPrompt from user's query
                                             if (extractPrompt.isBlank()) {
                                                 extractPrompt = aiQuery.trim()
                                             }
                                         } else if (!found) {
-                                            aiError = "Content not found: $explanation\n\nTry a different URL or switch the fetch method."
+                                            val suggestion = if (suggestWebview && aiFetchType != "webview") {
+                                                "\n\nThis page likely uses JavaScript to load data. Switch to WebView fetch method and try again."
+                                            } else if (aiFetchType == "webview") {
+                                                "\n\nEven WebView couldn't get the data. Try a different URL that provides this data as static content or RSS."
+                                            } else {
+                                                "\n\nTry switching the fetch method or use a different URL."
+                                            }
+                                            aiError = "$explanation$suggestion"
+                                            // Auto-switch to WebView if suggested
+                                            if (suggestWebview && aiFetchType == "http") {
+                                                aiFetchType = "webview"
+                                            }
                                         }
                                     } catch (_: Exception) {
                                         // AI didn't return valid JSON — use raw reply
@@ -691,23 +713,35 @@ Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
                         }
                     }
 
-                    // Success — content found + format preview
+                    // Success — content found + format preview (editable)
                     if (aiContentFound == true && aiFormatPreview != null) {
                         Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF0A2A0A)) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF81C784), modifier = Modifier.size(16.dp))
-                                    Text("Content found! Here's how data will look:", fontSize = 12.sp,
+                                    Text("Content found! Output format:", fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold, color = Color(0xFF81C784))
                                 }
-                                // Format preview
-                                Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF0D1117)) {
-                                    Text(aiFormatPreview!!,
-                                        modifier = Modifier.padding(10.dp),
+                                // Editable format preview
+                                OutlinedTextField(
+                                    value = aiFormatPreview!!,
+                                    onValueChange = { aiFormatPreview = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    minLines = 3, maxLines = 10,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
                                         fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFFC9D1D9), lineHeight = 15.sp)
-                                }
-                                Text("You can edit the extraction prompt below to customize the output format.",
+                                        color = Color(0xFFC9D1D9), lineHeight = 15.sp
+                                    ),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFF81C784),
+                                        unfocusedBorderColor = Color(0xFF81C784).copy(alpha = 0.3f),
+                                        focusedContainerColor = Color(0xFF0D1117),
+                                        unfocusedContainerColor = Color(0xFF0D1117),
+                                        cursorColor = Color(0xFF81C784)
+                                    )
+                                )
+                                Text("Edit the format above — this is exactly how data will appear in your chat messages.",
                                     fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
                             }
                         }
@@ -739,6 +773,97 @@ Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
                                     res, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
                                     color = Color.White.copy(alpha = 0.75f), lineHeight = 14.sp
                                 )
+
+                                // Action buttons for fetched data
+                                if (testSuccess) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        // "What can be fetched?" button
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFF7C4DFF).copy(alpha = 0.2f),
+                                            modifier = Modifier.weight(1f).clickable {
+                                                if (aiRawContent != null && !aiValuesLoading) {
+                                                    aiValuesLoading = true
+                                                    aiValuesList = null
+                                                    scope.launch {
+                                                        try {
+                                                            val router = LlmRouter.getInstance(context)
+                                                            val valuesPrompt = """List ALL extractable data points from this fetched web content. For each data point, show its name and current value.
+
+FETCHED CONTENT:
+${aiRawContent!!.take(2500)}
+
+List every piece of useful data found (names, numbers, dates, prices, titles, etc). Format as a simple list:
+• data_name: actual_value
+If a value appears to be 0, empty, or a placeholder (not real data), mark it as "[NOT AVAILABLE - needs WebView]"."""
+                                                            val result = router.rawGenerate(valuesPrompt, maxTokens = 1500)
+                                                            aiValuesList = result
+                                                        } catch (e: Exception) {
+                                                            aiValuesList = "Error: ${e.message}"
+                                                        }
+                                                        aiValuesLoading = false
+                                                    }
+                                                }
+                                            }
+                                        ) {
+                                            Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center) {
+                                                if (aiValuesLoading) {
+                                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color(0xFF7C4DFF), strokeWidth = 1.5.dp)
+                                                } else {
+                                                    Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFF7C4DFF), modifier = Modifier.size(13.dp))
+                                                }
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("What can be fetched?", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB388FF))
+                                            }
+                                        }
+                                        // Copy full data button
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (copiedFetchData) Color(0xFF4CAF50).copy(alpha = 0.2f) else accentColor.copy(alpha = 0.15f),
+                                            modifier = Modifier.clickable {
+                                                val fullData = aiRawContent ?: res
+                                                clipboardManager.setText(AnnotatedString(fullData))
+                                                copiedFetchData = true
+                                            }
+                                        ) {
+                                            Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    if (copiedFetchData) Icons.Default.CheckCircle else Icons.Default.ContentCopy,
+                                                    null, tint = if (copiedFetchData) Color(0xFF81C784) else accentColor, modifier = Modifier.size(13.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(
+                                                    if (copiedFetchData) "Copied!" else "Copy all",
+                                                    fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                                    color = if (copiedFetchData) Color(0xFF81C784) else accentColor)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // AI Values list
+                        aiValuesList?.let { values ->
+                            Spacer(Modifier.height(4.dp))
+                            Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFF1A1A2E)) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Icon(Icons.Default.List, null, tint = Color(0xFFB388FF), modifier = Modifier.size(14.dp))
+                                        Text("Extractable data points:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB388FF))
+                                    }
+                                    Text(values, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFC9D1D9), lineHeight = 14.sp)
+                                    // Warn about unavailable values
+                                    if (values.contains("[NOT AVAILABLE") || values.contains("WebView")) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("Some values marked [NOT AVAILABLE] need WebView fetch to retrieve. Switch fetch method above and retry.",
+                                            fontSize = 10.sp, color = Color(0xFFFFB74D), lineHeight = 14.sp)
+                                    }
+                                }
                             }
                         }
                     }
@@ -950,6 +1075,11 @@ Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
                 Spacer(Modifier.height(16.dp))
             }
         }
+    }
+
+    // Reset copied state
+    LaunchedEffect(copiedFetchData) {
+        if (copiedFetchData) { kotlinx.coroutines.delay(2000); copiedFetchData = false }
     }
 }
 
