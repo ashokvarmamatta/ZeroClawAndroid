@@ -778,26 +778,33 @@ Respond in this EXACT JSON format (no markdown, no code blocks, just raw JSON):
                                 if (testSuccess) {
                                     Spacer(Modifier.height(4.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                                        // "What can be fetched?" button
+                                        // "Show live data" button
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
                                             color = Color(0xFF7C4DFF).copy(alpha = 0.2f),
                                             modifier = Modifier.weight(1f).clickable {
-                                                if (aiRawContent != null && !aiValuesLoading) {
+                                                if (!aiValuesLoading) {
+                                                    val content = aiRawContent
+                                                    if (content.isNullOrBlank()) return@clickable
                                                     aiValuesLoading = true
                                                     aiValuesList = null
                                                     scope.launch {
                                                         try {
                                                             val router = LlmRouter.getInstance(context)
-                                                            val valuesPrompt = """List ALL extractable data points from this fetched web content. For each data point, show its name and current value.
+                                                            val valuesPrompt = """Analyze this fetched web page content and list ALL live data values you can find.
 
-FETCHED CONTENT:
-${aiRawContent!!.take(2500)}
+FETCHED CONTENT FROM ${url.trim()}:
+${content.take(3000)}
 
-List every piece of useful data found (names, numbers, dates, prices, titles, etc). Format as a simple list:
-• data_name: actual_value
-If a value appears to be 0, empty, or a placeholder (not real data), mark it as "[NOT AVAILABLE - needs WebView]"."""
-                                                            val result = router.rawGenerate(valuesPrompt, maxTokens = 1500)
+YOUR TASK — list every piece of real data with its ACTUAL value:
+• Show each data point as: *label*: value
+• Include ALL numbers, prices, percentages, dates, names, titles, stats
+• Group related items under headers
+• If a section has no real values (just navigation/placeholder text), write: ⚠️ [No live data — page needs JavaScript/WebView to render]
+• Use Telegram Markdown formatting (*bold* for labels)
+
+Start directly with the data list:"""
+                                                            val result = router.rawGenerate(valuesPrompt, maxTokens = 2000)
                                                             aiValuesList = result
                                                         } catch (e: Exception) {
                                                             aiValuesList = "Error: ${e.message}"
@@ -816,7 +823,7 @@ If a value appears to be 0, empty, or a placeholder (not real data), mark it as 
                                                     Icon(Icons.Default.AutoAwesome, null, tint = Color(0xFF7C4DFF), modifier = Modifier.size(13.dp))
                                                 }
                                                 Spacer(Modifier.width(4.dp))
-                                                Text("What can be fetched?", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB388FF))
+                                                Text(if (aiValuesLoading) "Loading…" else "Show live data", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB388FF))
                                             }
                                         }
                                         // Copy full data button
@@ -846,22 +853,49 @@ If a value appears to be 0, empty, or a placeholder (not real data), mark it as 
                             }
                         }
 
-                        // AI Values list
+                        // AI Values list — live data
                         aiValuesList?.let { values ->
                             Spacer(Modifier.height(4.dp))
                             Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFF1A1A2E)) {
                                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Icon(Icons.Default.List, null, tint = Color(0xFFB388FF), modifier = Modifier.size(14.dp))
-                                        Text("Extractable data points:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB388FF))
+                                    Row(verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Icon(Icons.Default.List, null, tint = Color(0xFFB388FF), modifier = Modifier.size(14.dp))
+                                            Text("Live data from this URL:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB388FF))
+                                        }
+                                        // Copy values button
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = accentColor.copy(alpha = 0.15f),
+                                            modifier = Modifier.clickable {
+                                                clipboardManager.setText(AnnotatedString(values))
+                                                copiedFetchData = true
+                                            }
+                                        ) {
+                                            Text("Copy", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                fontSize = 9.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                        }
                                     }
-                                    Text(values, fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFFC9D1D9), lineHeight = 14.sp)
+                                    Text(values, fontSize = 11.sp,
+                                        color = Color(0xFFC9D1D9), lineHeight = 16.sp)
                                     // Warn about unavailable values
-                                    if (values.contains("[NOT AVAILABLE") || values.contains("WebView")) {
+                                    val needsWebview = values.contains("No live data") || values.contains("WebView") || values.contains("JavaScript")
+                                    if (needsWebview && aiFetchType != "webview") {
                                         Spacer(Modifier.height(4.dp))
-                                        Text("Some values marked [NOT AVAILABLE] need WebView fetch to retrieve. Switch fetch method above and retry.",
-                                            fontSize = 10.sp, color = Color(0xFFFFB74D), lineHeight = 14.sp)
+                                        Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFFFFB74D).copy(alpha = 0.1f)) {
+                                            Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("⚠️", fontSize = 14.sp)
+                                                Column {
+                                                    Text("Some data needs WebView to load", fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold, color = Color(0xFFFFB74D))
+                                                    Text("Switch to WebView fetch method above and click Test Fetch again to get live values.",
+                                                        fontSize = 10.sp, color = Color(0xFFFFB74D).copy(alpha = 0.7f))
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -937,6 +971,7 @@ If a value appears to be 0, empty, or a placeholder (not real data), mark it as 
                                 return@OutlinedButton
                             }
                             testResult = null
+                            aiValuesList = null
                             testLoading = true
                             scope.launch {
                                 val r = when (aiFetchType) {
@@ -949,11 +984,12 @@ If a value appears to be 0, empty, or a placeholder (not real data), mark it as 
                                     else -> WebFetchTool().execute(mapOf("url" to url.trim()))
                                 }
                                 testSuccess = r.success
-                                testResult = if (r.success) {
-                                    r.content.take(600).trimEnd() +
-                                    if (r.content.length > 600) "\n\n…(${r.content.length} chars total)" else ""
+                                if (r.success) {
+                                    aiRawContent = r.content
+                                    testResult = r.content.take(600).trimEnd() +
+                                        if (r.content.length > 600) "\n\n…(${r.content.length} chars total)" else ""
                                 } else {
-                                    r.error ?: "Unknown error"
+                                    testResult = r.error ?: "Unknown error"
                                 }
                                 testLoading = false
                             }
