@@ -273,16 +273,21 @@ class LlmRouter(private val context: Context) {
 
     private suspend fun callGeminiRaw(message: String, apiKey: String, model: String, systemPrompt: String, jsonMode: Boolean, maxTokens: Int): String {
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+        val isGemma = model.contains("gemma", ignoreCase = true)
         val body = JSONObject().apply {
             put("contents", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "user")
-                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", message) }) })
+                    // For Gemma: prepend system prompt to user message since systemInstruction not supported
+                    val effectiveMsg = if (isGemma) "$systemPrompt\n\n$message" else message
+                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", effectiveMsg) }) })
                 })
             })
-            put("systemInstruction", JSONObject().apply {
-                put("parts", JSONArray().apply { put(JSONObject().apply { put("text", systemPrompt) }) })
-            })
+            if (!isGemma) {
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", systemPrompt) }) })
+                })
+            }
             put("generationConfig", JSONObject().apply {
                 put("maxOutputTokens", maxTokens)
                 put("temperature", 0.7)
@@ -2589,9 +2594,13 @@ class LlmRouter(private val context: Context) {
                     put("parts", JSONArray().apply { put(JSONObject().apply { put("text", message) }) })
                 })
             })
-            put("systemInstruction", JSONObject().apply {
-                put("parts", JSONArray().apply { put(JSONObject().apply { put("text", systemPrompt) }) })
-            })
+            // Gemma models don't support systemInstruction — skip it to avoid 400 error
+            val isGemma = model.contains("gemma", ignoreCase = true)
+            if (!isGemma) {
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().apply { put(JSONObject().apply { put("text", systemPrompt) }) })
+                })
+            }
             put("generationConfig", JSONObject().apply {
                 put("maxOutputTokens", MAX_TOKENS); put("temperature", 0.7)
             })
