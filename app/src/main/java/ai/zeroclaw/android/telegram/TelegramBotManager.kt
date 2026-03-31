@@ -170,36 +170,49 @@ class TelegramBotManager(private val context: Context) {
 
     private suspend fun sendMessage(token: String, chatId: Long, text: String) {
         val url = "https://api.telegram.org/bot$token/sendMessage"
+        // Telegram has a 4096 char limit — split long messages
+        val chunks = if (text.length > 4000) {
+            text.chunked(4000)
+        } else {
+            listOf(text)
+        }
         withContext(Dispatchers.IO) {
-            // Try Markdown first — if AI response has unescaped chars, Telegram rejects it
-            val mdBody = FormBody.Builder()
-                .add("chat_id", chatId.toString())
-                .add("text", text)
-                .add("parse_mode", "Markdown")
-                .build()
-            val mdResp = runCatching {
-                client.newCall(Request.Builder().url(url).post(mdBody).build()).execute()
+            for (chunk in chunks) {
+                // Try Markdown first — if AI response has unescaped chars, Telegram rejects it
+                val mdBody = FormBody.Builder()
+                    .add("chat_id", chatId.toString())
+                    .add("text", chunk)
+                    .add("parse_mode", "Markdown")
+                    .build()
+                val mdResp = runCatching {
+                    client.newCall(Request.Builder().url(url).post(mdBody).build()).execute()
+                }
+                val resp = mdResp.getOrNull()
+                if (resp != null && resp.isSuccessful) {
+                    resp.close()
+                    continue
+                }
+                resp?.close()
+                // Markdown failed — strip markdown formatting and send as plain text
+                ZeroClawService.log("Telegram: Markdown send failed, retrying as plain text")
+                val plainText = chunk
+                    .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")  // **bold** → bold
+                    .replace(Regex("\\*(.+?)\\*"), "$1")        // *italic* → italic
+                    .replace(Regex("`(.+?)`"), "$1")            // `code` → code
+                val plainBody = FormBody.Builder()
+                    .add("chat_id", chatId.toString())
+                    .add("text", plainText)
+                    .build()
+                val plainResp = runCatching {
+                    client.newCall(Request.Builder().url(url).post(plainBody).build()).execute()
+                }
+                val pr = plainResp.getOrNull()
+                if (pr != null && !pr.isSuccessful) {
+                    val errBody = runCatching { pr.body?.string() }.getOrNull() ?: ""
+                    ZeroClawService.log("Telegram: plain text send also failed — HTTP ${pr.code}: ${errBody.take(200)}")
+                }
+                pr?.close()
             }
-            val resp = mdResp.getOrNull()
-            if (resp != null && resp.isSuccessful) {
-                resp.close()
-                return@withContext
-            }
-            resp?.close()
-            // Markdown failed — retry as plain text
-            ZeroClawService.log("Telegram: Markdown send failed, retrying as plain text")
-            val plainBody = FormBody.Builder()
-                .add("chat_id", chatId.toString())
-                .add("text", text)
-                .build()
-            val plainResp = runCatching {
-                client.newCall(Request.Builder().url(url).post(plainBody).build()).execute()
-            }
-            val pr = plainResp.getOrNull()
-            if (pr != null && !pr.isSuccessful) {
-                ZeroClawService.log("Telegram: plain text send also failed — HTTP ${pr.code}")
-            }
-            pr?.close()
         }
     }
 
