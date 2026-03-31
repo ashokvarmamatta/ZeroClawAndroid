@@ -33,7 +33,7 @@ This is a **personal project** built out of curiosity — to see how far I can p
 >
 > 🤔 **Can agents auto-monitor websites and push updates?** → Yes, with change detection and scheduled delivery.
 
-Every feature started as a question like these. Many didn't work on the first try — the [bugs.md](bugs.md) has the full history.
+Every feature started as a question like these. Many didn't work on the first try — the [BUGS.md](BUGS.md) has the full history.
 
 I use Claude as a coding tool the same way I'd use docs or Stack Overflow — to move faster on implementation so I can focus on **architecture, debugging real device behavior, and figuring out what Android actually allows**.
 
@@ -403,9 +403,9 @@ cd ZeroClawAndroid
 |--------|--------------|
 | ![](https://img.shields.io/badge/✅_Stable-4CAF50?style=flat-square) | Working and tested |
 | ![](https://img.shields.io/badge/🔧_In_Progress-FF9800?style=flat-square) | Being worked on — may have issues |
-| ![](https://img.shields.io/badge/🐛_Known_Bugs-F44336?style=flat-square) | Has known issues tracked in [bugs.md](bugs.md) |
+| ![](https://img.shields.io/badge/🐛_Known_Bugs-F44336?style=flat-square) | Has known issues tracked in [BUGS.md](BUGS.md) |
 
-**Found a bug?** Check [bugs.md](bugs.md) first — it might already be tracked. If not, [open an issue](https://github.com/ashokvarmamatta/ZeroClawAndroid/issues) and I'll look into it.
+**Found a bug?** Check [BUGS.md](BUGS.md) first — it might already be tracked. If not, [open an issue](https://github.com/ashokvarmamatta/ZeroClawAndroid/issues) and I'll look into it.
 
 **Feature not working?** Some features depend on specific API keys or device capabilities. Check the in-app **Info Guide** (tap ℹ️ on any Settings section) for setup instructions.
 
@@ -435,22 +435,16 @@ Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) by ZeroClaw Labs.
 
 <br/>
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=14&pause=1000&color=00D4AA&center=true&vCenter=true&width=300&lines=Built+by+Ashok+Varma+Matta" alt="Author" />
+### Built by [Ashok Varma Matta](https://github.com/ashokvarmamatta)
 
-<a href="https://github.com/ashokvarmamatta">
-  <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" />
-</a>
-<a href="https://www.linkedin.com/in/ashokvarmamatta">
-  <img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn" />
-</a>
-<a href="https://ashokvarmamatta.github.io/portfolio/">
-  <img src="https://img.shields.io/badge/Portfolio-00D4AA?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Portfolio" />
-</a>
-<a href="mailto:mashokvarma1997@gmail.com">
-  <img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email" />
-</a>
+<p align="center">
+  <a href="https://github.com/ashokvarmamatta"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" /></a>&nbsp;
+  <a href="https://www.linkedin.com/in/ashokvarmamatta"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn" /></a>&nbsp;
+  <a href="https://ashokvarmamatta.github.io/portfolio/"><img src="https://img.shields.io/badge/Portfolio-00D4AA?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Portfolio" /></a>&nbsp;
+  <a href="mailto:mashokvarma1997@gmail.com"><img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email" /></a>
+</p>
 
-<br/><br/>
+<br/>
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:00D4AA,100:7C5CFC&height=80&section=footer" width="100%"/>
 
