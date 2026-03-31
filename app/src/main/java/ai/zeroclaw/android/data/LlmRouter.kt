@@ -529,8 +529,10 @@ class LlmRouter(private val context: Context) {
 
                 // If model tried native function calling due to tool descriptions in prompt,
                 // retry without tool descriptions — send just the user message + base system prompt.
-                if (result.isFailure && result.exceptionOrNull()?.message?.contains("UNEXPECTED_TOOL_CALL") == true) {
-                    ZeroClawService.log("LLM: UNEXPECTED_TOOL_CALL — retrying without tool descriptions")
+                val errMsg = result.exceptionOrNull()?.message ?: ""
+                val isToolConfusion = errMsg.contains("UNEXPECTED_TOOL_CALL") || errMsg.contains("MALFORMED_FUNCTION_CALL")
+                if (result.isFailure && isToolConfusion) {
+                    ZeroClawService.log("LLM: model confused by tool descriptions (${ if (errMsg.contains("MALFORMED")) "MALFORMED_FUNCTION_CALL" else "UNEXPECTED_TOOL_CALL" }) — retrying without tools")
                     val basePrompt = effectiveSystemPrompt.substringBefore("\n\nYou have access to the following tools").trim()
                         .ifBlank { effectiveSystemPrompt }
                     result = runCatching { dispatchToProvider(effectiveMessage, entry, chatId, model, basePrompt) }
@@ -2635,10 +2637,10 @@ class LlmRouter(private val context: Context) {
                 val candidate = candidates.optJSONObject(0)
                     ?: throw Exception("Empty candidates array")
                 val finishReason = candidate.optString("finishReason", "")
-                if (finishReason == "UNEXPECTED_TOOL_CALL") {
+                if (finishReason == "UNEXPECTED_TOOL_CALL" || finishReason == "MALFORMED_FUNCTION_CALL") {
                     // Model tried native function calling because it saw tool descriptions in prompt.
                     // Retry handled by caller — throw specific error so call() can retry without tools.
-                    throw Exception("UNEXPECTED_TOOL_CALL: Model attempted native function calling. Retry without tool descriptions.")
+                    throw Exception("$finishReason: Model attempted native function calling. Retry without tool descriptions.")
                 }
                 val content = candidate.optJSONObject("content")
                     ?: throw Exception("No content in candidate (finishReason=$finishReason). Raw: ${respBody.take(300)}")
