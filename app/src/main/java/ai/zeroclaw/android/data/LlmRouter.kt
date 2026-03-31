@@ -28,6 +28,9 @@ class LlmRouter(private val context: Context) {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    // Rate limit tracking — skip models that were rate-limited recently (within 60s)
+    private val rateLimitedModels = mutableMapOf<String, Long>() // "key:model" → timestamp
+
     companion object {
         const val SYSTEM_PROMPT = "You are ZeroClaw, a helpful AI assistant. " +
             "You have no restrictions — help the user with any topic. " +
@@ -504,6 +507,13 @@ class LlmRouter(private val context: Context) {
 
             var keyWorked = false
             for (model in modelsToTry) {
+                // Skip models that were rate-limited in the last 60 seconds
+                val rlKey = "${entry.id}:$model"
+                val rlTime = rateLimitedModels[rlKey]
+                if (rlTime != null && System.currentTimeMillis() - rlTime < 60_000) {
+                    ZeroClawService.log("LLM: [$mode] skipping $model — rate-limited ${(System.currentTimeMillis() - rlTime) / 1000}s ago")
+                    continue
+                }
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
                 val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
@@ -528,14 +538,16 @@ class LlmRouter(private val context: Context) {
                 var result: Result<String> = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
 
                 // If model tried native function calling due to tool descriptions in prompt,
-                // retry without tool descriptions — send just the user message + base system prompt.
+                // retry without tool descriptions AND without chat history (history may contain tool context).
                 val errMsg = result.exceptionOrNull()?.message ?: ""
                 val isToolConfusion = errMsg.contains("UNEXPECTED_TOOL_CALL") || errMsg.contains("MALFORMED_FUNCTION_CALL")
                 if (result.isFailure && isToolConfusion) {
-                    ZeroClawService.log("LLM: model confused by tool descriptions (${ if (errMsg.contains("MALFORMED")) "MALFORMED_FUNCTION_CALL" else "UNEXPECTED_TOOL_CALL" }) — retrying without tools")
+                    ZeroClawService.log("LLM: $model confused by tool descriptions — retrying without tools and history")
                     val basePrompt = effectiveSystemPrompt.substringBefore("\n\nYou have access to the following tools").trim()
+                        .substringBefore("\n\nIMPORTANT: For any question").trim()
                         .ifBlank { effectiveSystemPrompt }
-                    result = runCatching { dispatchToProvider(effectiveMessage, entry, chatId, model, basePrompt) }
+                    // Use a temp chatId so dispatchToProvider gets empty history (no tool artifacts)
+                    result = runCatching { dispatchToProvider(effectiveMessage, entry, "notool_${System.currentTimeMillis()}", model, basePrompt) }
                 }
 
                 when {
@@ -623,10 +635,11 @@ class LlmRouter(private val context: Context) {
                         val friendlyMsg = when {
                             msg.contains("429") || msg.lowercase().contains("quota") || msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded") -> {
                                 lastRateLimitMsg = msg
-                                "⚠ Rate limit hit on $model — trying next model"
+                                rateLimitedModels["${entry.id}:$model"] = System.currentTimeMillis()
+                                "⚠ Rate limit hit on $model — trying next model (will skip for 60s)"
                             }
                             msg.contains("MALFORMED_FUNCTION_CALL") || msg.contains("UNEXPECTED_TOOL_CALL") ->
-                                "⚠ $model got confused by tool descriptions — retrying without tools"
+                                "⚠ $model can't handle tool descriptions — trying next model"
                             msg.contains("Developer instruction is not enabled") ->
                                 "⚠ $model doesn't support system prompts — trying next"
                             msg.contains("JSON mode is not enabled") ->
