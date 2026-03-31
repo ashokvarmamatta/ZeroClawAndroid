@@ -447,7 +447,42 @@ class LlmRouter(private val context: Context) {
 
         // Build system prompt with tools
         val toolSystem = ToolSystem.getInstance(context)
+        val enabledTools = toolSystem.enabledTools()
+        val hasWebSearch = enabledTools.any { it.name == "web_search" }
+        val hasWebFetch = enabledTools.any { it.name == "web_fetch" }
         val toolsPrompt = toolSystem.buildToolsPrompt()
+
+        // ── Pre-search: for online models, fetch web data ONCE upfront ──
+        // This avoids the multi-round tool loop (3 API calls → 1 API call)
+        // and prevents rate limit issues on free tier keys.
+        var preSearchData = ""
+        if (hasWebSearch && isRealTimeQuery(effectiveMessage)) {
+            ZeroClawService.log("LLM: pre-searching web for: ${effectiveMessage.take(80)}")
+            val searchResult = toolSystem.executeToolDirect(
+                ToolCall("pre_ws", "web_search", mapOf("query" to effectiveMessage.take(120)))
+            )
+            if (searchResult.success && searchResult.content.isNotBlank()) {
+                preSearchData = searchResult.content
+                ZeroClawService.log("LLM: pre-search returned ${preSearchData.length} chars")
+
+                // Fetch top 2 URLs for detailed content
+                if (hasWebFetch) {
+                    val urls = Regex("https?://[^\\s)]+").findAll(preSearchData)
+                        .map { it.value }
+                        .filter { !it.contains("duckduckgo") }
+                        .take(2).toList()
+                    for (url in urls) {
+                        val fetchResult = toolSystem.executeToolDirect(
+                            ToolCall("pre_wf", "web_fetch", mapOf("url" to url))
+                        )
+                        if (fetchResult.success && fetchResult.content.isNotBlank()) {
+                            preSearchData += "\n\n--- Content from $url ---\n${fetchResult.content.take(3000)}"
+                            ZeroClawService.log("LLM: pre-fetched ${fetchResult.content.length} chars from $url")
+                        }
+                    }
+                }
+            }
+        }
 
         // ── Split keys: online first, offline last ──────────────────────
         val onlineKeys = allKeys.filter { it.safeProvider != "offline" }
@@ -516,26 +551,39 @@ class LlmRouter(private val context: Context) {
                 }
                 ZeroClawService.log("LLM: [$mode] trying model=\"$model\" via key=\"${entry.safeLabel}\" ($provider)")
 
-                val effectiveSystemPrompt = if (entry.safeProvider == "offline") {
+                val effectiveSystemPrompt: String
+                val messageForModelFinal: String
+
+                if (entry.safeProvider == "offline") {
                     // Offline: model cannot call tools autonomously, inject date from device
                     val dtFmt = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm z", java.util.Locale.ENGLISH)
                     dtFmt.timeZone = java.util.TimeZone.getDefault()
                     val nowStr = dtFmt.format(java.util.Date())
-                    "$basePrompt\n\nCurrent date and time: $nowStr$thinkingAddition"
+                    effectiveSystemPrompt = "$basePrompt\n\nCurrent date and time: $nowStr$thinkingAddition"
+                    messageForModelFinal = messageForModel
+                } else if (preSearchData.isNotBlank()) {
+                    // Online + pre-searched: inject web data into message, NO tool descriptions
+                    // This avoids MALFORMED_FUNCTION_CALL and uses only 1 API call
+                    effectiveSystemPrompt = "$basePrompt$thinkingAddition"
+                    messageForModelFinal = "$messageForModel\n\n=== LIVE WEB DATA (searched just now) ===\n$preSearchData\n\nUse the live web data above to answer accurately. Do NOT say you can't access the internet — the data is right above."
                 } else {
-                    // Online: model uses tools for real-time data — instruct it to do so
+                    // Online without pre-search: include tool descriptions for tool loop
                     val toolInstruction = if (toolsPrompt.isNotBlank())
                         "\n\nIMPORTANT: For any question about today's date, current time, live data, recent news, prices, scores, or anything that changes over time — always use the web_search tool to get accurate real-time information. Never guess or rely on training data for real-time facts."
                     else ""
-                    "$basePrompt$toolInstruction$toolsPrompt$thinkingAddition"
+                    effectiveSystemPrompt = "$basePrompt$toolInstruction$toolsPrompt$thinkingAddition"
+                    messageForModelFinal = messageForModel
                 }
 
                 ZeroClawService.logDetail("━━━ PASS 1 — SENDING TO MODEL ━━━")
                 ZeroClawService.logDetail("Provider: $provider | Model: $model | Key: ${entry.safeLabel}")
+                if (preSearchData.isNotBlank() && entry.safeProvider != "offline") {
+                    ZeroClawService.logDetail("Mode: PRE-SEARCHED (1 API call, no tool loop)")
+                }
                 ZeroClawService.logDetail("System prompt (${effectiveSystemPrompt.length} chars): ${effectiveSystemPrompt.take(300)}…")
-                ZeroClawService.logDetail("User message sent: $messageForModel")
+                ZeroClawService.logDetail("User message sent: ${messageForModelFinal.take(300)}")
 
-                var result: Result<String> = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
+                var result: Result<String> = runCatching { dispatchToProvider(messageForModelFinal, entry, chatId, model, effectiveSystemPrompt) }
 
                 // If model tried native function calling due to tool descriptions in prompt,
                 // retry without tool descriptions AND without chat history (history may contain tool context).
