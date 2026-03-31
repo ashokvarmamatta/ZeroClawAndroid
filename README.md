@@ -4,7 +4,7 @@
 
 # ZeroClaw Android
 
-**A 24/7 AI agent daemon for Android — 11 messaging channels, 36 built-in AI tools, autonomous web scraper agents with scheduled delivery, interactive Tool Playground, advanced AI orchestration, vector memory, full infrastructure, polished configuration & UX, and NullClaw-inspired advanced features (Composio, MCP, A2A, MMR, hint routing, agent identity). Runs entirely on your phone.**
+**A 24/7 AI agent daemon for Android — 11 messaging channels, 30 built-in AI tools (all opt-in), 25+ autonomous agent templates with 21 free API sources, interactive Tool Playground, and a modular architecture where you enable only what you need. Runs entirely on your phone.**
 
 [![Android](https://img.shields.io/badge/Platform-Android%2026%2B-green?logo=android)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple?logo=kotlin)](https://kotlinlang.org)
@@ -17,30 +17,28 @@
 
 ## 📖 What is ZeroClaw?
 
-ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service across **11 messaging channels**, with **36 built-in AI tools**, an **Agents system** (autonomous web scraper agents that monitor URLs and push updates to Telegram/Discord/Slack on a schedule), an **interactive Tool Playground** to test and debug any tool live, **advanced AI orchestration** (streaming, multi-agent, delegate/spawn, workflows, thinking mode), **vector memory with RAG + MMR diversity**, a **complete infrastructure platform** (hooks, plugins, biometric lock, MCP client, A2A protocol, audit log), and a **NullClaw-inspired advanced layer** — Composio 1000+ app integrations, hint-based provider routing, agent identity (AIEOS v1.1), semantic cache, memory hygiene, and Pushover notifications.
+ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. Everything is **modular and opt-in** — you enable only the channels, tools, and features you need.
 
 No cloud subscription. No always-on PC. Just your Android device.
 
 ```
-You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...)
+You → Enable your channels (Telegram / Discord / Slack / WhatsApp / ...)
               ↓
     ZeroClaw Service (background daemon)
               ↓
-    NullClaw Layer: ProviderRouter (hints) → ComposioTool → McpClient → A2AServer
+    LLM Router → Multi-provider failover (Gemini, OpenAI, Anthropic, Ollama, OpenRouter)
               ↓
-    Config & UX: ThemeManager → RateLimiting → ApprovalSystem → ConversationLabels
+    Tool System (30 tools — all disabled by default, enable what you need)
               ↓
-    Infrastructure: HooksSystem → PluginSystem → BiometricLock → AutoRecovery → AuditLog
+    Optional modules (enable in Settings):
+      ├── Agents: 25+ templates, 21 free APIs, scheduled web scraping + delivery
+      ├── Tool Playground: test any tool live before using it
+      ├── Advanced AI: multi-agent, delegate/spawn, workflows, hint routing
+      ├── Memory: vector search, semantic cache, MMR reranking
+      ├── Infrastructure: hooks, plugins, biometric lock, audit log, rate limiting
+      └── Integrations: Composio (1000+ apps), MCP servers, A2A protocol
               ↓
-    Advanced AI: AgentIdentity → SystemPromptManager → MultiAgent+Delegate/Spawn → WorkflowEngine
-              ↓
-    Vector Memory: VectorMemory → HybridSearch+RRF → MMR Reranker → AdaptiveRetrieval → SemanticCache
-              ↓
-    Agents System: WebScraperAgent → AgentManager → scheduled delivery
-              ↓
-    Tool Playground: ToolPlaygroundScreen → ToolTestSheet → live test any tool
-              ↓
-    Tool System (36 tools) → LLM Router → Reply
+    Reply → your enabled channels
 ```
 
 ---
@@ -76,7 +74,7 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 ### 🧪 Tool Playground & Testing
 
 #### Tool Playground Screen
-- **Interactive tool testing** — test any of the 36 built-in tools individually without sending a real message
+- **Interactive tool testing** — test any of the 30 built-in tools individually without sending a real message
 - Per-tool enable/disable toggles, model selector (choose which LLM), category grid layout
 - Every test run is logged to the Home Screen activity feed for visibility
 
@@ -86,7 +84,7 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 - Before/after logging via `ZeroClawService.log()` — results visible on Home Screen instantly
 
 #### AI Tools Screen
-- Browseable list of all 36 tools with enable/disable toggles, descriptions, and parameter details
+- Browseable list of all 30 tools with enable/disable toggles, descriptions, and parameter details
 
 #### Home Screen Log Improvements
 - **Expandable LogCard** — "View all N / Show less" toggle when log entries exceed 20; playground tool runs highlighted in blue
@@ -241,7 +239,7 @@ Any app that supports a **custom OpenAI base URL** can connect instantly:
 | **API Key** | `zc-no-key-needed` (any non-empty string works) |
 | **Model** | `zeroclaw` |
 
-That's it. The app now has access to all of ZeroClaw's capabilities: 36+ AI tools, web search, memory, image generation, code execution, and all configured LLM providers with automatic failover.
+That's it. The app now has access to all of ZeroClaw's capabilities: 30 AI tools, web search, memory, image generation, code execution, and all configured LLM providers with automatic failover.
 
 #### cURL — Test It Right Now
 
@@ -324,7 +322,7 @@ POST /api/chat
 
 **Response:**
 ```json
-{"reply": "I'm ZeroClaw, your AI assistant! I have access to 36+ tools including web search, weather, translation, image generation, and more. How can I help?"}
+{"reply": "I'm ZeroClaw, your AI assistant! I have access to 30+ tools including web search, weather, translation, image generation, and more. How can I help?"}
 ```
 
 Each unique `session_id` maintains its own conversation history — the AI remembers previous messages in the same session.
@@ -450,9 +448,9 @@ GET /api/discover
 
 #### What the Connected App Gets Access To
 
-When any app connects to ZeroClaw via the API, it gets access to **everything** ZeroClaw can do:
+When any app connects to ZeroClaw via the API, it gets access to whichever tools and features the user has enabled:
 
-- **36+ AI tools** — web search, weather, translate, image gen, calculator, RSS, QR codes, file manager, calendar, contacts, location, GitHub, Notion, email, Spotify, smart home, and more
+- **30 AI tools** (all opt-in) — web search, weather, translate, image gen, calculator, RSS, QR codes, file manager, calendar, contacts, location, GitHub, Notion, email, Spotify, smart home, and more
 - **Multi-provider LLM failover** — OpenAI, Gemini, Anthropic, OpenRouter (400+ models), Ollama, offline models — with automatic failover if one fails
 - **Vector memory** — the AI remembers context across conversations (per session)
 - **Thinking mode** — extended chain-of-thought reasoning for complex problems
@@ -474,7 +472,7 @@ The server starts automatically with the ZeroClaw service and is accessible on t
 - **LINE** — LINE Messaging API
 - **WebChat** — built-in browser-accessible WebSocket chat (+ voice input via Phase 138)
 
-### 🔧 AI Tools — 36 Built-in Tools
+### 🔧 AI Tools — 30 Built-in Tools (all disabled by default — enable what you need)
 
 #### Core Tools (10)
 Web Search (DuckDuckGo), Web Fetch, Memory (vector-backed), PDF Reader, Image Analysis, Cron/Scheduled Tasks, Status/Diagnostics, GitHub, Notion, Email
@@ -567,7 +565,7 @@ app/src/main/java/ai/zeroclaw/android/
 │
 ├── tools/
 │   ├── ToolSystem.kt
-│   ├── [36 tool files — WebSearch through PushoverTool]
+│   ├── [30 tool files — WebSearch through PushoverTool]
 │
 ├── service/
 │   ├── ZeroClawService.kt
@@ -677,7 +675,7 @@ cd ZeroClawAndroid
 
 ## 🛣️ Roadmap — Complete Feature Set
 
-All phases are implemented on this branch.
+All phases (1-169) are implemented on the `feat/curl-api-generator` branch.
 
 ### ✅ Agents System (Phase 160)
 - [x] Web Scraper Agent — monitor any URL on a schedule ✅
@@ -692,9 +690,9 @@ All phases are implemented on this branch.
 - [ ] Social Feed Agent (Phase 163 — planned)
 
 ### ✅ Tool Playground & Testing
-- [x] ToolPlaygroundScreen — test any of 36 tools live ✅
+- [x] ToolPlaygroundScreen — test any of 30 tools live ✅
 - [x] ToolTestSheet — per-tool arg form with image picker ✅
-- [x] AiToolsScreen — browse and toggle all 36 tools ✅
+- [x] AiToolsScreen — browse and toggle all 30 tools ✅
 - [x] Expandable LogCard — View all / Show less, blue-highlighted playground runs ✅
 - [x] DetailedLogCard — full LLM trace logs below activity feed ✅
 - [x] Copy button on Live Logs and Detailed Operation Log ✅

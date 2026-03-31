@@ -260,7 +260,7 @@ If using a tunnel (ngrok/Cloudflare), use the tunnel URL instead for remote acce
 ### Endpoints
 | Method | Path | Format | What It Does |
 |--------|------|--------|-------------|
-| `POST` | `/v1/chat/completions` | OpenAI-compatible | **Full agent pipeline** — 36+ tools, memory, thinking mode, multi-provider failover. Drop-in OpenAI replacement. |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible | **Full agent pipeline** — 30 tools (user-enabled), memory, thinking mode, multi-provider failover. Drop-in OpenAI replacement. |
 | `GET` | `/v1/models` | OpenAI-compatible | Returns model list (`zeroclaw`). |
 | `POST` | `/api/chat` | ZeroClaw native | Simple chat with session memory. |
 | `POST` | `/api/generate` | ZeroClaw native | Raw LLM output — no tools, no history. Supports `json_mode`. |
@@ -327,7 +327,7 @@ console.log(r.choices[0].message.content);
 Continue.dev, Cursor, Open WebUI, LangChain, LlamaIndex, AutoGen, CrewAI, Aider, any app with `OPENAI_API_BASE` env var support — just set the base URL and it works.
 
 ### What the connected app gets
-All 36+ AI tools (web search, weather, translate, image gen, calculator, RSS, GitHub, email, smart home, etc.), multi-provider LLM failover, vector memory, thinking mode, conversation history, and the full agent pipeline — the connected app doesn't need to know about any of this, it just sends messages and gets intelligent responses.
+All 30 AI tools (web search, weather, translate, image gen, calculator, RSS, GitHub, email, smart home, etc. — user enables what they need), multi-provider LLM failover, vector memory, thinking mode, conversation history, and the full agent pipeline — the connected app doesn't need to know about any of this, it just sends messages and gets intelligent responses.
 
 ### Files Changed
 - `WebChatServer.kt` — added `POST /v1/chat/completions`, `GET /v1/models`, `OPTIONS` CORS preflight
@@ -609,10 +609,10 @@ data class ApiKeyEntry(
 
 ---
 
-## 🧪 Tool Playground & UI Enhancements (branch: `tools-playground` / `offline-websearch-fix`)
+## 🧪 Tool Playground & UI Enhancements (merged into `feat/curl-api-generator`)
 
 ### Tool Playground Screen (`ui/ToolPlaygroundScreen.kt`) ✅ DONE
-- Interactive screen to test any of the 36 built-in tools individually
+- Interactive screen to test any of the 30 built-in tools individually
 - Per-tool toggle switches (enable/disable per playground session, seeded from ToolSystem)
 - `ModelSelectorSheet` — choose which LLM model to use for playground test calls
 - **PlaygroundCategory grid** — tools grouped by category for easy browsing
@@ -637,7 +637,7 @@ data class ApiKeyEntry(
 
 ## 🤖 Phase 160+ — Agents System
 
-### Phase 160 — Web Scraper Agent (branch: `agents-feature`) ✅ DONE
+### Phase 160 — Web Scraper Agent (merged into `feat/curl-api-generator`) ✅ DONE
 First autonomous agent type. User creates an agent that watches a URL and pushes updates to a chosen channel.
 
 **Architecture:**
@@ -738,7 +738,7 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 ---
 
 ### Phase 166 — Free API Agents System ✅ DONE
-> **Branch:** `agents-api-integration`
+> **Branch:** merged into `feat/curl-api-generator`
 > **Goal:** Research all free APIs that agents can use, document rate limits, and integrate them as proper agent data sources. Replace Google Search scraping with direct APIs where possible for more reliable data.
 >
 > **Implemented:**
@@ -816,9 +816,26 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 
 ---
 
+## 🌿 Branch Status (cleaned 2026-03-31)
+
+**Active branch:** `feat/curl-api-generator` — contains ALL work from Phases 1-169.
+
+| Branch | Status | Purpose |
+|--------|--------|---------|
+| `feat/curl-api-generator` | **ACTIVE** | Main dev branch — Phases 1-169, agents, APIs, tools, playground |
+| `master` | Release | Last stable release (Phase 15 + R8 fixes) |
+| `openclaw-toolbox` | Unmerged | OpenClaw phases 85-102 (alternative implementation) |
+| `openclaw-channels` | Unmerged | OpenClaw phases 103-109 |
+| `openclaw-intelligence` | Unmerged | OpenClaw phases 110-117 |
+| `openclaw-memory` | Unmerged | OpenClaw phases 118-122 |
+| `openclaw-infra` | Unmerged | OpenClaw phases 123-130 |
+
+**Deleted (2026-03-31):** 14 merged branches cleaned up — `agents-api-integration`, `agents-feature`, `ai-tools-screen`, `feat/offline-model-support`, `feat/per-model-testing`, `feat/smart-summarize-default-agents`, `feat/zeroclaw-features`, `feature/raw-generate-waterfall`, `fix/offline-summarizer-fallback`, `offline-websearch-fix`, `openclaw-config-ux`, `openclaw-nullclaw`, `tools-playground`, `update1`, `feat/addedzeroclawserver`. Also deleted broken Codex branch `codex/zeroclaw-api-metagen-fix`.
+
+---
+
 ## 🔧 Resumption Instructions (if chat crashes)
 1. Open new Claude chat
 2. Upload this `plan.md` file
 3. Say: *"Continue building ZeroClawAndroid from plan.md — resume at first step that is NOT marked ✅ DONE"*
 4. Claude will read the plan and continue exactly where you left off.
-d

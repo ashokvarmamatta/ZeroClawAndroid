@@ -6,6 +6,17 @@
 
 ---
 
+## BUG-22 — Codex branch `codex/zeroclaw-api-metagen-fix` destroyed agents UI
+- **Phase:** Branch management
+- **Status:** ✅ Fixed (deleted)
+- **Severity:** Critical
+- **Symptom:** Agents screen, HomeScreen, AgentCreateSheet, WebScraperAgent all had massive code deletions. All 21 free API sources removed. UI appeared broken/empty.
+- **Root Cause:** Codex auto-generated branch stripped 5,310 lines including the entire agent template system, API agents, and most UI components. Only had 1 commit: "enable build workflows".
+- **Fix:** Deleted the branch from GitHub (2026-03-31). The active branch `feat/curl-api-generator` has the correct, complete code. Also cleaned up 14 stale merged branches.
+- **Lesson:** Always verify Codex-generated branches before relying on them. They can destructively rewrite large parts of the codebase.
+
+---
+
 ## BUG-21 — Agent proactive messages not delivered to Telegram chat
 - **Phase:** Agent delivery (WebScraperAgent / TelegramBotManager)
 - **Status:** ✅ Fixed
