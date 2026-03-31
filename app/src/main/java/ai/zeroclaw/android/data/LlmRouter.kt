@@ -481,6 +481,7 @@ class LlmRouter(private val context: Context) {
             val mode = if (entry.safeProvider == "offline") "OFFLINE" else "ONLINE"
             val provider = LlmProvider.fromId(entry.safeProvider).displayName
             ZeroClawService.log("LLM: [$mode] key=\"${entry.safeLabel}\" provider=$provider — ${modelsToTry.size} model(s) to try")
+            if (modelsToTry.size <= 5) ZeroClawService.log("LLM: models=[${modelsToTry.joinToString(", ")}] (selected=${entry.safeSelectedModels.size}, preferred=${entry.safePreferredModel})")
 
             // For offline models: summarize the user message only if "Optimize prompt" setting is ON
             val optimizePrompt = AppSettings.dataStore(context).data
