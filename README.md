@@ -395,6 +395,22 @@ cd ZeroClawAndroid
 
 ---
 
+## ⚠️ Work in Progress
+
+> **This project is actively being developed.** Some features may not work perfectly yet. I'm continuously fixing bugs and adding improvements.
+
+| Status | What it means |
+|--------|--------------|
+| ![](https://img.shields.io/badge/✅_Stable-4CAF50?style=flat-square) | Working and tested |
+| ![](https://img.shields.io/badge/🔧_In_Progress-FF9800?style=flat-square) | Being worked on — may have issues |
+| ![](https://img.shields.io/badge/🐛_Known_Bugs-F44336?style=flat-square) | Has known issues tracked in [bugs.md](bugs.md) |
+
+**Found a bug?** Check [bugs.md](bugs.md) first — it might already be tracked. If not, [open an issue](https://github.com/ashokvarmamatta/ZeroClawAndroid/issues) and I'll look into it.
+
+**Feature not working?** Some features depend on specific API keys or device capabilities. Check the in-app **Info Guide** (tap ℹ️ on any Settings section) for setup instructions.
+
+---
+
 ## 🤝 Contributing
 
 Contributions welcome! Fork the repo, create a feature branch, and open a Pull Request.
@@ -416,6 +432,8 @@ Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) by ZeroClaw Labs.
 <div align="center">
 
 **🦀 Built to run on your pocket supercomputer**
+
+Made by [**Ashok Varma Matta**](https://github.com/ashokvarmamatta) · [LinkedIn](https://www.linkedin.com/in/ashokvarmamatta) · [Portfolio](https://ashokvarmamatta.github.io/portfolio/) · [Email](mailto:mashokvarma1997@gmail.com)
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:00D4AA,100:7C5CFC&height=80&section=footer" width="100%"/>
 
