@@ -433,7 +433,24 @@ Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) by ZeroClaw Labs.
 
 **🦀 Built to run on your pocket supercomputer**
 
-Made by [**Ashok Varma Matta**](https://github.com/ashokvarmamatta) · [LinkedIn](https://www.linkedin.com/in/ashokvarmamatta) · [Portfolio](https://ashokvarmamatta.github.io/portfolio/) · [Email](mailto:mashokvarma1997@gmail.com)
+<br/>
+
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=14&pause=1000&color=00D4AA&center=true&vCenter=true&width=300&lines=Built+by+Ashok+Varma+Matta" alt="Author" />
+
+<a href="https://github.com/ashokvarmamatta">
+  <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" />
+</a>
+<a href="https://www.linkedin.com/in/ashokvarmamatta">
+  <img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn" />
+</a>
+<a href="https://ashokvarmamatta.github.io/portfolio/">
+  <img src="https://img.shields.io/badge/Portfolio-00D4AA?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Portfolio" />
+</a>
+<a href="mailto:mashokvarma1997@gmail.com">
+  <img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email" />
+</a>
+
+<br/><br/>
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:00D4AA,100:7C5CFC&height=80&section=footer" width="100%"/>
 
