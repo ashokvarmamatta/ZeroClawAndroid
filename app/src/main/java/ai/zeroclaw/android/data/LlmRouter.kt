@@ -150,6 +150,11 @@ class LlmRouter(private val context: Context) {
 
             for (model in modelsToTry) {
                 val modelName = model.ifBlank { "(default)" }
+                // Skip Gemma models for JSON mode — they don't support it and always return 400
+                if (jsonMode && model.contains("gemma", ignoreCase = true)) {
+                    ZeroClawService.log("RawGenerate: skipping $label/$modelName (Gemma doesn't support JSON mode)")
+                    continue
+                }
                 try {
                     ZeroClawService.log("RawGenerate: trying $label/$modelName (json=$jsonMode, maxTokens=$maxTokens)")
                     val result = dispatchToProviderRaw(prompt, entry, model = model, systemPrompt = rawSystemPrompt, jsonMode = jsonMode, maxTokens = maxTokens)
