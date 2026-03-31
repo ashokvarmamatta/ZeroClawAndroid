@@ -171,6 +171,92 @@ class LlmRouter(private val context: Context) {
     }
 
     /**
+     * Raw LLM generation WITH live web data — searches the web first, then generates.
+     * When web_search/web_fetch are enabled, extracts the topic from the prompt,
+     * searches the web for real-time data, fetches top results, and injects everything
+     * as context before calling the LLM with JSON mode.
+     *
+     * If web tools are not enabled, falls back to plain rawGenerate().
+     */
+    suspend fun rawGenerateWithTools(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 8192): String {
+        val toolSystem = ToolSystem.getInstance(context)
+        val enabled = toolSystem.enabledTools()
+        val hasWebSearch = enabled.any { it.name == "web_search" }
+        val hasWebFetch = enabled.any { it.name == "web_fetch" }
+
+        if (!hasWebSearch) {
+            ZeroClawService.log("RawGenerate+Tools: web_search not enabled, falling back to plain rawGenerate")
+            return rawGenerate(prompt, jsonMode, maxTokens)
+        }
+
+        // Extract a search query from the prompt — use the first quoted string or first line
+        val topicMatch = Regex("\"([^\"]{5,})\"").find(prompt)
+            ?: Regex("(?:about|for|on|titled?)[:.]?\\s*(.{5,})", RegexOption.IGNORE_CASE).find(prompt)
+        val searchQuery = topicMatch?.groupValues?.get(1)?.take(120)?.trim()
+            ?: prompt.lines().first().take(120).trim()
+
+        ZeroClawService.log("RawGenerate+Tools: searching web for \"$searchQuery\"")
+
+        // 1. Web Search — get top results
+        val searchResult = toolSystem.executeToolDirect(
+            ai.zeroclaw.android.tools.ToolCall("ws", "web_search", mapOf("query" to searchQuery))
+        )
+        val searchData = if (searchResult.success) searchResult.content else ""
+        ZeroClawService.log("RawGenerate+Tools: web_search returned ${searchData.length} chars")
+
+        // 2. Web Fetch — fetch top 2 result URLs for detailed content
+        var fetchedData = ""
+        if (hasWebFetch && searchData.isNotBlank()) {
+            val urls = Regex("https?://[^\\s)]+").findAll(searchData)
+                .map { it.value }
+                .filter { !it.contains("duckduckgo") }
+                .take(2)
+                .toList()
+
+            for (url in urls) {
+                ZeroClawService.log("RawGenerate+Tools: fetching $url")
+                val fetchResult = toolSystem.executeToolDirect(
+                    ai.zeroclaw.android.tools.ToolCall("wf", "web_fetch", mapOf("url" to url))
+                )
+                if (fetchResult.success && fetchResult.content.isNotBlank()) {
+                    fetchedData += "\n--- Data from $url ---\n${fetchResult.content.take(3000)}\n"
+                    ZeroClawService.log("RawGenerate+Tools: fetched ${fetchResult.content.length} chars from $url")
+                }
+            }
+        }
+
+        // 3. Build enriched prompt with live web data
+        val webContext = buildString {
+            if (searchData.isNotBlank()) {
+                append("\n\n=== LIVE WEB SEARCH RESULTS (searched just now — use this real-time data) ===\n")
+                append(searchData.take(4000))
+            }
+            if (fetchedData.isNotBlank()) {
+                append("\n\n=== LIVE WEB PAGE CONTENT (fetched just now — use this real-time data) ===\n")
+                append(fetchedData.take(6000))
+            }
+        }
+
+        val enrichedPrompt = if (webContext.isNotBlank()) {
+            "$prompt\n$webContext\n\nIMPORTANT: Use the LIVE web data above for accurate, current information. Do NOT use outdated training data."
+        } else {
+            prompt
+        }
+
+        ZeroClawService.log("RawGenerate+Tools: enriched prompt ${enrichedPrompt.length} chars (original ${prompt.length} + web ${webContext.length})")
+        return rawGenerate(enrichedPrompt, jsonMode, maxTokens)
+    }
+
+    /**
+     * Returns list of enabled tool names — used by /api/discover to tell
+     * external apps which tools are available.
+     */
+    suspend fun getEnabledToolNames(): List<String> {
+        val toolSystem = ToolSystem.getInstance(context)
+        return toolSystem.enabledTools().map { it.name }
+    }
+
+    /**
      * Raw dispatch — like dispatchToProvider but with no chat history and configurable generation params.
      */
     private suspend fun dispatchToProviderRaw(

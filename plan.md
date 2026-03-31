@@ -818,11 +818,12 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 
 ## 🌿 Branch Status (cleaned 2026-03-31)
 
-**Active branch:** `feat/curl-api-generator` — contains ALL work from Phases 1-169.
+**Active branch:** `feat/live-data-tools` (branched from `dev`)
 
 | Branch | Status | Purpose |
 |--------|--------|---------|
-| `feat/curl-api-generator` | **ACTIVE** | Main dev branch — Phases 1-169, agents, APIs, tools, playground |
+| `feat/live-data-tools` | **ACTIVE** | Phase 170 — web search/fetch in /api/generate |
+| `dev` | Main | All work from Phases 1-169 |
 | `master` | Release | Last stable release (Phase 15 + R8 fixes) |
 | `openclaw-toolbox` | Unmerged | OpenClaw phases 85-102 (alternative implementation) |
 | `openclaw-channels` | Unmerged | OpenClaw phases 103-109 |
@@ -831,6 +832,78 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 | `openclaw-infra` | Unmerged | OpenClaw phases 123-130 |
 
 **Deleted (2026-03-31):** 14 merged branches cleaned up — `agents-api-integration`, `agents-feature`, `ai-tools-screen`, `feat/offline-model-support`, `feat/per-model-testing`, `feat/smart-summarize-default-agents`, `feat/zeroclaw-features`, `feature/raw-generate-waterfall`, `fix/offline-summarizer-fallback`, `offline-websearch-fix`, `openclaw-config-ux`, `openclaw-nullclaw`, `tools-playground`, `update1`, `feat/addedzeroclawserver`. Also deleted broken Codex branch `codex/zeroclaw-api-metagen-fix`.
+
+---
+
+## Phase 170 — Live Data Tools: Web Search + Fetch in /api/generate
+
+> **Branch:** `feat/live-data-tools`
+> **Goal:** When web_search and web_fetch tools are enabled, the `/api/generate` endpoint should
+> automatically search the web for real-time data before generating the response. This makes
+> external apps (like Neural Forge) get live, current data instead of stale AI knowledge.
+
+### The Problem
+- `/api/generate` uses `rawGenerate()` which calls the LLM directly — no tools, no web search
+- `/api/chat` uses `call()` which has tools — but doesn't support JSON mode
+- External apps need BOTH: real-time data + structured JSON output
+
+### The Solution: Pre-Search Enrichment
+When `use_tools=true` is sent with `/api/generate`, ZeroClaw will:
+1. Check if `web_search` and `web_fetch` tools are enabled
+2. Extract the search topic from the prompt
+3. Run `web_search` to get top results for the topic
+4. Run `web_fetch` on the best URLs to get actual content
+5. Inject all fetched data as context into the prompt
+6. Call the LLM with JSON mode + enriched prompt
+7. Return JSON with real, current data
+
+### Implementation Tasks
+
+| # | Task | File | Status |
+|---|------|------|--------|
+| 1 | Add `use_tools` parameter to `/api/generate` endpoint | `WebChatServer.kt` | ⬜ PENDING |
+| 2 | Create `rawGenerateWithTools()` in LlmRouter | `LlmRouter.kt` | ⬜ PENDING |
+| 3 | Extract search topic from prompt (regex or first-line parse) | `LlmRouter.kt` | ⬜ PENDING |
+| 4 | Call `WebSearchTool.execute()` with extracted topic | `LlmRouter.kt` | ⬜ PENDING |
+| 5 | Call `WebFetchTool.execute()` on top 2-3 search result URLs | `LlmRouter.kt` | ⬜ PENDING |
+| 6 | Build enriched prompt: original prompt + "Here is real-time data from the web:\n{fetched content}" | `LlmRouter.kt` | ⬜ PENDING |
+| 7 | Call existing `rawGenerate()` with enriched prompt + JSON mode | `LlmRouter.kt` | ⬜ PENDING |
+| 8 | Add `/api/discover` response field: `"tools_available": ["web_search", "web_fetch"]` | `WebChatServer.kt` | ⬜ PENDING |
+| 9 | Test: send `use_tools=true` request, verify web search runs and data is current | Manual | ⬜ PENDING |
+
+### API Change
+
+**Before:**
+```json
+POST /api/generate
+{"prompt": "...", "json_mode": true, "max_tokens": 8192}
+```
+
+**After:**
+```json
+POST /api/generate
+{"prompt": "...", "json_mode": true, "max_tokens": 8192, "use_tools": true}
+```
+
+When `use_tools=true`:
+- Checks if web_search tool is enabled → searches the web for the topic
+- Checks if web_fetch tool is enabled → fetches top result pages
+- Injects fetched data into the prompt as context
+- LLM generates response using real data + JSON mode
+
+When `use_tools=false` or omitted → same behavior as before (raw LLM, no tools).
+
+### `/api/discover` Enhancement
+```json
+{
+  "service": "zeroclaw",
+  "version": "1.0",
+  "port": 8088,
+  "endpoints": [...],
+  "tools_available": ["web_search", "web_fetch"]  // NEW — only lists enabled tools
+}
+```
+External apps can check this to know if real-time data is available.
 
 ---
 

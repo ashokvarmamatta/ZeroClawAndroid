@@ -82,6 +82,8 @@ class WebChatServer(private val context: Context) {
 
             when {
                 requestLine.startsWith("GET /api/discover") -> {
+                    val toolNames = llmRouter.getEnabledToolNames()
+                    val toolsArray = org.json.JSONArray().also { arr -> toolNames.forEach { arr.put(it) } }
                     sendJson(out, JSONObject()
                         .put("service", "zeroclaw")
                         .put("version", "1.0")
@@ -89,6 +91,7 @@ class WebChatServer(private val context: Context) {
                         .put("endpoints", org.json.JSONArray()
                             .put("/api/chat").put("/api/generate").put("/api/discover")
                             .put("/v1/chat/completions").put("/v1/models"))
+                        .put("tools_available", toolsArray)
                     )
                 }
                 // OpenAI-compatible: GET /v1/models
@@ -156,14 +159,19 @@ class WebChatServer(private val context: Context) {
             val prompt = json.optString("prompt", json.optString("message", "")).trim()
             val jsonMode = json.optBoolean("json_mode", false)
             val maxTokens = json.optInt("max_tokens", 8192)
+            val useTools = json.optBoolean("use_tools", false)
 
             if (prompt.isBlank()) {
                 sendJson(out, JSONObject().put("error", "Empty prompt"))
                 return
             }
 
-            ZeroClawService.log("Generate: ${prompt.take(100)}… (json=$jsonMode, maxTokens=$maxTokens)")
-            val text = llmRouter.rawGenerate(prompt, jsonMode = jsonMode, maxTokens = maxTokens)
+            ZeroClawService.log("Generate: ${prompt.take(100)}… (json=$jsonMode, maxTokens=$maxTokens, tools=$useTools)")
+            val text = if (useTools) {
+                llmRouter.rawGenerateWithTools(prompt, jsonMode = jsonMode, maxTokens = maxTokens)
+            } else {
+                llmRouter.rawGenerate(prompt, jsonMode = jsonMode, maxTokens = maxTokens)
+            }
             ZeroClawService.log("Generate: response sent (${text.length} chars)")
 
             sendJson(out, JSONObject().put("text", text))
