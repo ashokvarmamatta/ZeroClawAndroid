@@ -15,6 +15,24 @@
 
 ---
 
+## Why This Project Exists
+
+This is a **personal project** built out of curiosity — to see how far I can push Android as a platform for running AI agents. It's not about writing every line from scratch. It's about **figuring out what's actually possible on a phone** and making it work:
+
+- **Can an Android foreground service reliably run an AI daemon 24/7?** Yes, with watchdog recovery, Doze awareness, and exponential backoff.
+- **Can a phone serve as an OpenAI-compatible API server?** Yes, on port 8088 with full tool pipeline.
+- **Can MediaPipe run LLMs offline on-device without crashing?** Yes, but you need Mutex serialization to prevent JNI concurrent access crashes — learned that the hard way.
+- **Can you route AI responses to 11 different messaging channels?** Yes, each with its own protocol quirks (Telegram long-polling, Discord Gateway, Slack Events API, Matrix federation, IRC sockets, etc.)
+- **Can autonomous agents scrape websites, call free APIs, detect changes, and push updates on a schedule?** Yes, with hash-based change detection and multi-channel delivery.
+
+Every feature started as a question like these. Some worked on the first try. Many didn't — the [bugs.md](bugs.md) file has the full history of real bugs found and fixed, from JNI crashes to garbage offline model replies to silent API fallback failures.
+
+I use Claude as a coding tool the same way I'd use Stack Overflow or documentation — to move faster on implementation so I can spend more time on **architecture decisions, debugging real device behavior, and figuring out what Android actually allows**. The interesting part of this project isn't the Kotlin syntax. It's deciding that agents should use direct API calls instead of web scraping, that tools should be disabled by default for security, that the LLM router should waterfall through providers on failure, and that the whole thing should work as a drop-in OpenAI replacement.
+
+This project has real bugs, real limitations, and is actively being worked on.
+
+---
+
 ## What is ZeroClaw?
 
 ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. Everything is **modular and opt-in** — you enable only the channels, tools, and features you need.
