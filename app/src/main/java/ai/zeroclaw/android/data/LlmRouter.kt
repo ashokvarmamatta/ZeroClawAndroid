@@ -619,13 +619,32 @@ class LlmRouter(private val context: Context) {
                         val ex = result.exceptionOrNull()
                         val msg = ex?.message ?: "unknown error"
 
-                        if (msg.contains("429") || msg.lowercase().contains("quota") ||
-                            msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded")) {
-                            ZeroClawService.log("LLM: ⚠ [$mode] ${entry.safeLabel}/\"$model\" rate-limited — trying next")
-                            lastRateLimitMsg = msg
-                        } else {
-                            ZeroClawService.log("LLM: ✗ [$mode] ${entry.safeLabel}/\"$model\" failed — $msg")
+                        // Friendly log messages the user can understand
+                        val friendlyMsg = when {
+                            msg.contains("429") || msg.lowercase().contains("quota") || msg.lowercase().contains("rate") || msg.lowercase().contains("exceeded") -> {
+                                lastRateLimitMsg = msg
+                                "⚠ Rate limit hit on $model — trying next model"
+                            }
+                            msg.contains("MALFORMED_FUNCTION_CALL") || msg.contains("UNEXPECTED_TOOL_CALL") ->
+                                "⚠ $model got confused by tool descriptions — retrying without tools"
+                            msg.contains("Developer instruction is not enabled") ->
+                                "⚠ $model doesn't support system prompts — trying next"
+                            msg.contains("JSON mode is not enabled") ->
+                                "⚠ $model doesn't support JSON mode — trying next"
+                            msg.contains("Empty response") || msg.contains("no parts") || msg.contains("no text") ->
+                                "⚠ $model returned empty response — trying next"
+                            msg.contains("safety") || msg.contains("SAFETY") ->
+                                "⚠ $model blocked response (safety filter) — trying next"
+                            msg.contains("401") || msg.contains("403") ->
+                                "✗ API key rejected by $model — check your key"
+                            msg.contains("404") ->
+                                "✗ Model $model not found — it may be deprecated or unavailable"
+                            msg.contains("timeout") || msg.contains("timed out") ->
+                                "⚠ $model timed out — trying next"
+                            else ->
+                                "✗ $model failed: ${msg.take(150)}"
                         }
+                        ZeroClawService.log("LLM: $friendlyMsg")
                     }
                 }
             }
@@ -2551,9 +2570,23 @@ class LlmRouter(private val context: Context) {
             .post(body.toRequestBody()).build()
         return withContext(Dispatchers.IO) {
             client.newCall(req).execute().use { resp ->
-                val json = JSONObject(resp.body?.string() ?: throw Exception("Empty body"))
+                val respBody = resp.body?.string() ?: throw Exception("Empty body")
+                val json = JSONObject(respBody)
                 if (!resp.isSuccessful) throw Exception("[${resp.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"}")
-                json.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
+                val choice = json.optJSONArray("choices")?.optJSONObject(0)
+                    ?: throw Exception("MALFORMED_FUNCTION_CALL: No choices in response. Raw: ${respBody.take(300)}")
+                val message = choice.optJSONObject("message")
+                    ?: throw Exception("MALFORMED_FUNCTION_CALL: No message in choice. Raw: ${respBody.take(300)}")
+                // OpenAI/OpenRouter may return tool_calls instead of content when confused by tool descriptions
+                val content = message.optString("content", "").trim()
+                if (content.isBlank()) {
+                    val hasToolCalls = message.has("tool_calls")
+                    if (hasToolCalls) {
+                        throw Exception("MALFORMED_FUNCTION_CALL: Model tried to call tools instead of responding. Retry without tool descriptions.")
+                    }
+                    throw Exception("Empty response from model (finish_reason=${choice.optString("finish_reason", "unknown")})")
+                }
+                content
             }
         }
     }
@@ -2576,9 +2609,25 @@ class LlmRouter(private val context: Context) {
             .addHeader("Content-Type","application/json").post(body.toRequestBody()).build()
         return withContext(Dispatchers.IO) {
             client.newCall(req).execute().use { resp ->
-                val json = JSONObject(resp.body?.string() ?: throw Exception("Empty body"))
+                val respBody = resp.body?.string() ?: throw Exception("Empty body")
+                val json = JSONObject(respBody)
                 if (!resp.isSuccessful) throw Exception("[${resp.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"}")
-                json.getJSONArray("content").getJSONObject(0).getString("text").trim()
+                val contentArr = json.optJSONArray("content")
+                    ?: throw Exception("Empty response from Claude (no content array)")
+                // Find first text block — Claude may return tool_use blocks if confused by tool descriptions
+                var textResult = ""
+                for (i in 0 until contentArr.length()) {
+                    val block = contentArr.getJSONObject(i)
+                    if (block.optString("type") == "text") {
+                        textResult = block.optString("text", "")
+                        if (textResult.isNotBlank()) break
+                    }
+                    if (block.optString("type") == "tool_use") {
+                        throw Exception("MALFORMED_FUNCTION_CALL: Claude tried to call tools instead of responding. Retry without tool descriptions.")
+                    }
+                }
+                if (textResult.isBlank()) throw Exception("Empty response from Claude (no text blocks)")
+                textResult.trim()
             }
         }
     }
