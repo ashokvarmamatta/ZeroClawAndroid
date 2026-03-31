@@ -514,7 +514,16 @@ class LlmRouter(private val context: Context) {
                 ZeroClawService.logDetail("System prompt (${effectiveSystemPrompt.length} chars): ${effectiveSystemPrompt.take(300)}…")
                 ZeroClawService.logDetail("User message sent: $messageForModel")
 
-                val result = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
+                var result: Result<String> = runCatching { dispatchToProvider(messageForModel, entry, chatId, model, effectiveSystemPrompt) }
+
+                // If model tried native function calling due to tool descriptions in prompt,
+                // retry without tool descriptions — send just the user message + base system prompt.
+                if (result.isFailure && result.exceptionOrNull()?.message?.contains("UNEXPECTED_TOOL_CALL") == true) {
+                    ZeroClawService.log("LLM: UNEXPECTED_TOOL_CALL — retrying without tool descriptions")
+                    val basePrompt = effectiveSystemPrompt.substringBefore("\n\nYou have access to the following tools").trim()
+                        .ifBlank { effectiveSystemPrompt }
+                    result = runCatching { dispatchToProvider(effectiveMessage, entry, chatId, model, basePrompt) }
+                }
 
                 when {
                     result.isSuccess -> {
@@ -2611,6 +2620,11 @@ class LlmRouter(private val context: Context) {
                 val candidate = candidates.optJSONObject(0)
                     ?: throw Exception("Empty candidates array")
                 val finishReason = candidate.optString("finishReason", "")
+                if (finishReason == "UNEXPECTED_TOOL_CALL") {
+                    // Model tried native function calling because it saw tool descriptions in prompt.
+                    // Retry handled by caller — throw specific error so call() can retry without tools.
+                    throw Exception("UNEXPECTED_TOOL_CALL: Model attempted native function calling. Retry without tool descriptions.")
+                }
                 val content = candidate.optJSONObject("content")
                     ?: throw Exception("No content in candidate (finishReason=$finishReason). Raw: ${respBody.take(300)}")
                 content.getJSONArray("parts").getJSONObject(0).getString("text").trim()
