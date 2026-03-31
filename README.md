@@ -2,66 +2,69 @@
 
 <img src="screenshots/app_icon.png" width="120" alt="ZeroClaw Icon" />
 
-# ZeroClaw Android
+# 🦀 ZeroClaw Android
 
-**A 24/7 AI agent daemon for Android — 11 messaging channels, 30 built-in AI tools (all opt-in), 25+ autonomous agent templates with 21 free API sources, interactive Tool Playground, and a modular architecture where you enable only what you need. Runs entirely on your phone.**
+### Your phone. Your AI. Always on.
 
-[![Android](https://img.shields.io/badge/Platform-Android%2026%2B-green?logo=android)](https://developer.android.com)
-[![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple?logo=kotlin)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-blue?logo=jetpack-compose)](https://developer.android.com/compose)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=18&pause=1000&color=00D4AA&center=true&vCenter=true&width=500&lines=11+Messaging+Channels;30+AI+Tools+(all+opt-in);25%2B+Agent+Templates;OpenAI-Compatible+API+Server;Offline+On-Device+AI;Built+with+Kotlin+%2B+Jetpack+Compose" alt="Typing SVG" />
+
+<br/>
+
+[![Android](https://img.shields.io/badge/📱_Android_8.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/🟣_Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Compose](https://img.shields.io/badge/🎨_Jetpack_Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/compose)
+[![License](https://img.shields.io/badge/📄_MIT_License-yellow?style=for-the-badge)](LICENSE)
 
 </div>
 
 ---
 
-## Why This Project Exists
+## 💡 Why This Project Exists
 
-This is a **personal project** built out of curiosity — to see how far I can push Android as a platform for running AI agents. It's not about writing every line from scratch. It's about **figuring out what's actually possible on a phone** and making it work:
+This is a **personal project** built out of curiosity — to see how far I can push Android as a platform for running AI agents.
 
-- **Can an Android foreground service reliably run an AI daemon 24/7?** Yes, with watchdog recovery, Doze awareness, and exponential backoff.
-- **Can a phone serve as an OpenAI-compatible API server?** Yes, on port 8088 with full tool pipeline.
-- **Can MediaPipe run LLMs offline on-device without crashing?** Yes, but you need Mutex serialization to prevent JNI concurrent access crashes — learned that the hard way.
-- **Can you route AI responses to 11 different messaging channels?** Yes, each with its own protocol quirks (Telegram long-polling, Discord Gateway, Slack Events API, Matrix federation, IRC sockets, etc.)
-- **Can autonomous agents scrape websites, call free APIs, detect changes, and push updates on a schedule?** Yes, with hash-based change detection and multi-channel delivery.
+> 🤔 **Can a phone run an AI service 24/7?** → Yes, with watchdog recovery and Doze awareness.
+>
+> 🤔 **Can it serve as an API server?** → Yes, on port 8088 — any OpenAI-compatible app can connect.
+>
+> 🤔 **Can it run AI offline?** → Yes, via MediaPipe — but JNI crashes needed Mutex serialization to fix.
+>
+> 🤔 **Can it talk to 11 different chat platforms?** → Yes, each with its own protocol quirks.
+>
+> 🤔 **Can agents auto-monitor websites and push updates?** → Yes, with change detection and scheduled delivery.
 
-Every feature started as a question like these. Some worked on the first try. Many didn't — the [bugs.md](bugs.md) file has the full history of real bugs found and fixed, from JNI crashes to garbage offline model replies to silent API fallback failures.
+Every feature started as a question like these. Many didn't work on the first try — the [bugs.md](bugs.md) has the full history.
 
-I use Claude as a coding tool the same way I'd use Stack Overflow or documentation — to move faster on implementation so I can spend more time on **architecture decisions, debugging real device behavior, and figuring out what Android actually allows**. The interesting part of this project isn't the Kotlin syntax. It's deciding that agents should use direct API calls instead of web scraping, that tools should be disabled by default for security, that the LLM router should waterfall through providers on failure, and that the whole thing should work as a drop-in OpenAI replacement.
-
-This project has real bugs, real limitations, and is actively being worked on.
-
----
-
-## What is ZeroClaw?
-
-ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. Everything is **modular and opt-in** — you enable only the channels, tools, and features you need.
-
-No cloud subscription. No always-on PC. Just your Android device.
-
-```
-You → Enable your channels (Telegram / Discord / Slack / WhatsApp / ...)
-              ↓
-    ZeroClaw Service (background daemon)
-              ↓
-    LLM Router → Multi-provider failover (Gemini, OpenAI, Anthropic, Ollama, OpenRouter)
-              ↓
-    Tool System (30 tools — all disabled by default, enable what you need)
-              ↓
-    Optional modules (enable in Settings):
-      ├── Agents: 25+ templates, 21 free APIs, scheduled web scraping + delivery
-      ├── Tool Playground: test any tool live before using it
-      ├── Advanced AI: multi-agent, delegate/spawn, workflows, hint routing
-      ├── Memory: vector search, semantic cache, MMR reranking
-      ├── Infrastructure: hooks, plugins, biometric lock, audit log, rate limiting
-      └── Integrations: Composio (1000+ apps), MCP servers, A2A protocol
-              ↓
-    Reply → your enabled channels
-```
+I use Claude as a coding tool the same way I'd use docs or Stack Overflow — to move faster on implementation so I can focus on **architecture, debugging real device behavior, and figuring out what Android actually allows**.
 
 ---
 
-## Screenshots
+## 🦀 What is ZeroClaw?
+
+An Android app that runs AI **in the background 24/7**. It connects to your chat apps, gives you 30 AI tools, and lets you set up agents that automatically monitor things and send you updates. **Everything is modular** — you turn on only what you want.
+
+```
+📱 You → Pick your chat apps (Telegram / Discord / Slack / WhatsApp / ...)
+                ↓
+   🔧 ZeroClaw Service (runs in background)
+                ↓
+   🤖 AI Router → picks the best AI (Gemini, OpenAI, Anthropic, Ollama...)
+                ↓
+   🧰 Your enabled tools (web search, translate, image gen, RSS...)
+                ↓
+   ⚡ Optional add-ons:
+       ├── 🕷️ Agents — auto-monitor websites & APIs, send you updates
+       ├── 🧪 Playground — test any tool before using it
+       ├── 🧠 Memory — AI remembers your conversations
+       ├── 🔒 Security — biometric lock, audit log, rate limits
+       └── 🔌 Integrations — Composio, MCP servers, A2A protocol
+                ↓
+   💬 Reply → your chat apps
+```
+
+---
+
+## 📸 Screenshots
 
 | Home | Settings | AI Configuration |
 |------|----------|------------------|
@@ -73,105 +76,144 @@ You → Enable your channels (Telegram / Discord / Slack / WhatsApp / ...)
 
 ---
 
-## Features
+## ✨ Features
 
-### Autonomous Agents
+### 🕷️ Autonomous Agents ![](https://img.shields.io/badge/25%2B_Templates-00D4AA?style=flat-square) ![](https://img.shields.io/badge/21_Free_APIs-4CAF50?style=flat-square) ![](https://img.shields.io/badge/Opt--In-blue?style=flat-square)
 
-- **25+ ready-made agent templates** — crypto prices, gold tracker, stock market, weather, news, sports scores, GitHub trending, YouTube trending, IPO tracker, earthquake alerts, and more
-- **21 free API data sources** — CoinGecko, AlphaVantage, Metals.live, wttr.in, Football-Data.org, USGS, MFAPI.in, etc. No API keys needed for most
-- **Web scraping agents** — monitor any URL on a schedule, AI extracts what you want, pushes to your channel
-- **Delivery channels:** Telegram, Discord, Slack, WhatsApp, Email
-- **Flexible intervals:** 5 min to 24 h (or custom)
-- **AI extraction** — optional prompt to extract specific data (e.g. "top 5 headlines")
-- **Change detection** — only pushes when content actually changed
-- **Run Now** — instant test from the agent card
-- **Test Fetch** — preview URL content before saving
-- **Multi-channel delivery** — send to multiple channels with per-channel chat IDs
-- **API-first agents** — direct API calls (no web scraping needed) for faster, more reliable data
+> Set up agents that monitor things for you and send updates to your chat apps automatically.
 
-### Tool Playground
+| What | Details |
+|------|---------|
+| 📦 **25+ templates** | Crypto, gold, stocks, weather, news, sports, GitHub trending, YouTube, IPO, earthquakes... |
+| ⚡ **21 free APIs** | CoinGecko, AlphaVantage, Metals.live, wttr.in, USGS, and more — no API keys needed |
+| 🕸️ **Web scraping** | Monitor any URL, AI extracts what you want |
+| 📢 **Delivery** | Telegram, Discord, Slack, WhatsApp, Email |
+| ⏱️ **Schedule** | Every 5 min to 24 hours |
+| 🔄 **Smart updates** | Only sends when content actually changes |
+| ▶️ **Run Now** | Test any agent instantly |
+| 🔗 **Multi-channel** | Same agent can push to multiple chat apps |
 
-- **Interactive tool testing** — test any of the 30 tools individually before using them in real conversations
-- Per-tool enable/disable toggles, model selector, category grid
-- Bottom sheet form with custom arguments per tool
-- Image picker for ImageAnalysis testing
-- All test runs logged to Home Screen activity feed
+### 🧪 Tool Playground ![](https://img.shields.io/badge/Interactive-FF6B6B?style=flat-square) ![](https://img.shields.io/badge/Live_Testing-orange?style=flat-square)
 
-### 11 Messaging Channels
+> Test any tool live before using it in real conversations.
 
-All channels are opt-in — enable and configure only what you use:
+- 🎛️ Enable/disable each tool individually
+- 🧩 Pick which AI model to use for testing
+- 📋 All test results logged on Home Screen
 
-| Channel | How |
-|---------|-----|
-| **Telegram** | Bot token + long polling. Group chat support with @mention |
-| **Discord** | Bot token + Gateway. Server channel support |
-| **Slack** | Bot token + Events API. Channel posting |
-| **WhatsApp** | Twilio API |
-| **Matrix** | Federated protocol client |
-| **IRC** | TCP socket bot |
-| **Microsoft Teams** | Bot Framework |
-| **Twitch** | Chat bot with !command support |
-| **LINE** | Messaging API |
-| **Signal** | Signal bridge |
-| **WebChat** | Built-in browser chat (voice input + TTS playback) |
+### 💬 11 Messaging Channels ![](https://img.shields.io/badge/11_Channels-26A5E4?style=flat-square) ![](https://img.shields.io/badge/All_Opt--In-blue?style=flat-square) ![](https://img.shields.io/badge/Group_Chat_Support-9C27B0?style=flat-square)
 
-### 30 AI Tools (all disabled by default)
+> All opt-in — enable only what you use.
 
-Enable only what you need in Settings → AI Tools:
+| | Channel | | Channel |
+|---|---------|---|---------|
+| ✈️ | **Telegram** (+ groups) | 🎮 | **Discord** (+ servers) |
+| 💼 | **Slack** (+ channels) | 💬 | **WhatsApp** (Twilio) |
+| 🔗 | **Matrix** (federated) | 💻 | **IRC** (TCP socket) |
+| 🏢 | **Microsoft Teams** | 🎬 | **Twitch** (!commands) |
+| 🟢 | **LINE** | 📡 | **Signal** (bridge) |
+| 🌐 | **WebChat** (voice + TTS) | | |
 
-**Core (10):** Web Search (DuckDuckGo), Web Fetch, Memory (vector-backed), PDF Reader, Image Analysis, Cron/Scheduled Tasks, Status/Diagnostics, GitHub, Notion, Email
+### 🧰 30 AI Tools ![](https://img.shields.io/badge/30_Tools-7F52FF?style=flat-square) ![](https://img.shields.io/badge/All_Disabled_by_Default-gray?style=flat-square) ![](https://img.shields.io/badge/Enable_What_You_Need-00D4AA?style=flat-square)
 
-**Extended (14):** Summarize, Translate (50+ languages), ImageGen (Pollinations + DALL-E), SpeechToText (Whisper), TextToSpeech (Android TTS), Calendar, Contacts, Location/Geocoding, Calculator, RSS, QR Code, FileManager, Clipboard, Bookmark
+<table>
+<tr>
+<td>
 
-**Advanced (6):** ComposioTool (1000+ app integrations), DelegateTool (named agent delegation), SpawnTool (async background agents), MessageTool (proactive messaging), McpClient (MCP server tools), PushoverTool (push notifications)
+**🔵 Core (10)**
+- 🔍 Web Search
+- 🌐 Web Fetch
+- 🧠 Memory
+- 📄 PDF Reader
+- 👁️ Image Analysis
+- ⏰ Cron Tasks
+- 📊 Status
+- 🐙 GitHub
+- 📝 Notion
+- ✉️ Email
 
-### Multi-Provider LLM Support
+</td>
+<td>
 
-| Provider | Notes |
-|----------|-------|
-| **Google Gemini** | Streaming, Google Search grounding, model picker |
-| **OpenAI** | GPT-4o, o1, o3-mini; Whisper; DALL-E; embeddings |
-| **Anthropic Claude** | Extended thinking support |
-| **OpenRouter** | 400+ models from all providers |
-| **Ollama** | Local models on device |
-| **Offline** | MediaPipe `.bin` models, no internet needed |
-| **Custom endpoint** | Any OpenAI-compatible API (Modal, LiteLLM, vLLM, etc.) |
+**🟢 Extended (14)**
+- 📝 Summarize
+- 🌍 Translate (50+ langs)
+- 🎨 Image Gen
+- 🎤 Speech-to-Text
+- 🔊 Text-to-Speech
+- 📅 Calendar
+- 👤 Contacts
+- 📍 Location
+- 🔢 Calculator
+- 📰 RSS Feed
+- 📱 QR Code
+- 📁 File Manager
+- 📋 Clipboard
+- 🔖 Bookmark
 
-- **Unlimited API keys** with priority reordering and automatic failover
-- **cURL import** — paste a cURL command to add a key
-- **Live key testing** + Gemini model picker with "Check All Models"
-- **Per-key usage stats** — call count, token usage, success rate, average latency
-- **Hint-based routing** — prefix messages with `hint:reasoning`, `hint:vision`, `hint:fast`, `hint:code`, `hint:creative`, `hint:long` to route to the best provider
+</td>
+<td>
 
-### API Server (Port 8088)
+**🟣 Advanced (6)**
+- 🔌 Composio (1000+ apps)
+- 🤝 Delegate Tool
+- 🚀 Spawn Tool
+- 📨 Message Tool
+- 🔧 MCP Client
+- 🔔 Pushover
 
-ZeroClaw exposes an HTTP API that any app can connect to — chat, tools, memory, everything you've enabled.
+</td>
+</tr>
+</table>
 
-**Quick Connect — Any OpenAI-compatible app:**
+### 🤖 Multi-Provider AI Support ![](https://img.shields.io/badge/7_Providers-412991?style=flat-square) ![](https://img.shields.io/badge/Auto_Failover-4CAF50?style=flat-square) ![](https://img.shields.io/badge/Unlimited_Keys-FF9800?style=flat-square)
+
+> Add unlimited API keys. If one fails, it automatically tries the next.
+
+| Provider | What you get |
+|----------|-------------|
+| 🔵 **Google Gemini** | Streaming, search grounding, model picker |
+| 🟢 **OpenAI** | GPT-4o, o1, o3-mini, Whisper, DALL-E |
+| 🟠 **Anthropic** | Claude with extended thinking |
+| 🌐 **OpenRouter** | 400+ models from all providers |
+| 🏠 **Ollama** | Run local models on your device |
+| 📴 **Offline** | MediaPipe models — no internet needed |
+| ⚙️ **Custom** | Any OpenAI-compatible API endpoint |
+
+- 🔑 **Unlimited API keys** with priority ordering
+- 📋 **cURL import** — paste a cURL to add a key
+- 🧪 **Test any key** with one tap
+- 📊 **Usage stats** per key
+- 🎯 **Smart routing** — use `hint:reasoning`, `hint:fast`, `hint:code` etc. to pick the best AI
+
+### 🌐 API Server ![](https://img.shields.io/badge/Port_8088-009688?style=flat-square) ![](https://img.shields.io/badge/OpenAI_Compatible-412991?style=flat-square) ![](https://img.shields.io/badge/Zero_Code_Changes-00D4AA?style=flat-square)
+
+> Any app that works with OpenAI can connect to ZeroClaw with zero code changes.
 
 | Setting | Value |
 |---------|-------|
-| **Base URL** | `http://<DEVICE_IP>:8088/v1` |
-| **API Key** | `zc-no-key-needed` (any non-empty string) |
-| **Model** | `zeroclaw` |
+| 🔗 **Base URL** | `http://<your-phone-ip>:8088/v1` |
+| 🔑 **API Key** | `zc-no-key-needed` |
+| 🤖 **Model** | `zeroclaw` |
 
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/v1/chat/completions` | OpenAI-compatible — full AI pipeline with tools, memory, thinking mode |
-| `GET` | `/v1/models` | Available models |
-| `POST` | `/api/chat` | Simple chat with session memory |
-| `POST` | `/api/generate` | Raw LLM generation (no tools, no history). Supports `json_mode` |
-| `GET` | `/api/discover` | Service discovery — version, port, endpoints |
-| `GET` | `/` or `/chat` | Built-in web chat UI |
-
-**Works with:** Continue.dev, Cursor, Open WebUI, LangChain, LlamaIndex, AutoGen, CrewAI, Aider, any OpenAI SDK app.
-
-**Generate cURL from the app:** Home Screen → Live Logs → Server Address → Generate cURL.
+**Works with:** Continue.dev, Cursor, Open WebUI, LangChain, AutoGen, CrewAI, Aider, and any OpenAI SDK app.
 
 <details>
-<summary>Code examples (Python, JavaScript)</summary>
+<summary>📡 All Endpoints</summary>
+
+| Method | Endpoint | What it does |
+|--------|----------|-------------|
+| `POST` | `/v1/chat/completions` | 🤖 Full AI pipeline — tools, memory, thinking mode |
+| `GET` | `/v1/models` | 📋 List available models |
+| `POST` | `/api/chat` | 💬 Simple chat with session memory |
+| `POST` | `/api/generate` | ⚡ Raw AI generation (no tools). Supports `json_mode` |
+| `GET` | `/api/discover` | 🔍 Service discovery |
+| `GET` | `/` or `/chat` | 🌐 Web chat UI in browser |
+
+</details>
+
+<details>
+<summary>💻 Code Examples (Python, JavaScript)</summary>
 
 ```python
 from openai import OpenAI
@@ -183,9 +225,7 @@ client = OpenAI(
 
 response = client.chat.completions.create(
     model="zeroclaw",
-    messages=[
-        {"role": "user", "content": "Search the web for today's top tech news"}
-    ]
+    messages=[{"role": "user", "content": "Search the web for today's top tech news"}]
 )
 print(response.choices[0].message.content)
 ```
@@ -207,191 +247,176 @@ console.log(response.choices[0].message.content);
 
 </details>
 
-### Memory & RAG
+### 🧠 Memory & Smart Search ![](https://img.shields.io/badge/Vector_Search-E91E63?style=flat-square) ![](https://img.shields.io/badge/Auto_Cleanup-FF9800?style=flat-square) ![](https://img.shields.io/badge/Response_Cache-00BCD4?style=flat-square)
 
-- **VectorMemory** — embedding-based semantic memory (OpenAI or local TF-IDF fallback)
-- **Hybrid search** — BM25 + cosine similarity fused with Reciprocal Rank Fusion
-- **MMR reranking** — diverse, non-repetitive results via Maximal Marginal Relevance
-- **Adaptive retrieval** — auto-selects keyword, vector, or hybrid search based on query type
-- **Semantic cache** — avoids re-calling LLM for similar questions (80% cosine threshold, 30min TTL)
-- **Memory hygiene** — auto-archives old memories (7d), purges archived (30d), pinned memories are permanent
-- **Session tracking** — per-session history with automatic summarization
+| Feature | What it does |
+|---------|-------------|
+| 💾 **Vector Memory** | AI remembers your conversations using embeddings |
+| 🔎 **Smart Search** | Combines keyword + meaning-based search for best results |
+| 🎯 **Diverse Results** | Filters out repetitive answers automatically |
+| ⚡ **Response Cache** | Skips AI call if a similar question was asked recently |
+| 🧹 **Auto Cleanup** | Archives old memories (7d), deletes archived (30d) |
+| 📝 **Session Tracking** | Per-session history with auto-summarization |
 
-### Advanced AI
+### 🤖 Advanced AI ![](https://img.shields.io/badge/Multi--Agent-9C27B0?style=flat-square) ![](https://img.shields.io/badge/Workflows-FF5722?style=flat-square) ![](https://img.shields.io/badge/Thinking_Mode-2196F3?style=flat-square)
 
-- **Multi-agent orchestration** — pipeline modes: linear, fan-out, fan-in, conditional
-- **Agent profiles** — named personas (coder, analyst, creative, tutor) with per-profile tool/model config
-- **Delegate & Spawn** — delegate to named agents (wait for result) or spawn background agents (fire-and-forget)
-- **Workflow engine** — multi-step pipelines with LLM calls, tool calls, and conditional logic
-- **Thinking mode** — extended reasoning (Claude extended thinking, OpenAI o1/o3)
-- **Agent identity (AIEOS)** — MBTI personality, OCEAN traits, catchphrases, communication style
-- **Tool loop detection** — infinite loop prevention with auto-recovery
-- **Conversation summarizer** — automatic context compression
+| Feature | What it does |
+|---------|-------------|
+| 👥 **Multi-Agent** | Multiple AI agents working together in a pipeline |
+| 🎭 **Agent Profiles** | Named personas (coder, analyst, creative, tutor) |
+| 🤝 **Delegate & Spawn** | Hand off tasks to other agents or run them in background |
+| 📋 **Workflows** | Multi-step pipelines with conditions |
+| 💭 **Thinking Mode** | Extended reasoning (Claude, OpenAI o1/o3) |
+| 🛡️ **Loop Detection** | Prevents AI from getting stuck in infinite loops |
 
-### Infrastructure
+### 🔒 Infrastructure ![](https://img.shields.io/badge/Security-F44336?style=flat-square) ![](https://img.shields.io/badge/Plugins-795548?style=flat-square) ![](https://img.shields.io/badge/Auto--Recovery-4CAF50?style=flat-square)
 
-- **Hooks system** — 8 hook points (before/after tool call, before/after LLM call, message received/sending, session start/end)
-- **Plugin system** — installable .zip plugin packages with manifest, tool definitions, and hooks
-- **Biometric lock** — fingerprint/face authentication guard
-- **Audit log** — tamper-evident JSONL log of every tool execution with hash chain
-- **Rate limiting** — per-user and per-channel message rate limits with admin exemption
-- **Approval system** — human-in-the-loop approval for dangerous tool actions (file write, email send, smart home)
-- **Auto-recovery** — watchdog, crash reporter, circuit breaker, dead-letter queue
-- **Device pairing** — multi-device mDNS discovery + encrypted config sync
+| Feature | What it does |
+|---------|-------------|
+| 🪝 **Hooks** | Run custom logic before/after any AI action |
+| 🔌 **Plugins** | Install .zip plugin packages to add new features |
+| 🔐 **Biometric Lock** | Fingerprint/face unlock to protect the app |
+| 📜 **Audit Log** | Logs every tool action with tamper detection |
+| ⏱️ **Rate Limits** | Control how many messages each user can send |
+| ✅ **Approval System** | Require your OK before dangerous actions run |
+| 🔄 **Auto-Recovery** | Watchdog that restarts if something crashes |
+| 📱 **Device Sync** | Pair multiple devices and sync settings |
 
-### Configuration & UX
+### 🎨 Configuration & UX ![](https://img.shields.io/badge/10%2B_Themes-E91E63?style=flat-square) ![](https://img.shields.io/badge/Encrypted_Backup-FF9800?style=flat-square) ![](https://img.shields.io/badge/Home_Widget-3DDC84?style=flat-square)
 
-- **Custom themes** — 10+ Material You palettes, dark/light/system, Android 12+ dynamic color
-- **Export/import config** — AES-256 encrypted full backup (keys, channels, prompts, agents, settings)
-- **Per-channel system prompts** — prompt editor with variables, syntax highlighting, template gallery
-- **Usage dashboard** — daily/weekly charts, top users, most-used tools, token cost estimation
-- **Conversation labels** — colored tags with auto-label rules and cross-channel filter
-- **Home screen widget** — service status, channel count, quick start/stop
-- **Voice input** — WebChat mic input + TTS playback + optional wake word ("Hey ZeroClaw")
-- **Group chat support** — Telegram/Discord/Slack groups with @mention, admin commands, per-group prompts
-- **Rich notifications** — reply from notification shade without opening the app
-- **Info guide** — every Settings section has an info button linking to a plain-language explanation
+| Feature | What it does |
+|---------|-------------|
+| 🎨 **Themes** | 10+ color palettes, dark/light/system mode |
+| 💾 **Backup/Restore** | Export everything encrypted, restore on new device |
+| 📝 **Custom Prompts** | Different AI personality per chat channel |
+| 📊 **Usage Dashboard** | Charts showing AI usage, costs, top tools |
+| 🏷️ **Labels** | Tag conversations with colors, auto-label by keywords |
+| 📱 **Home Widget** | Quick status + start/stop from your home screen |
+| 🎙️ **Voice Input** | Talk to AI in WebChat, hear responses read aloud |
+| 👥 **Group Chats** | Works in Telegram/Discord/Slack groups with @mention |
+| 🔔 **Smart Notifications** | Reply from notification shade without opening app |
 
-### Integrations
+### 🔌 Integrations ![](https://img.shields.io/badge/1000%2B_Apps-00BCD4?style=flat-square) ![](https://img.shields.io/badge/MCP_Protocol-795548?style=flat-square) ![](https://img.shields.io/badge/All_Disabled_by_Default-gray?style=flat-square)
 
-- **Composio** — 1000+ OAuth app integrations (GitHub, Gmail, Jira, Notion, Salesforce, etc.) via Composio API. Disabled by default
-- **MCP Client** — connect to any MCP server and auto-discover its tools. Disabled by default
-- **A2A Server** — Google Agent-to-Agent protocol. Other AI agents can discover and delegate tasks to ZeroClaw. Disabled by default
-- **Pushover** — push notifications to iOS/Android/desktop. Disabled by default
+| Integration | What it does |
+|-------------|-------------|
+| 🔗 **Composio** | Connect to 1000+ apps (GitHub, Gmail, Jira, Notion...) |
+| 🔧 **MCP Client** | Connect to any MCP server and use its tools |
+| 🤝 **A2A Protocol** | Other AI agents can discover and talk to ZeroClaw |
+| 🔔 **Pushover** | Send push notifications to any device |
 
-### Offline Intelligence
+> 💡 All integrations are **disabled by default** — enable only what you need.
 
-- **MediaPipe on-device models** — run AI with zero internet
-- **Smart summarizer** — detects refusal patterns from small models and falls back to direct data formatting
-- **Garbage reply detection** — catches hallucinated URLs and irrelevant responses, triggers web data fetch instead
-- **JNI crash prevention** — Mutex serialization prevents concurrent model access crashes
+### 📴 Offline AI ![](https://img.shields.io/badge/No_Internet_Needed-4CAF50?style=flat-square) ![](https://img.shields.io/badge/MediaPipe-FF6F00?style=flat-square) ![](https://img.shields.io/badge/Crash_Safe-F44336?style=flat-square)
+
+| Feature | What it does |
+|---------|-------------|
+| 🧠 **On-Device Models** | Run AI with zero internet via MediaPipe |
+| 🔧 **Smart Fallback** | Detects bad offline replies and retries with web data |
+| 🛡️ **Crash Prevention** | Prevents JNI crashes when multiple things use the model |
 
 ---
 
-## Architecture
+## 🏗️ Architecture
+
+<details>
+<summary>📂 Project Structure</summary>
 
 ```
 app/src/main/java/ai/zeroclaw/android/
 │
-├── ui/                  # Jetpack Compose screens
-│   ├── HomeScreen, AgentsScreen, AgentCreateSheet
-│   ├── ToolPlaygroundScreen, ToolTestSheet, AiToolsScreen
-│   ├── ApiKeysScreen, SettingsScreen, InfoScreen
-│   └── theme/ThemeManager
-│
-├── agents/              # Autonomous agent system
-│   ├── AgentConfig, AgentManager, AgentTemplates
-│   ├── WebScraperAgent
-│   └── api/             # 21 free API data sources
-│
-├── tools/               # 30 AI tools
-│   └── ToolSystem + individual tool files
-│
-├── data/                # LLM routing, keys, settings
-│   ├── LlmRouter, LlmKeyManager, ProviderRouter
-│   ├── OfflineModelManager, ThemeManager
-│   └── Room databases (messages, vectors, sessions, usage, labels)
-│
-├── ai/                  # AI orchestration
-│   ├── AgentIdentity, SystemPromptManager
-│   ├── MultiAgent, AgentProfiles, WorkflowEngine
-│   └── ThinkingMode, ConversationSummarizer
-│
-├── memory/              # Vector memory & RAG
-│   ├── VectorMemory, HybridSearch, MmrReranker
-│   ├── SemanticCache, MemoryHygiene
-│   └── SessionManager, QueryExpansion
-│
-├── infra/               # Platform infrastructure
-│   ├── HooksSystem, PluginSystem, BiometricLock
-│   ├── AuditLog, RateLimiting, ApprovalSystem
-│   ├── McpClient, A2AServer, AutoRecovery
-│   └── DevicePairing
-│
-├── channels/            # 11 messaging channels
-│   ├── telegram/, discord/, slack/, whatsapp/
-│   ├── matrix/, irc/, signal/, teams/
-│   ├── twitch/, line/, webchat/
-│
-├── service/
-│   ├── ZeroClawService (foreground daemon)
-│   └── BootReceiver
-│
-└── webchat/
-    └── WebChatServer (HTTP API on port 8088)
+├── 📱 ui/                  → Screens (Home, Agents, Playground, Settings...)
+├── 🕷️ agents/              → Agent system + 21 free API sources
+├── 🧰 tools/               → 30 AI tools
+├── 🤖 data/                → LLM routing, API keys, settings
+├── 🧠 ai/                  → Multi-agent, workflows, thinking mode
+├── 💾 memory/              → Vector search, cache, session tracking
+├── 🔒 infra/               → Hooks, plugins, security, recovery
+├── 💬 channels/            → 11 messaging channel implementations
+├── ⚙️ service/             → Background daemon + boot receiver
+└── 🌐 webchat/             → HTTP API server (port 8088)
 ```
+
+</details>
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
-### Prerequisites
-- Android Studio Hedgehog or newer
-- Android device or emulator running **Android 8.0 (API 26)+**
-- At least one LLM API key (OpenAI, Gemini, Anthropic, etc.)
+### What You Need
+- 📱 Android 8.0+ device (or emulator)
+- 🔧 Android Studio
+- 🔑 At least one AI API key (Gemini, OpenAI, etc.)
 
 ### Build & Run
 
 ```bash
 git clone https://github.com/ashokvarmamatta/ZeroClawAndroid.git
 cd ZeroClawAndroid
-# Open in Android Studio → File → Open → ZeroClawAndroid
-# Wait for Gradle sync, then click Run
+# Open in Android Studio → Run
 ```
 
 ### First-Time Setup
 
-1. Tap **info** on the home screen for the full setup walkthrough
-2. Go to **Settings → Manage API Keys** → **+ Add Online Key**
-3. Add your LLM key, tap **Test Key**, then **Check All Models**
-4. Select which models to use
-5. Add channel credentials (Telegram token, Slack token, etc.)
-6. Enable any tools you want in Settings → AI Tools
-7. Tap **Start** — the service begins running
+1. 📖 Tap **info** on home screen for the setup guide
+2. 🔑 Go to **Settings → Manage API Keys** → add your key
+3. 🧪 Tap **Test Key** → **Check All Models**
+4. 💬 Add your chat app tokens (Telegram, Slack, etc.)
+5. 🧰 Enable tools you want in **Settings → AI Tools**
+6. ▶️ Tap **Start** — done!
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
+
+<p>
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white" />
+  <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white" />
+  <img src="https://img.shields.io/badge/Material_3-00897B?style=flat-square&logo=materialdesign&logoColor=white" />
+  <img src="https://img.shields.io/badge/Room_DB-003B57?style=flat-square&logo=sqlite&logoColor=white" />
+  <img src="https://img.shields.io/badge/OkHttp-009688?style=flat-square&logo=square&logoColor=white" />
+  <img src="https://img.shields.io/badge/MediaPipe-FF6F00?style=flat-square&logo=tensorflow&logoColor=white" />
+  <img src="https://img.shields.io/badge/WorkManager-3DDC84?style=flat-square&logo=android&logoColor=white" />
+  <img src="https://img.shields.io/badge/Coroutines-7F52FF?style=flat-square&logo=kotlin&logoColor=white" />
+</p>
 
 | Layer | Technology |
 |---|---|
-| Language | Kotlin |
-| UI | Jetpack Compose + Material Design 3 + Dynamic Color |
-| Background | Android Foreground Service + WorkManager |
-| HTTP | OkHttp + Retrofit + SSE streaming |
-| Storage | Room + DataStore |
-| Vector Search | BM25 + cosine similarity + RRF (on-device) |
-| Embeddings | OpenAI `text-embedding-3-small` / local TF-IDF fallback |
-| Security | BiometricPrompt + AES-256-GCM |
-| Offline AI | MediaPipe LlmInference |
-| Image Gen | Pollinations.ai (free) / DALL-E 3 |
-| Speech | OpenAI Whisper (STT) + Android TTS |
-| Serialization | Gson |
-| Navigation | Jetpack Navigation Compose |
+| 🟣 Language | Kotlin |
+| 🎨 UI | Jetpack Compose + Material Design 3 |
+| ⚙️ Background | Foreground Service + WorkManager |
+| 🌐 HTTP | OkHttp + Retrofit + SSE streaming |
+| 💾 Storage | Room + DataStore |
+| 🔍 Search | BM25 + cosine similarity + RRF |
+| 🔐 Security | BiometricPrompt + AES-256-GCM |
+| 🧠 Offline AI | MediaPipe LlmInference |
+| 🎨 Image Gen | Pollinations.ai / DALL-E 3 |
+| 🎤 Speech | Whisper (STT) + Android TTS |
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome! Fork the repo, create a feature branch, and open a Pull Request.
-
----
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+Contributions welcome! Fork the repo, create a feature branch, and open a Pull Request.
 
 ---
 
-## Acknowledgements
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgements
 
 Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) by ZeroClaw Labs. Advanced features inspired by [NullClaw](https://github.com/nullclaw/nullclaw) and [OpenClaw](https://github.com/openclaw/openclaw).
-
-### Libraries & Services
-Telegram Bot API, Twilio, Discord Gateway, Slack API, Matrix Spec, Microsoft Bot Framework, Twitch TMI, LINE Messaging API, OpenAI API, Google Gemini API, Anthropic API, OpenRouter, Ollama, MediaPipe, Pollinations.ai, Brave Search API, MyMemory Translation, Composio, Pushover, Model Context Protocol, Cloudflare Tunnel, Android BiometricPrompt, WorkManager, Jetpack Compose, Material Design 3, Room, DataStore, OkHttp, Retrofit.
 
 ---
 
 <div align="center">
-Made with care — built to run on your pocket supercomputer
+
+**🦀 Built to run on your pocket supercomputer**
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:00D4AA,100:7C5CFC&height=80&section=footer" width="100%"/>
+
 </div>
