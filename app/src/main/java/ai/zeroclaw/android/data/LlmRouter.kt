@@ -2637,7 +2637,21 @@ class LlmRouter(private val context: Context) {
                 }
                 val content = candidate.optJSONObject("content")
                     ?: throw Exception("No content in candidate (finishReason=$finishReason). Raw: ${respBody.take(300)}")
-                content.getJSONArray("parts").getJSONObject(0).getString("text").trim()
+                val parts = content.optJSONArray("parts")
+                if (parts == null || parts.length() == 0) {
+                    throw Exception("Empty response from model (finishReason=$finishReason, no parts). This may be a safety filter or the model had nothing to say. Raw: ${respBody.take(300)}")
+                }
+                // Try to find a text part (skip function call parts, thought parts, etc.)
+                var textResult = ""
+                for (i in 0 until parts.length()) {
+                    val part = parts.getJSONObject(i)
+                    val text = part.optString("text", "")
+                    if (text.isNotBlank()) { textResult = text; break }
+                }
+                if (textResult.isBlank()) {
+                    throw Exception("No text in response parts (finishReason=$finishReason). Parts may contain non-text data. Raw: ${respBody.take(300)}")
+                }
+                textResult.trim()
             }
         }
     }
