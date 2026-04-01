@@ -243,6 +243,11 @@
 | **167** | **Persist fetch type & format — AgentConfig gets fetchType (http/rss/webview) and formatPreview fields. Edit mode pre-fills all AI Smart Extract state. WebScraperAgent uses saved fetchType for fetching. Agent cards show fetch type & AI Format badges** | ✅ DONE |
 | **168** | **JS-rendered page detection — AI Analyze detects when HTTP fetch returns empty values (SPAs like groww.in) and sets found=false with suggest_webview. Auto-switches to WebView. Editable format preview (OutlinedTextField). "Show live data" button lists all extractable values. "Copy all" button for raw fetched data. WebView warning panel** | ✅ DONE |
 | **169** | **Bottom sheet scroll fix — all ModalBottomSheets (AgentCreateSheet, AgentTemplateGallery, ToolTestSheet, ModelSelector) set dragHandle=null to prevent dismiss-on-scroll conflict. Added explicit close (X) buttons to all sheet headers instead** | ✅ DONE |
+| | | |
+| | **── AGENT DELIVERY FIXES (Phase 170+) ──** | |
+| **170** | **Agent delivery to all 10 channels — sendProactive() expanded from 3 channels (telegram/discord/slack) to all 10 (+ whatsapp, signal, matrix, irc, teams, twitch, line). Added sendProactiveMessage() to all channel managers. AgentCreateSheet shows all 10 channels as delivery targets** | ✅ DONE |
+| **171** | **Agent extraction format guide — extractWithLlm() now includes saved formatPreview as REFERENCE FORMAT so LLM matches fields by meaning and finds correct values instead of guessing. Fixes wrong values in Telegram delivery** | ✅ DONE |
+| **172** | **SDK update — compileSdk and targetSdk updated from 34 to 36. Intent actions use ${applicationId} for side-by-side install safety. Enabled BuildConfig generation** | ✅ DONE |
 
 ---
 
