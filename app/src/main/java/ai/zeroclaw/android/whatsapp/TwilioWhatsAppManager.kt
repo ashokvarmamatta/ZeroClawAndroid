@@ -107,6 +107,20 @@ class TwilioWhatsAppManager(private val context: Context) {
         }
     }
 
+    /**
+     * Public API for proactive messaging from agents/crons.
+     * chatId = WhatsApp number in Twilio format (e.g. "whatsapp:+1234567890").
+     */
+    suspend fun sendProactiveMessage(chatId: String, text: String) {
+        val settings = ai.zeroclaw.android.data.AppSettings(context).getAll()
+        if (settings.twilioSid.isBlank()) {
+            ZeroClawService.log("WhatsApp: Twilio not configured for proactive send")
+            return
+        }
+        val to = if (chatId.startsWith("whatsapp:")) chatId else "whatsapp:$chatId"
+        sendTwilioMessage(settings, to, text)
+    }
+
     private suspend fun sendTwilioMessage(settings: SettingsData, to: String, body: String) {
         val credentials = "${settings.twilioSid}:${settings.twilioToken}"
         val encoded = Base64.getEncoder().encodeToString(credentials.toByteArray())

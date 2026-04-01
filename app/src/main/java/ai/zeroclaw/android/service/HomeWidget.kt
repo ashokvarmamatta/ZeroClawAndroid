@@ -26,8 +26,8 @@ import ai.zeroclaw.android.R
 class HomeWidget : AppWidgetProvider() {
 
     companion object {
-        const val ACTION_WIDGET_START = "ai.zeroclaw.WIDGET_START"
-        const val ACTION_WIDGET_STOP  = "ai.zeroclaw.WIDGET_STOP"
+        val ACTION_WIDGET_START get() = "${ai.zeroclaw.android.BuildConfig.APPLICATION_ID}.WIDGET_START"
+        val ACTION_WIDGET_STOP  get() = "${ai.zeroclaw.android.BuildConfig.APPLICATION_ID}.WIDGET_STOP"
 
         /**
          * Push an update to all instances of the widget.

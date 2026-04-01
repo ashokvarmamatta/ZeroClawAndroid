@@ -32,7 +32,7 @@ class RichNotifications(private val context: Context) {
         const val CHANNEL_GENERAL  = "notif_general"
 
         const val KEY_QUICK_REPLY = "quick_reply_text"
-        const val ACTION_QUICK_REPLY = "ai.zeroclaw.QUICK_REPLY"
+        val ACTION_QUICK_REPLY get() = "${ai.zeroclaw.android.BuildConfig.APPLICATION_ID}.QUICK_REPLY"
 
         private var notifIdCounter = 2000
 

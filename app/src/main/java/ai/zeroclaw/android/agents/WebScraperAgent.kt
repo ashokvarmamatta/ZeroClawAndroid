@@ -246,26 +246,40 @@ class WebScraperAgent(private val context: Context) {
             val router = LlmRouter.getInstance(context)
             val cleaned = stripBoilerplate(rawContent)
             val contentSnippet = cleaned.take(2500)
-            val prompt = """You are a data extraction bot. Your ONLY job is to extract EXACTLY what the user asked for — nothing more, nothing less.
+
+            // Build format guide from saved formatPreview — tells LLM what fields to find
+            val formatGuide = if (agent.safeFormatPreview.isNotBlank()) {
+                """
+REFERENCE FORMAT (use this EXACT structure — replace values with CURRENT data from the fetched content):
+${agent.safeFormatPreview}
+
+HOW TO USE THIS FORMAT:
+- The format above shows the EXACT output structure you must follow
+- Each line/bullet represents a data field — find the MATCHING value in the fetched content below
+- Match fields by meaning: if the format shows an anime name, find anime names in the content; if it shows episode numbers, find episode numbers
+- Do NOT copy the example values from the format — find the REAL current values from the fetched content
+- Keep the same Markdown formatting (*bold*, bullets, numbering) as shown in the format
+"""
+            } else ""
+
+            val prompt = """You are a data extraction bot. Your ONLY job is to extract EXACTLY what the user asked for from the fetched content below.
 
 USER ASKED FOR: ${agent.extractPrompt}
-
+$formatGuide
 STRICT RULES:
-- Output ONLY the requested data in a clean formatted message
-- Do NOT add any explanation, introduction, summary, or commentary
-- Do NOT add "Here is...", "Based on...", "I found...", "The data shows..." or any preamble
+- Output ONLY the requested data — no explanation, no preamble, no commentary
+- Do NOT add "Here is...", "Based on...", "I found..." or any filler text
 - Do NOT add source attribution, disclaimers, or footer text
-- Do NOT include raw HTML, URLs, or page metadata unless the user specifically asked for links
-- Do NOT repeat the question or instruction back
+- Do NOT include raw HTML, URLs, or page metadata unless specifically asked
+- Do NOT invent or hallucinate values — every value MUST come from the fetched content below
+- If a value cannot be found in the content, skip that item entirely rather than guessing
 - Use Telegram Markdown: *bold* for headers/labels, • for bullet points, numbered lists for ordered items
-- Include line breaks between sections for readability
-- Use ONLY actual data values from the content below
 - If the content doesn't have what was asked for, output only: "No matching data found"
 
 FETCHED CONTENT FROM ${agent.url}:
 $contentSnippet
 
-OUTPUT (start directly with the data):"""
+OUTPUT (start directly with the extracted data, following the reference format above):"""
             ZeroClawService.log("AGENT[${agent.name}]: extracting with LLM (${contentSnippet.length} chars content)")
             var reply = router.extractOnly(prompt)
             if (reply != null) {
@@ -364,6 +378,12 @@ OUTPUT (start directly with the data):"""
         "discord"   -> "🎮"
         "slack"     -> "💼"
         "whatsapp"  -> "💬"
+        "signal"    -> "🔒"
+        "matrix"    -> "🟢"
+        "irc"       -> "📡"
+        "teams"     -> "🟦"
+        "twitch"    -> "🟣"
+        "line"      -> "🟩"
         "email"     -> "📧"
         else        -> "📤"
     }

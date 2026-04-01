@@ -142,6 +142,14 @@ class IrcBotManager(private val context: Context) {
         }
     }
 
+    /** Public API for proactive messaging from agents/crons. Target = #channel or nickname. */
+    fun sendProactiveMessage(target: String, text: String) {
+        val chunks = text.chunked(400)
+        for (chunk in chunks) {
+            send("PRIVMSG $target :$chunk")
+        }
+    }
+
     private fun send(message: String) {
         writer?.println(message)
     }

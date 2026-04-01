@@ -434,7 +434,6 @@ class ZeroClawService : Service() {
         log("PROACTIVE: sending to $channel/$chatId — ${text.take(60)}")
         when (channel.lowercase()) {
             "telegram" -> {
-                // Delegate to telegram manager via direct API call using stored token
                 val settings = ai.zeroclaw.android.data.AppSettings(this).getAll()
                 if (settings.telegramToken.isBlank()) {
                     log("PROACTIVE: Telegram token not configured")
@@ -444,6 +443,13 @@ class ZeroClawService : Service() {
             }
             "discord" -> discordManager.sendProactiveMessage(chatId, text)
             "slack" -> slackManager.sendProactiveMessage(chatId, text)
+            "whatsapp" -> whatsappManager.sendProactiveMessage(chatId, text)
+            "signal" -> signalManager.sendProactiveMessage(chatId, text)
+            "matrix" -> matrixManager.sendProactiveMessage(chatId, text)
+            "irc" -> ircManager.sendProactiveMessage(chatId, text)
+            "teams" -> teamsManager.sendProactiveMessage(chatId, text)
+            "twitch" -> twitchManager.sendProactiveMessage(chatId, text)
+            "line" -> lineManager.sendProactiveMessage(chatId, text)
             else -> log("PROACTIVE: unknown channel $channel")
         }
     }

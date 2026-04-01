@@ -159,6 +159,15 @@ class TwitchBotManager(private val context: Context) {
         }
     }
 
+    /** Public API for proactive messaging from agents/crons. Target = #channel. */
+    fun sendProactiveMessage(channel: String, text: String) {
+        val target = if (channel.startsWith("#")) channel else "#$channel"
+        val chunks = text.chunked(450)
+        for (chunk in chunks) {
+            send("PRIVMSG $target :$chunk")
+        }
+    }
+
     private fun send(message: String) {
         writer?.println(message)
     }

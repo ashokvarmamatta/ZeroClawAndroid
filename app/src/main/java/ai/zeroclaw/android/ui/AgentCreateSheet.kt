@@ -60,7 +60,12 @@ fun AgentCreateSheet(
             "discord" to (prefs[AppSettings.KEY_DISCORD_TOKEN] ?: "").isNotBlank(),
             "slack" to (prefs[AppSettings.KEY_SLACK_TOKEN] ?: "").isNotBlank(),
             "whatsapp" to (prefs[AppSettings.KEY_TWILIO_SID] ?: "").isNotBlank(),
-            "signal" to (prefs[AppSettings.KEY_SIGNAL_API_URL] ?: "").isNotBlank()
+            "signal" to (prefs[AppSettings.KEY_SIGNAL_API_URL] ?: "").isNotBlank(),
+            "matrix" to (prefs[AppSettings.KEY_MATRIX_CONFIG] ?: "").isNotBlank(),
+            "irc" to (prefs[AppSettings.KEY_IRC_CONFIG] ?: "").isNotBlank(),
+            "teams" to (prefs[AppSettings.KEY_TEAMS_CONFIG] ?: "").isNotBlank(),
+            "twitch" to (prefs[AppSettings.KEY_TWITCH_CONFIG] ?: "").isNotBlank(),
+            "line" to (prefs[AppSettings.KEY_LINE_TOKEN] ?: "").isNotBlank()
         )
         knownChatIds = try { LlmRouter.getInstance(context).getKnownChatIds() } catch (_: Exception) { emptyMap() }
     }
@@ -158,7 +163,12 @@ fun AgentCreateSheet(
         BotDef("discord", "Discord", "🎮"),
         BotDef("slack", "Slack", "💼"),
         BotDef("whatsapp", "WhatsApp", "💬"),
-        BotDef("signal", "Signal", "🔒")
+        BotDef("signal", "Signal", "🔒"),
+        BotDef("matrix", "Matrix", "🟢"),
+        BotDef("irc", "IRC", "📡"),
+        BotDef("teams", "Teams", "🟦"),
+        BotDef("twitch", "Twitch", "🟣"),
+        BotDef("line", "LINE", "🟩")
     )
 
     // All channel options (for the Channels section)
@@ -166,7 +176,13 @@ fun AgentCreateSheet(
         ChannelDef("telegram", "Telegram Chat/Group", "✈️", "Chat ID (e.g. 123456789 or -1001234567890)"),
         ChannelDef("discord", "Discord Channel", "🎮", "Channel ID (e.g. 1234567890123456789)"),
         ChannelDef("slack", "Slack Channel", "💼", "#channel or C1234567890"),
-        ChannelDef("whatsapp", "WhatsApp Number", "💬", "+1234567890"),
+        ChannelDef("whatsapp", "WhatsApp Number", "💬", "whatsapp:+1234567890"),
+        ChannelDef("signal", "Signal Number", "🔒", "+1234567890"),
+        ChannelDef("matrix", "Matrix Room", "🟢", "!roomId:server.org"),
+        ChannelDef("irc", "IRC Channel", "📡", "#channel"),
+        ChannelDef("teams", "Teams Conv.", "🟦", "conversationId"),
+        ChannelDef("twitch", "Twitch Channel", "🟣", "#channel"),
+        ChannelDef("line", "LINE User", "🟩", "userId"),
         ChannelDef("email", "Email", "📧", "user@example.com")
     )
 

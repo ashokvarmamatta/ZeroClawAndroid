@@ -1,3 +1,4 @@
+
 # ZeroClawAndroid — Bug Tracker
 
 > Every significant bug found during development is recorded here with full details.
