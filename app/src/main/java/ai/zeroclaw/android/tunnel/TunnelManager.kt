@@ -139,10 +139,11 @@ class TunnelManager(private val context: Context) {
             }
 
             // Step 4: Resolve edge server IPs from Java (Go's DNS is broken on Android)
-            val edgeAddrs = resolveEdgeIps()
-            ZeroClawService.log("Cloudflare: edge IPs resolved → $edgeAddrs")
+            val edgeIps = resolveEdgeIps()
+            ZeroClawService.log("Cloudflare: edge IPs resolved → ${edgeIps.joinToString(", ")}")
 
             // Step 5: Run cloudflared with credentials + pre-resolved edge IPs
+            // --edge flag takes one address per flag instance
             ZeroClawService.log("Cloudflare: connecting to edge with tunnel $tunnelId")
             val cmd = mutableListOf(
                 binary.absolutePath,
@@ -151,8 +152,8 @@ class TunnelManager(private val context: Context) {
                 "--edge-ip-version", "4",
                 "--no-autoupdate"
             )
-            if (edgeAddrs.isNotEmpty()) {
-                cmd.addAll(listOf("--edge", edgeAddrs))
+            for (ip in edgeIps.take(4)) {
+                cmd.addAll(listOf("--edge", ip))
             }
             cmd.addAll(listOf("run", tunnelId))
 
@@ -239,9 +240,9 @@ class TunnelManager(private val context: Context) {
      * which fails on Android because Go can't do DNS. We resolve the edge hostnames
      * directly and pass them via --edge flag.
      *
-     * Returns comma-separated "ip:port" string for --edge flag.
+     * Returns list of "ip:port" strings for --edge flags.
      */
-    private fun resolveEdgeIps(): String {
+    private fun resolveEdgeIps(): List<String> {
         val edgeHostnames = listOf(
             "region1.v2.argotunnel.com",
             "region2.v2.argotunnel.com"
@@ -273,7 +274,7 @@ class TunnelManager(private val context: Context) {
             ))
         }
 
-        return resolvedAddrs.joinToString(",")
+        return resolvedAddrs
     }
 
     /**
