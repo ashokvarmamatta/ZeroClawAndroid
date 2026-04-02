@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeroClaw Tunnel Test</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    display: flex; justify-content: center; padding: 20px;
+    min-height: 100vh;
+  }
+  .container { max-width: 700px; width: 100%; }
+  h1 { color: #e53935; margin-bottom: 8px; font-size: 24px; }
+  .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 14px; }
+
+  .url-section {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  label { display: block; font-weight: 600; margin-bottom: 8px; color: #f0f6fc; }
+  .hint { font-size: 12px; color: #8b949e; margin-bottom: 12px; }
+
+  .input-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  input[type="text"] {
+    flex: 1; padding: 10px 14px; background: #0d1117; border: 1px solid #30363d;
+    border-radius: 8px; color: #c9d1d9; font-size: 14px; font-family: monospace;
+  }
+  input:focus { outline: none; border-color: #e53935; }
+
+  button {
+    padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600;
+    cursor: pointer; font-size: 14px; transition: all 0.2s;
+  }
+  .btn-connect { background: #238636; color: white; }
+  .btn-connect:hover { background: #2ea043; }
+  .btn-connect:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+  .btn-send { background: #e53935; color: white; }
+  .btn-send:hover { background: #f44336; }
+  .btn-send:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .status-disconnected { background: #21262d; }
+  .status-disconnected .status-dot { background: #f85149; }
+  .status-connecting { background: #1c1e24; }
+  .status-connecting .status-dot { background: #d29922; animation: pulse 1s infinite; }
+  .status-connected { background: #0d2818; }
+  .status-connected .status-dot { background: #3fb950; }
+  .status-error { background: #2d1215; }
+  .status-error .status-dot { background: #f85149; }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .chat-section {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  .messages {
+    min-height: 200px; max-height: 400px; overflow-y: auto;
+    margin-bottom: 16px; padding: 12px; background: #0d1117;
+    border-radius: 8px; border: 1px solid #21262d;
+  }
+  .msg {
+    margin-bottom: 12px; padding: 10px 14px; border-radius: 10px;
+    max-width: 85%; font-size: 14px; line-height: 1.5;
+  }
+  .msg-user {
+    background: #1a3a5c; margin-left: auto; text-align: right;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-bot {
+    background: #21262d; margin-right: auto;
+    border-bottom-left-radius: 4px;
+  }
+  .msg-system {
+    background: transparent; text-align: center; color: #8b949e;
+    font-size: 12px; font-style: italic; max-width: 100%;
+  }
+  .msg-label { font-size: 10px; color: #8b949e; margin-bottom: 4px; }
+
+  .send-row { display: flex; gap: 8px; }
+  .send-row input { flex: 1; }
+
+  .info-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 16px; font-size: 13px;
+  }
+  .info-card h3 { color: #f0f6fc; margin-bottom: 8px; font-size: 15px; }
+  .info-card code {
+    background: #0d1117; padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; color: #79c0ff;
+  }
+  .info-card pre {
+    background: #0d1117; padding: 12px; border-radius: 8px; overflow-x: auto;
+    margin: 8px 0; font-size: 12px; color: #c9d1d9;
+  }
+  .response-info { color: #8b949e; font-size: 11px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>ZeroClaw Tunnel Test</h1>
+  <p class="subtitle">Test your Cloudflare tunnel connection to ZeroClaw Android</p>
+
+  <!-- Connection Section -->
+  <div class="url-section">
+    <label>ZeroClaw URL</label>
+    <p class="hint">Paste your Cloudflare tunnel URL or local IP address (e.g. https://xxx.trycloudflare.com or http://192.168.1.x:8088)</p>
+    <div class="input-row">
+      <input type="text" id="baseUrl" placeholder="https://your-tunnel.trycloudflare.com" />
+      <button class="btn-connect" id="connectBtn" onclick="testConnection()">Connect</button>
+    </div>
+    <div id="statusBadge" class="status status-disconnected">
+      <div class="status-dot"></div>
+      <span id="statusText">Disconnected</span>
+    </div>
+    <div id="serverInfo" style="margin-top: 8px; font-size: 12px; color: #8b949e;"></div>
+  </div>
+
+  <!-- Chat Section -->
+  <div class="chat-section">
+    <label>Chat</label>
+    <div class="messages" id="messages">
+      <div class="msg msg-system">Enter your ZeroClaw URL above and click Connect to start chatting</div>
+    </div>
+    <div class="send-row">
+      <input type="text" id="msgInput" placeholder="Type a message..." disabled
+             onkeydown="if(event.key==='Enter') sendMessage()" />
+      <button class="btn-send" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
+    </div>
+  </div>
+
+  <!-- Info Card -->
+  <div class="info-card">
+    <h3>How it works</h3>
+    <p>This page connects to ZeroClaw's <code>POST /v1/chat/completions</code> endpoint (OpenAI-compatible API) via your Cloudflare tunnel.</p>
+    <pre>POST {url}/v1/chat/completions
+Content-Type: application/json
+Authorization: Bearer zc-no-key-needed
+
+{
+  "model": "zeroclaw",
+  "messages": [{"role": "user", "content": "Hello!"}]
+}</pre>
+    <p style="margin-top: 8px;">The same URL works with any OpenAI-compatible app: Cursor, Continue.dev, Open WebUI, LangChain, etc.</p>
+  </div>
+</div>
+
+<script>
+let isConnected = false;
+let sessionId = 'test_' + Date.now();
+let messageHistory = [];
+
+function setStatus(state, text) {
+  const badge = document.getElementById('statusBadge');
+  const statusText = document.getElementById('statusText');
+  badge.className = 'status status-' + state;
+  statusText.textContent = text;
+}
+
+function addMessage(text, type, extra) {
+  const messages = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg msg-' + type;
+
+  if (type === 'user') {
+    div.innerHTML = '<div class="msg-label">You</div>' + escapeHtml(text);
+  } else if (type === 'bot') {
+    div.innerHTML = '<div class="msg-label">ZeroClaw</div>' + escapeHtml(text);
+    if (extra) {
+      div.innerHTML += '<div class="response-info">' + escapeHtml(extra) + '</div>';
+    }
+  } else {
+    div.textContent = text;
+  }
+
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function getUrl() {
+  let url = document.getElementById('baseUrl').value.trim();
+  if (!url) return '';
+  // Remove trailing slash
+  if (url.endsWith('/')) url = url.slice(0, -1);
+  return url;
+}
+
+async function testConnection() {
+  const url = getUrl();
+  if (!url) { alert('Please enter a URL'); return; }
+
+  setStatus('connecting', 'Connecting...');
+  document.getElementById('connectBtn').disabled = true;
+
+  try {
+    // Test with /v1/models endpoint
+    const resp = await fetch(url + '/v1/models', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer zc-no-key-needed' }
+    });
+
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const data = await resp.json();
+    isConnected = true;
+    setStatus('connected', 'Connected');
+    document.getElementById('serverInfo').textContent =
+      'Models: ' + (data.data || []).map(m => m.id).join(', ');
+
+    // Enable chat
+    document.getElementById('msgInput').disabled = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('msgInput').focus();
+
+    // Clear messages
+    document.getElementById('messages').innerHTML = '';
+    addMessage('Connected to ZeroClaw at ' + url, 'system');
+    messageHistory = [];
+
+  } catch (e) {
+    setStatus('error', 'Connection failed');
+    document.getElementById('serverInfo').textContent = 'Error: ' + e.message;
+    addMessage('Connection failed: ' + e.message, 'system');
+  }
+
+  document.getElementById('connectBtn').disabled = false;
+}
+
+async function sendMessage() {
+  if (!isConnected) return;
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  addMessage(text, 'user');
+
+  // Add to history
+  messageHistory.push({ role: 'user', content: text });
+
+  // Disable while waiting
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('msgInput').disabled = true;
+
+  const url = getUrl();
+  const startTime = Date.now();
+
+  try {
+    const resp = await fetch(url + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer zc-no-key-needed'
+      },
+      body: JSON.stringify({
+        model: 'zeroclaw',
+        messages: messageHistory,
+        max_tokens: 8192
+      })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error('HTTP ' + resp.status + ': ' + errText);
+    }
+
+    const data = await resp.json();
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const reply = data.choices?.[0]?.message?.content || '(empty response)';
+    const model = data.model || 'unknown';
+    const tokens = data.usage?.total_tokens || '?';
+
+    // Add to history
+    messageHistory.push({ role: 'assistant', content: reply });
+
+    addMessage(reply, 'bot', `Model: ${model} | Tokens: ${tokens} | ${elapsed}s`);
+
+  } catch (e) {
+    addMessage('Error: ' + e.message, 'system');
+  }
+
+  document.getElementById('sendBtn').disabled = false;
+  document.getElementById('msgInput').disabled = false;
+  document.getElementById('msgInput').focus();
+}
+
+// Auto-fill URL from query string
+const params = new URLSearchParams(window.location.search);
+if (params.get('url')) {
+  document.getElementById('baseUrl').value = params.get('url');
+  testConnection();
+}
+</script>
+</body>
+</html>

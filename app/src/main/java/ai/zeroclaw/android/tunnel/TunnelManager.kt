@@ -1,26 +1,24 @@
 package ai.zeroclaw.android.tunnel
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.LinkProperties
 import ai.zeroclaw.android.service.ZeroClawService
 import kotlinx.coroutines.*
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONObject
 import java.io.File
-import java.util.concurrent.TimeUnit
+import java.io.FileWriter
+import java.net.Inet4Address
 
 /**
  * TunnelManager
  * Creates a public HTTPS URL tunneling to localhost:8088 (WebChat server).
  *
- * The cloudflared binary is bundled inside the APK as a native library
- * (jniLibs/arm64-v8a/libcloudflared.so). Android extracts it to nativeLibraryDir
- * on install, which has execute permission — bypassing the W^X policy.
+ * The cloudflared binary is bundled in the APK as jniLibs/arm64-v8a/libcloudflared.so.
+ * Android extracts it to nativeLibraryDir (which has exec permission).
  *
- * Modes:
- * - "quick"  → Free trycloudflare.com URL (no account, changes on restart)
- * - "token"  → Named tunnel with persistent URL (requires Cloudflare token)
- * - "off"    → LAN only, no tunnel
+ * Android DNS fix: Go binaries read /etc/resolv.conf which doesn't exist on Android.
+ * We create a resolv.conf in cacheDir with the device's real DNS servers and point
+ * Go's resolver to it via the GODEBUG and RES_OPTIONS environment variables.
  */
 class TunnelManager(private val context: Context) {
 
@@ -31,16 +29,7 @@ class TunnelManager(private val context: Context) {
     }
 
     private var tunnelProcess: Process? = null
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
 
-    /**
-     * Start tunnel.
-     * @param mode "quick", "token", or "off"
-     * @param token Cloudflare tunnel token (only for mode="token")
-     */
     suspend fun start(
         mode: String = "quick",
         token: String = "",
@@ -59,32 +48,98 @@ class TunnelManager(private val context: Context) {
 
             if (!binary.exists()) {
                 status = "missing"
-                val msg = "Cloudflare: binary not found at ${binary.absolutePath}"
-                ZeroClawService.log(msg)
+                ZeroClawService.log("Cloudflare: binary not found at ${binary.absolutePath}")
                 onStatusChange("Binary not found — reinstall app")
                 onUrlReady("http://${getLocalIp()}:$TARGET_PORT")
                 return@withContext
             }
 
-            if (!binary.canExecute()) {
-                // Should never happen for nativeLibraryDir, but just in case
-                binary.setExecutable(true)
-            }
+            if (!binary.canExecute()) binary.setExecutable(true)
+            ZeroClawService.log("Cloudflare: binary ready (${binary.length() / 1024}KB)")
 
-            ZeroClawService.log("Cloudflare: binary ready at ${binary.absolutePath} (${binary.length() / 1024}KB)")
+            // Create resolv.conf for Go's DNS resolver (Android doesn't have /etc/resolv.conf)
+            val resolvConf = createResolvConf()
 
             when (mode) {
                 "token" -> {
                     if (token.isNotBlank()) {
-                        startNamedTunnel(binary, token, onUrlReady, onStatusChange)
+                        startNamedTunnel(binary, token, resolvConf, onUrlReady, onStatusChange)
                     } else {
-                        ZeroClawService.log("Cloudflare: token mode but no token — using quick tunnel")
-                        startQuickTunnel(binary, onUrlReady, onStatusChange)
+                        ZeroClawService.log("Cloudflare: no token — using quick tunnel")
+                        startQuickTunnel(binary, resolvConf, onUrlReady, onStatusChange)
                     }
                 }
-                else -> startQuickTunnel(binary, onUrlReady, onStatusChange)
+                else -> startQuickTunnel(binary, resolvConf, onUrlReady, onStatusChange)
             }
         }
+    }
+
+    /**
+     * Create a resolv.conf file with the device's actual DNS servers.
+     * Go's pure-Go DNS resolver reads /etc/resolv.conf which doesn't exist on Android.
+     * We create one in cacheDir and point to it via environment variable.
+     */
+    private fun createResolvConf(): File {
+        val resolvFile = File(context.cacheDir, "resolv.conf")
+        try {
+            val dnsServers = getDeviceDnsServers()
+            FileWriter(resolvFile).use { writer ->
+                if (dnsServers.isNotEmpty()) {
+                    dnsServers.forEach { dns -> writer.write("nameserver $dns\n") }
+                    ZeroClawService.log("Cloudflare: DNS servers → ${dnsServers.joinToString(", ")}")
+                } else {
+                    // Fallback to public DNS
+                    writer.write("nameserver 8.8.8.8\n")
+                    writer.write("nameserver 1.1.1.1\n")
+                    ZeroClawService.log("Cloudflare: using fallback DNS (8.8.8.8, 1.1.1.1)")
+                }
+            }
+        } catch (e: Exception) {
+            // If we can't create it, write fallback
+            FileWriter(resolvFile).use { writer ->
+                writer.write("nameserver 8.8.8.8\n")
+                writer.write("nameserver 1.1.1.1\n")
+            }
+            ZeroClawService.log("Cloudflare: DNS config error, using fallback — ${e.message}")
+        }
+        return resolvFile
+    }
+
+    /** Get the device's actual DNS servers from ConnectivityManager */
+    private fun getDeviceDnsServers(): List<String> {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = cm.activeNetwork ?: return emptyList()
+            val linkProps: LinkProperties = cm.getLinkProperties(network) ?: return emptyList()
+            linkProps.dnsServers
+                .mapNotNull { it.hostAddress }
+                .filter { !it.contains(":") } // Prefer IPv4 DNS
+                .ifEmpty {
+                    // Include IPv6 DNS if no IPv4 available
+                    linkProps.dnsServers.mapNotNull { it.hostAddress }
+                }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * Build a ProcessBuilder with proper environment for Android.
+     * Sets up DNS resolution so Go can find DNS servers.
+     */
+    private fun buildTunnelProcess(binary: File, resolvConf: File, vararg args: String): Process {
+        val pb = ProcessBuilder(listOf(binary.absolutePath) + args.toList())
+            .directory(context.cacheDir)
+            .redirectErrorStream(true)
+
+        // Point Go's DNS resolver to our custom resolv.conf
+        pb.environment()["GODEBUG"] = "netdns=go"
+        pb.environment()["RES_CONF"] = resolvConf.absolutePath
+        // Also set HOME so cloudflared can write temp files
+        pb.environment()["HOME"] = context.cacheDir.absolutePath
+        pb.environment()["TMPDIR"] = context.cacheDir.absolutePath
+
+        return pb.start()
     }
 
     /**
@@ -92,6 +147,7 @@ class TunnelManager(private val context: Context) {
      */
     private suspend fun startQuickTunnel(
         binary: File,
+        resolvConf: File,
         onUrlReady: (String) -> Unit,
         onStatusChange: (String) -> Unit
     ) {
@@ -100,12 +156,10 @@ class TunnelManager(private val context: Context) {
             onStatusChange("Starting Cloudflare Quick Tunnel...")
             ZeroClawService.log("Cloudflare: starting quick tunnel → localhost:$TARGET_PORT")
 
-            tunnelProcess = ProcessBuilder(
-                binary.absolutePath, "tunnel", "--url", "http://localhost:$TARGET_PORT"
+            tunnelProcess = buildTunnelProcess(
+                binary, resolvConf,
+                "tunnel", "--url", "http://localhost:$TARGET_PORT"
             )
-                .directory(context.cacheDir)
-                .redirectErrorStream(true)
-                .start()
 
             parseOutputForUrl(tunnelProcess!!, onUrlReady, onStatusChange)
         } catch (e: Exception) {
@@ -118,11 +172,11 @@ class TunnelManager(private val context: Context) {
 
     /**
      * Named Tunnel — persistent URL via Cloudflare token.
-     * Create at: https://one.dash.cloudflare.com → Networks → Tunnels
      */
     private suspend fun startNamedTunnel(
         binary: File,
         token: String,
+        resolvConf: File,
         onUrlReady: (String) -> Unit,
         onStatusChange: (String) -> Unit
     ) {
@@ -131,12 +185,10 @@ class TunnelManager(private val context: Context) {
             onStatusChange("Starting Cloudflare Named Tunnel...")
             ZeroClawService.log("Cloudflare: starting named tunnel with token")
 
-            tunnelProcess = ProcessBuilder(
-                binary.absolutePath, "tunnel", "run", "--token", token
+            tunnelProcess = buildTunnelProcess(
+                binary, resolvConf,
+                "tunnel", "run", "--token", token
             )
-                .directory(context.cacheDir)
-                .redirectErrorStream(true)
-                .start()
 
             val reader = tunnelProcess!!.inputStream.bufferedReader()
             withContext(Dispatchers.IO) {
@@ -158,15 +210,21 @@ class TunnelManager(private val context: Context) {
                         ZeroClawService.log("Cloudflare: named tunnel connected — URL is in your Cloudflare dashboard")
                     }
 
-                    // Try to extract URL from output
-                    val urlMatch = Regex("https://[a-z0-9.-]+\\.[a-z]{2,}").find(line)
-                    if (urlMatch != null && !urlMatch.value.contains("api.cloudflare") && !urlMatch.value.contains("update.")) {
-                        connected = true
-                        status = "connected"
-                        val url = urlMatch.value
-                        onStatusChange("Connected: $url")
-                        ZeroClawService.log("Cloudflare: named tunnel live → $url")
-                        onUrlReady(url)
+                    // Try to extract the configured hostname
+                    if (!connected) {
+                        val urlMatch = Regex("https://[a-z0-9.-]+\\.[a-z]{2,}").find(line)
+                        if (urlMatch != null
+                            && !urlMatch.value.contains("api.cloudflare")
+                            && !urlMatch.value.contains("update.")
+                            && !urlMatch.value.contains("trycloudflare.com")
+                        ) {
+                            connected = true
+                            status = "connected"
+                            val url = urlMatch.value
+                            onStatusChange("Connected: $url")
+                            ZeroClawService.log("Cloudflare: named tunnel live → $url")
+                            onUrlReady(url)
+                        }
                     }
                 }
 
@@ -176,7 +234,6 @@ class TunnelManager(private val context: Context) {
                     onStatusChange("Named tunnel failed to connect")
                 }
 
-                // Drain output to prevent buffer deadlock
                 drainOutput(reader)
             }
         } catch (e: Exception) {
@@ -188,6 +245,8 @@ class TunnelManager(private val context: Context) {
 
     /**
      * Parse cloudflared output looking for the trycloudflare.com URL.
+     * Only matches actual tunnel URLs (random-word.trycloudflare.com),
+     * NOT api.trycloudflare.com from error messages.
      */
     private suspend fun parseOutputForUrl(
         process: Process,
@@ -196,7 +255,8 @@ class TunnelManager(private val context: Context) {
     ) {
         val reader = process.inputStream.bufferedReader()
         withContext(Dispatchers.IO) {
-            val urlRegex = Regex("https://[a-z0-9-]+\\.trycloudflare\\.com")
+            // Match random-word-style tunnel URLs, NOT api.trycloudflare.com
+            val urlRegex = Regex("https://(?!api\\.)[a-z0-9][a-z0-9-]*[a-z0-9]\\.trycloudflare\\.com")
             var urlFound = false
             var lineCount = 0
 
@@ -223,16 +283,14 @@ class TunnelManager(private val context: Context) {
             if (!urlFound) {
                 status = "failed"
                 onStatusChange("Tunnel failed to start")
-                ZeroClawService.log("Cloudflare: no URL found after $lineCount lines")
+                ZeroClawService.log("Cloudflare: no tunnel URL found after $lineCount lines")
                 onUrlReady("http://${getLocalIp()}:$TARGET_PORT")
             }
 
-            // Drain remaining output to prevent deadlock
             drainOutput(reader)
         }
     }
 
-    /** Keep reading process output in background to prevent buffer deadlock */
     private fun CoroutineScope.drainOutput(reader: java.io.BufferedReader) {
         launch(Dispatchers.IO) {
             try {
@@ -254,7 +312,7 @@ class TunnelManager(private val context: Context) {
                 val addresses = iface.inetAddresses
                 while (addresses.hasMoreElements()) {
                     val addr = addresses.nextElement()
-                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
                         return addr.hostAddress ?: "127.0.0.1"
                     }
                 }
