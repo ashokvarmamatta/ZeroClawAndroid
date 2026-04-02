@@ -138,16 +138,25 @@ class TunnelManager(private val context: Context) {
                 w.write("  - service: http_status:404\n")
             }
 
-            // Step 4: Run cloudflared with credentials (no DNS needed — hardcoded edge IPs)
+            // Step 4: Resolve edge server IPs from Java (Go's DNS is broken on Android)
+            val edgeAddrs = resolveEdgeIps()
+            ZeroClawService.log("Cloudflare: edge IPs resolved → $edgeAddrs")
+
+            // Step 5: Run cloudflared with credentials + pre-resolved edge IPs
             ZeroClawService.log("Cloudflare: connecting to edge with tunnel $tunnelId")
-            tunnelProcess = ProcessBuilder(
+            val cmd = mutableListOf(
                 binary.absolutePath,
                 "tunnel",
                 "--config", configFile.absolutePath,
                 "--edge-ip-version", "4",
-                "--no-autoupdate",
-                "run", tunnelId
+                "--no-autoupdate"
             )
+            if (edgeAddrs.isNotEmpty()) {
+                cmd.addAll(listOf("--edge", edgeAddrs))
+            }
+            cmd.addAll(listOf("run", tunnelId))
+
+            tunnelProcess = ProcessBuilder(cmd)
                 .directory(context.cacheDir)
                 .redirectErrorStream(true)
                 .start()
@@ -222,6 +231,49 @@ class TunnelManager(private val context: Context) {
             ZeroClawService.log("Cloudflare: API request failed — ${e.message}")
             null
         }
+    }
+
+    /**
+     * Resolve Cloudflare edge server IPs from Java (Android DNS works here).
+     * cloudflared normally looks up SRV record _v2-origintunneld._tcp.argotunnel.com
+     * which fails on Android because Go can't do DNS. We resolve the edge hostnames
+     * directly and pass them via --edge flag.
+     *
+     * Returns comma-separated "ip:port" string for --edge flag.
+     */
+    private fun resolveEdgeIps(): String {
+        val edgeHostnames = listOf(
+            "region1.v2.argotunnel.com",
+            "region2.v2.argotunnel.com"
+        )
+        val edgePort = 7844
+        val resolvedAddrs = mutableListOf<String>()
+
+        for (hostname in edgeHostnames) {
+            try {
+                val addresses = java.net.InetAddress.getAllByName(hostname)
+                for (addr in addresses) {
+                    if (addr is Inet4Address) {
+                        resolvedAddrs.add("${addr.hostAddress}:$edgePort")
+                    }
+                }
+            } catch (e: Exception) {
+                ZeroClawService.log("Cloudflare: failed to resolve $hostname — ${e.message}")
+            }
+        }
+
+        // Fallback: known Cloudflare edge IPs (may change, but rarely)
+        if (resolvedAddrs.isEmpty()) {
+            ZeroClawService.log("Cloudflare: using fallback edge IPs")
+            resolvedAddrs.addAll(listOf(
+                "198.41.192.167:$edgePort",
+                "198.41.192.67:$edgePort",
+                "198.41.200.13:$edgePort",
+                "198.41.200.193:$edgePort"
+            ))
+        }
+
+        return resolvedAddrs.joinToString(",")
     }
 
     /**
