@@ -262,6 +262,9 @@ See `SESSION_RULES_TEMPLATE.md` in `D:\Ashok\olama\projects\` for full session w
 | **170** | **Agent delivery to all 10 channels — sendProactive() expanded from 3 channels (telegram/discord/slack) to all 10 (+ whatsapp, signal, matrix, irc, teams, twitch, line). Added sendProactiveMessage() to all channel managers. AgentCreateSheet shows all 10 channels as delivery targets** | ✅ DONE |
 | **171** | **Agent extraction format guide — extractWithLlm() now includes saved formatPreview as REFERENCE FORMAT so LLM matches fields by meaning and finds correct values instead of guessing. Fixes wrong values in Telegram delivery** | ✅ DONE |
 | **172** | **SDK update — compileSdk and targetSdk updated from 34 to 36. Intent actions use ${applicationId} for side-by-side install safety. Enabled BuildConfig generation** | ✅ DONE |
+| | | |
+| | **── CLOUDFLARE TUNNEL (Phase 173) ──** | |
+| **173** | **Cloudflare Quick Tunnel — bundled cloudflared ARM64 binary in APK (jniLibs), Java-side tunnel registration via trycloudflare.com API (bypasses Go DNS), Java-side edge IP resolution via InetAddress, credentials file + config YAML generation, --edge flag for pre-resolved IPs, Settings UI with Off/Quick/Token modes, Server Address dialog shows tunnel URL, test_tunnel.html for verification** | ✅ DONE |
 
 ---
 

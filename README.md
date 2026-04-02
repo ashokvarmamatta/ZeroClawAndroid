@@ -186,6 +186,23 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 - 📊 **Usage stats** per key
 - 🎯 **Smart routing** — use `hint:reasoning`, `hint:fast`, `hint:code` etc. to pick the best AI
 
+### ☁️ Cloudflare Tunnel ![](https://img.shields.io/badge/Free-4CAF50?style=flat-square) ![](https://img.shields.io/badge/No_Account_Needed-00BCD4?style=flat-square) ![](https://img.shields.io/badge/Public_HTTPS_URL-FF6B6B?style=flat-square)
+
+> Access your ZeroClaw from anywhere in the world — not just your local network.
+
+| Feature | Details |
+|---------|---------|
+| ☁️ **Quick Tunnel** | Free `trycloudflare.com` URL — no account needed |
+| 🔑 **Named Tunnel** | Persistent URL with your own domain (needs Cloudflare token) |
+| 📦 **Bundled Binary** | `cloudflared` ARM64 ships inside the APK — zero setup |
+| 🔧 **Auto DNS Fix** | Handles Android's broken Go DNS transparently |
+| 🔄 **Auto-connect** | Tunnel starts with the service, URL shown in Live Logs |
+
+**Settings → Cloudflare Tunnel → Quick Tunnel (default)**
+Your public URL appears in **Live Logs → Server Address** dialog.
+
+> 📖 See our [Cloudflare Tunnel on Android Guide](https://gist.github.com/ashokvarmamatta/1bba0d91a839039428bd942b8fdcc968) for the full technical story — every problem we hit and how we solved it.
+
 ### 🌐 API Server ![](https://img.shields.io/badge/Port_8088-009688?style=flat-square) ![](https://img.shields.io/badge/OpenAI_Compatible-412991?style=flat-square) ![](https://img.shields.io/badge/Zero_Code_Changes-00D4AA?style=flat-square)
 
 > Any app that works with OpenAI can connect to ZeroClaw with zero code changes.
