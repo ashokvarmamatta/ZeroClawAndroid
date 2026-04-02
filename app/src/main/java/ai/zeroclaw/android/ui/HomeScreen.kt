@@ -425,12 +425,30 @@ fun LogCard(logs: List<String>, tunnelUrl: String = "Not started") {
                         Text("Connect other apps to ZeroClaw using:",
                             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    // Cloudflare tunnel URL — show first if available (public access)
+                    if (tunnelUrl.startsWith("https")) {
+                        ServerAddressRow("☁️ Cloudflare URL", tunnelUrl, clipboardManager)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    } else if (tunnelUrl.startsWith("http") && !tunnelUrl.contains("127.0.0.1")) {
+                        ServerAddressRow("🌐 Public URL", tunnelUrl, clipboardManager)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                    } else {
+                        val tunnelStatus = ai.zeroclaw.android.tunnel.TunnelManager.status
+                        val statusText = when {
+                            tunnelStatus == "downloading" || tunnelStatus.startsWith("downloading_") ->
+                                "☁️ Downloading cloudflared..."
+                            tunnelStatus == "starting" -> "☁️ Starting tunnel..."
+                            tunnelStatus == "failed" -> "☁️ Tunnel failed — using LAN only"
+                            tunnelStatus == "download_failed" -> "☁️ Download failed — check internet"
+                            else -> null
+                        }
+                        if (statusText != null) {
+                            Text(statusText, fontSize = 11.sp, color = Color(0xFFFF9800))
+                        }
+                    }
                     // API address (port 8088) — this is what external apps should use
                     ServerAddressRow("API (for apps)", webChatUrl, clipboardManager)
                     ServerAddressRow("ZeroClaw Service", lanUrl, clipboardManager)
-                    if (tunnelUrl.startsWith("http")) {
-                        ServerAddressRow("Public URL (tunnel)", tunnelUrl, clipboardManager)
-                    }
                     ServerAddressRow("Localhost", "http://127.0.0.1:8088", clipboardManager)
 
                     Spacer(Modifier.height(4.dp))

@@ -5,6 +5,20 @@
 
 ---
 
+## 📚 Session Rules — Read These Files First
+Before writing ANY code, read these files in order:
+1. `plan.md` (this file) — current state, what's done, what's pending
+2. `blueprint.md` — full app architecture, components, navigation, DB schema
+3. `skills.md` — all technologies, libraries, SDKs used
+4. `permissions.md` — Play Store compliance status, all Android permissions
+5. `bugs.md` — all past bugs and fixes (avoid re-introducing them)
+
+**DO NOT** re-read the entire codebase. These files ARE the codebase summary.
+
+See `SESSION_RULES_TEMPLATE.md` in `D:\Ashok\olama\projects\` for full session workflow rules.
+
+---
+
 ## 🔗 Source Repositories (IMPORTANT — analyse these before implementing new features)
 
 | Repo | URL | Purpose |
@@ -30,7 +44,7 @@
 
 ---
 
-## 🗂️ Skills Used (see SKILL.md for details)
+## 🗂️ Skills Used (see skills.md for details)
 - Android Native (Kotlin + Jetpack Compose)
 - Foreground Service (background daemon)
 - Retrofit + OkHttp (HTTP client for ZeroClaw API)

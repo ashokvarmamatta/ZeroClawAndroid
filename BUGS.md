@@ -7,6 +7,30 @@
 
 ---
 
+## BUG-24 — Agent extraction sends wrong values to Telegram despite correct format preview
+- **Phase:** Agent extraction (WebScraperAgent)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** Agent edit screen shows correct formatted preview (e.g. anime names + episode numbers), but when agent runs and delivers to Telegram, the anime names are replaced with random/wrong text from the page.
+- **Root Cause:** `extractWithLlm()` only sent the user's extraction prompt (e.g. "all latest anime episodes") but never included the saved `formatPreview`. The LLM had no reference format to follow, so it guessed which values to extract and often grabbed wrong text.
+- **Fix:** `extractWithLlm()` now includes `agent.safeFormatPreview` as a REFERENCE FORMAT in the prompt, with instructions to: follow the exact structure, match fields by meaning, find REAL current values from fetched content, skip items rather than guessing.
+- **Files Changed:** WebScraperAgent.kt
+- **Lesson:** Always pass the format template to the extraction LLM — the prompt alone is too ambiguous for structured output.
+
+---
+
+## BUG-23 — Agent proactive delivery only works for 3 of 10 channels
+- **Phase:** Agent delivery (WebScraperAgent / ZeroClawService)
+- **Status:** ✅ Fixed
+- **Severity:** Critical
+- **Symptom:** Agents configured to deliver to WhatsApp, Signal, Matrix, IRC, Teams, Twitch, or LINE silently fail with "PROACTIVE: unknown channel X" in logs. Only Telegram, Discord, and Slack work.
+- **Root Cause:** `ZeroClawService.sendProactive()` only had `when` branches for telegram/discord/slack. The remaining 7 channel managers lacked public `sendProactiveMessage()` methods. The AgentCreateSheet UI also only listed 5 channels as bot options.
+- **Fix:** Added routing for all 10 channels in `sendProactive()`. Added public `sendProactiveMessage()` to all channel managers. AgentCreateSheet now shows all 10 channels.
+- **Files Changed:** ZeroClawService.kt, TwilioWhatsAppManager.kt, SignalBridgeManager.kt, MatrixBotManager.kt, IrcBotManager.kt, TeamsBotManager.kt, TwitchBotManager.kt, LineBotManager.kt, AgentCreateSheet.kt, WebScraperAgent.kt
+- **Lesson:** When adding new channels, always wire up proactive/agent delivery — not just interactive reply handling.
+
+---
+
 ## BUG-22 — Codex branch `codex/zeroclaw-api-metagen-fix` destroyed agents UI
 - **Phase:** Branch management
 - **Status:** ✅ Fixed (deleted)

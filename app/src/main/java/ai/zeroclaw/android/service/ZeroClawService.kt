@@ -176,13 +176,20 @@ class ZeroClawService : Service() {
         serviceScope.launch {
             val settings = AppSettings(this@ZeroClawService).getAll()
 
-            // Tunnel
+            // Tunnel (Cloudflare / ngrok / local IP)
             launch {
-                tunnelManager.start { url ->
-                    tunnelUrl = url
-                    log("Tunnel: $url")
-                    updateNotification("Live: $url")
-                }
+                tunnelManager.start(
+                    mode = settings.tunnelMode,
+                    token = settings.tunnelToken,
+                    onUrlReady = { url ->
+                        tunnelUrl = url
+                        log("Tunnel: $url")
+                        updateNotification("Live: $url")
+                    },
+                    onStatusChange = { statusMsg ->
+                        log("Tunnel: $statusMsg")
+                    }
+                )
             }
 
             // Telegram — only needs bot token now; LlmRouter handles AI

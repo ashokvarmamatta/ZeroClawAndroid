@@ -2,6 +2,7 @@ package ai.zeroclaw.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +55,8 @@ fun SettingsScreen(
     var twitchConfig by remember { mutableStateOf("") }
     var lineToken by remember { mutableStateOf("") }
     var webChatEnabled by remember { mutableStateOf(false) }
+    var tunnelMode by remember { mutableStateOf("quick") }
+    var tunnelToken by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(true) }
     var optimizePrompt by remember { mutableStateOf(false) }
     var offlineWebSummarize by remember { mutableStateOf(true) }
@@ -82,6 +85,8 @@ fun SettingsScreen(
             twitchConfig = s.twitchConfig
             lineToken = s.lineToken
             webChatEnabled = s.webChatEnabled
+            tunnelMode = s.tunnelMode
+            tunnelToken = s.tunnelToken
             autoStart = s.autoStart
             optimizePrompt = s.optimizePrompt
             offlineWebSummarize = s.offlineWebSummarize
@@ -108,7 +113,8 @@ fun SettingsScreen(
                                 zeroClawUrl, telegramToken, twilioSid,
                                 twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl,
                                 slackToken, matrixConfig, ircConfig, teamsConfig, twitchConfig,
-                                lineToken, webChatEnabled, optimizePrompt, offlineWebSummarize
+                                lineToken, webChatEnabled, optimizePrompt, offlineWebSummarize,
+                                tunnelMode, tunnelToken
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -185,6 +191,45 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = webChatEnabled, onCheckedChange = { webChatEnabled = it })
+                }
+            }
+            item { SectionHeader("☁️ Cloudflare Tunnel") }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Tunnel Mode", fontWeight = FontWeight.Medium)
+                    Text("Expose your local server to the internet via Cloudflare",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val modes = listOf("off" to "Off", "quick" to "Quick Tunnel (free)", "token" to "Named Tunnel (token)")
+                    modes.forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { tunnelMode = value }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = tunnelMode == value, onClick = { tunnelMode = value })
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(label, fontSize = 14.sp)
+                                when (value) {
+                                    "off" -> Text("No public URL — LAN access only", fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    "quick" -> Text("Free random URL (trycloudflare.com) — changes on restart", fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    "token" -> Text("Persistent URL — requires Cloudflare Zero Trust tunnel token", fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    if (tunnelMode == "token") {
+                        Spacer(Modifier.height(4.dp))
+                        SettingsTextField("Cloudflare Tunnel Token", tunnelToken, true) { tunnelToken = it }
+                        Text("Get your token: Cloudflare Zero Trust → Networks → Tunnels → Create → Copy token",
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp))
+                    }
                 }
             }
             item { SectionHeaderWithInfo("🔧 Behavior", "config_ux") { onNavigateToInfo("config_ux") } }

@@ -117,5 +117,9 @@ MVVM + Clean Architecture
 ---
 
 ## 🔗 Resumption Tip
-When resuming in a new chat, always reference plan.md for current status.
-Then reference this SKILL.md for technology decisions.
+When resuming in a new chat, read files in this order:
+1. `plan.md` — current state, what's done, what's pending
+2. `blueprint.md` — full architecture, components, DB schema, navigation
+3. `skills.md` (this file) — technology decisions
+4. `permissions.md` — Android permissions & Play Store compliance
+5. `bugs.md` — all past bugs and fixes
