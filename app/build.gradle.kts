@@ -35,7 +35,11 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.13" }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        // Don't strip libcloudflared.so — it's a standalone Linux binary, not a real JNI library
+        jniLibs { keepDebugSymbols += "**/libcloudflared.so" }
+    }
 }
 
 dependencies {
