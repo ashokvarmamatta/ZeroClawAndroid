@@ -6,11 +6,11 @@ import android.net.LinkProperties
 import ai.zeroclaw.android.service.ZeroClawService
 import kotlinx.coroutines.*
 import java.io.File
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
 
 /**
  * TunnelManager
@@ -20,23 +20,23 @@ import java.net.InetSocketAddress
  * Android extracts it to nativeLibraryDir (which has exec permission).
  *
  * Android DNS fix:
- * Go binaries read /etc/resolv.conf which doesn't exist on Android, so DNS fails.
- * Go's fallback is to try 127.0.0.1:53 and [::1]:53.
- * We run a lightweight UDP DNS relay on 127.0.0.1:53 that forwards queries
- * to the device's real DNS server. No DNS parsing needed — just packet forwarding.
+ * Go reads /etc/resolv.conf (hardcoded, can't override). Doesn't exist on Android.
+ * Port 53 is blocked for non-root apps. So we use an HTTP CONNECT proxy instead.
+ * Go's net/http respects HTTPS_PROXY env var. Our proxy resolves DNS using Android's
+ * resolver (InetAddress.getByName), then tunnels the TCP connection transparently.
  */
 class TunnelManager(private val context: Context) {
 
     companion object {
         private const val BINARY_NAME = "libcloudflared.so"
         private const val TARGET_PORT = 8088
-        private const val DNS_RELAY_PORT = 53
+        private const val PROXY_PORT = 18053
         @Volatile var status: String = "idle"
     }
 
     private var tunnelProcess: Process? = null
-    private var dnsRelayJob: Job? = null
-    private var dnsSocket: DatagramSocket? = null
+    private var proxyJob: Job? = null
+    private var proxySocket: ServerSocket? = null
 
     suspend fun start(
         mode: String = "quick",
@@ -65,8 +65,8 @@ class TunnelManager(private val context: Context) {
             if (!binary.canExecute()) binary.setExecutable(true)
             ZeroClawService.log("Cloudflare: binary ready (${binary.length() / 1024}KB)")
 
-            // Start local DNS relay so Go's resolver can resolve hostnames
-            startDnsRelay()
+            // Start HTTPS CONNECT proxy for DNS resolution
+            startConnectProxy()
 
             when (mode) {
                 "token" -> {
@@ -83,111 +83,131 @@ class TunnelManager(private val context: Context) {
     }
 
     /**
-     * Start a UDP DNS relay on 127.0.0.1:53.
+     * HTTP CONNECT proxy on 127.0.0.1:PROXY_PORT.
      *
-     * Why: Go reads /etc/resolv.conf for DNS servers. This file doesn't exist on Android.
-     * Go falls back to 127.0.0.1:53 and [::1]:53. We provide a relay on 127.0.0.1:53
-     * that forwards DNS queries to the device's actual DNS server.
-     *
-     * This is a pure UDP packet relay — no DNS parsing needed.
+     * When cloudflared makes HTTPS requests, Go checks HTTPS_PROXY env var.
+     * Our proxy:
+     * 1. Receives CONNECT hostname:port request
+     * 2. Resolves hostname using Android's InetAddress.getByName() (working DNS)
+     * 3. Connects to resolved IP:port
+     * 4. Sends "200 Connection Established" back
+     * 5. Relays data bidirectionally (transparent tunnel)
      */
-    private fun startDnsRelay() {
-        val upstreamDns = getDeviceDnsServer()
-        if (upstreamDns == null) {
-            ZeroClawService.log("Cloudflare: WARNING — could not detect device DNS server, using 8.8.8.8")
-        }
-        val dnsTarget = upstreamDns ?: "8.8.8.8"
-
-        dnsRelayJob = CoroutineScope(Dispatchers.IO).launch {
+    private fun startConnectProxy() {
+        proxyJob = CoroutineScope(Dispatchers.IO).launch {
             try {
-                dnsSocket = DatagramSocket(null)
-                dnsSocket!!.reuseAddress = true
-                dnsSocket!!.bind(InetSocketAddress("127.0.0.1", DNS_RELAY_PORT))
-                ZeroClawService.log("Cloudflare: DNS relay started on 127.0.0.1:$DNS_RELAY_PORT → $dnsTarget")
-
-                val buffer = ByteArray(4096)
-                val upstreamAddr = InetAddress.getByName(dnsTarget)
+                proxySocket = ServerSocket()
+                proxySocket!!.reuseAddress = true
+                proxySocket!!.bind(InetSocketAddress("127.0.0.1", PROXY_PORT))
+                ZeroClawService.log("Cloudflare: CONNECT proxy started on 127.0.0.1:$PROXY_PORT")
 
                 while (isActive) {
-                    // Receive query from cloudflared (Go resolver)
-                    val inPacket = DatagramPacket(buffer, buffer.size)
-                    dnsSocket!!.receive(inPacket)
-
-                    // Forward to real DNS server
-                    val forwardSocket = DatagramSocket()
-                    forwardSocket.soTimeout = 5000
-                    try {
-                        val query = DatagramPacket(
-                            inPacket.data, inPacket.offset, inPacket.length,
-                            upstreamAddr, 53
-                        )
-                        forwardSocket.send(query)
-
-                        // Receive response from real DNS
-                        val respBuffer = ByteArray(4096)
-                        val response = DatagramPacket(respBuffer, respBuffer.size)
-                        forwardSocket.receive(response)
-
-                        // Forward response back to cloudflared
-                        val reply = DatagramPacket(
-                            response.data, response.offset, response.length,
-                            inPacket.address, inPacket.port
-                        )
-                        dnsSocket!!.send(reply)
-                    } catch (e: Exception) {
-                        ZeroClawService.log("Cloudflare: DNS relay error — ${e.message}")
-                    } finally {
-                        forwardSocket.close()
-                    }
+                    val clientSocket = proxySocket!!.accept()
+                    launch { handleConnectRequest(clientSocket) }
                 }
-            } catch (e: java.net.BindException) {
-                ZeroClawService.log("Cloudflare: DNS relay bind failed on port $DNS_RELAY_PORT — ${e.message}")
-                ZeroClawService.log("Cloudflare: Trying alternative DNS approach...")
-                // Port 53 not available — try higher port approach as fallback
-                startDnsRelayHighPort(dnsTarget)
             } catch (e: Exception) {
-                ZeroClawService.log("Cloudflare: DNS relay error — ${e.message}")
+                ZeroClawService.log("Cloudflare: proxy error — ${e.message}")
             }
         }
 
-        // Give DNS relay time to start
-        Thread.sleep(200)
+        // Give proxy time to start
+        Thread.sleep(100)
     }
 
-    /**
-     * Fallback: If port 53 is blocked, start DNS on a high port and create a wrapper
-     * script that sets up /etc/resolv.conf in a network namespace (requires root).
-     * If that's not possible either, we fall back to pre-resolving the hostname.
-     */
-    private suspend fun startDnsRelayHighPort(dnsTarget: String) {
-        // Since we can't bind port 53 and can't change /etc/resolv.conf,
-        // pre-resolve the critical hostnames and use --edge-ip-version
+    private fun handleConnectRequest(client: Socket) {
         try {
-            val ips = withContext(Dispatchers.IO) {
-                InetAddress.getAllByName("api.trycloudflare.com")
-                    .mapNotNull { it.hostAddress }
+            client.soTimeout = 30000
+            val clientIn = client.getInputStream()
+            val clientOut = client.getOutputStream()
+
+            // Read the HTTP CONNECT request line
+            val requestLine = readLine(clientIn)
+            // e.g. "CONNECT api.trycloudflare.com:443 HTTP/1.1"
+
+            if (!requestLine.startsWith("CONNECT ")) {
+                // Not a CONNECT request — send error and close
+                clientOut.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".toByteArray())
+                client.close()
+                return
             }
-            if (ips.isNotEmpty()) {
-                ZeroClawService.log("Cloudflare: pre-resolved api.trycloudflare.com → ${ips.joinToString(", ")}")
+
+            // Parse host:port
+            val target = requestLine.substringAfter("CONNECT ").substringBefore(" HTTP")
+            val host = target.substringBefore(":")
+            val port = target.substringAfter(":").toIntOrNull() ?: 443
+
+            // Read and discard remaining headers (until empty line)
+            while (true) {
+                val line = readLine(clientIn)
+                if (line.isEmpty()) break
             }
+
+            // Resolve hostname using Android's DNS (this works!)
+            val resolved = InetAddress.getByName(host)
+            ZeroClawService.log("Cloudflare: proxy CONNECT $host → ${resolved.hostAddress}:$port")
+
+            // Connect to the resolved address
+            val upstream = Socket()
+            upstream.connect(InetSocketAddress(resolved, port), 10000)
+            upstream.soTimeout = 60000
+
+            // Send success response
+            clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+            clientOut.flush()
+
+            // Relay data bidirectionally
+            val job1 = CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val buf = ByteArray(8192)
+                    while (true) {
+                        val n = clientIn.read(buf)
+                        if (n <= 0) break
+                        upstream.getOutputStream().write(buf, 0, n)
+                        upstream.getOutputStream().flush()
+                    }
+                } catch (_: Exception) { }
+                try { upstream.shutdownOutput() } catch (_: Exception) { }
+            }
+
+            val job2 = CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val buf = ByteArray(8192)
+                    while (true) {
+                        val n = upstream.getInputStream().read(buf)
+                        if (n <= 0) break
+                        clientOut.write(buf, 0, n)
+                        clientOut.flush()
+                    }
+                } catch (_: Exception) { }
+                try { client.shutdownOutput() } catch (_: Exception) { }
+            }
+
+            // Wait for both directions to finish
+            runBlocking {
+                job1.join()
+                job2.join()
+            }
+
+            upstream.close()
+            client.close()
+
         } catch (e: Exception) {
-            ZeroClawService.log("Cloudflare: pre-resolve failed — ${e.message}")
+            try {
+                client.getOutputStream().write("HTTP/1.1 502 Bad Gateway\r\n\r\n${e.message}".toByteArray())
+            } catch (_: Exception) { }
+            client.close()
         }
     }
 
-    /** Get the device's primary DNS server */
-    private fun getDeviceDnsServer(): String? {
-        return try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val network = cm.activeNetwork ?: return null
-            val linkProps: LinkProperties = cm.getLinkProperties(network) ?: return null
-            linkProps.dnsServers
-                .firstOrNull { it is Inet4Address }
-                ?.hostAddress
-                ?: linkProps.dnsServers.firstOrNull()?.hostAddress
-        } catch (e: Exception) {
-            null
+    /** Read a line from InputStream (until \r\n or \n) */
+    private fun readLine(input: java.io.InputStream): String {
+        val sb = StringBuilder()
+        while (true) {
+            val b = input.read()
+            if (b == -1 || b == '\n'.code) break
+            if (b != '\r'.code) sb.append(b.toChar())
         }
+        return sb.toString()
     }
 
     private fun buildTunnelProcess(binary: File, vararg args: String): Process {
@@ -195,6 +215,9 @@ class TunnelManager(private val context: Context) {
             .directory(context.cacheDir)
             .redirectErrorStream(true)
 
+        // Route all HTTPS traffic through our CONNECT proxy (fixes DNS)
+        pb.environment()["HTTPS_PROXY"] = "http://127.0.0.1:$PROXY_PORT"
+        pb.environment()["HTTP_PROXY"] = "http://127.0.0.1:$PROXY_PORT"
         pb.environment()["HOME"] = context.cacheDir.absolutePath
         pb.environment()["TMPDIR"] = context.cacheDir.absolutePath
 
@@ -213,7 +236,7 @@ class TunnelManager(private val context: Context) {
 
             tunnelProcess = buildTunnelProcess(
                 binary, "tunnel", "--url", "http://localhost:$TARGET_PORT",
-                "--edge-ip-version", "4"  // Force IPv4 to avoid IPv6 DNS issues
+                "--edge-ip-version", "4"
             )
 
             parseOutputForUrl(tunnelProcess!!, onUrlReady, onStatusChange)
@@ -258,7 +281,7 @@ class TunnelManager(private val context: Context) {
                         connected = true
                         status = "connected"
                         onStatusChange("Named tunnel connected")
-                        ZeroClawService.log("Cloudflare: named tunnel connected — URL is in your Cloudflare dashboard")
+                        ZeroClawService.log("Cloudflare: named tunnel connected — check Cloudflare dashboard for URL")
                     }
 
                     if (!connected) {
@@ -300,7 +323,6 @@ class TunnelManager(private val context: Context) {
     ) {
         val reader = process.inputStream.bufferedReader()
         withContext(Dispatchers.IO) {
-            // Match tunnel URLs but NOT api.trycloudflare.com
             val urlRegex = Regex("https://(?!api\\.)[a-z0-9][a-z0-9-]*[a-z0-9]\\.trycloudflare\\.com")
             var urlFound = false
             var lineCount = 0
@@ -373,10 +395,10 @@ class TunnelManager(private val context: Context) {
     fun stop() {
         tunnelProcess?.destroyForcibly()
         tunnelProcess = null
-        dnsRelayJob?.cancel()
-        dnsRelayJob = null
-        try { dnsSocket?.close() } catch (_: Exception) { }
-        dnsSocket = null
+        proxyJob?.cancel()
+        proxyJob = null
+        try { proxySocket?.close() } catch (_: Exception) { }
+        proxySocket = null
         status = "idle"
     }
 }
