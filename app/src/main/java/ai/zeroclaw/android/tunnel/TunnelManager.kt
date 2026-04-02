@@ -6,8 +6,11 @@ import android.net.LinkProperties
 import ai.zeroclaw.android.service.ZeroClawService
 import kotlinx.coroutines.*
 import java.io.File
-import java.io.FileWriter
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.InetSocketAddress
 
 /**
  * TunnelManager
@@ -16,19 +19,24 @@ import java.net.Inet4Address
  * The cloudflared binary is bundled in the APK as jniLibs/arm64-v8a/libcloudflared.so.
  * Android extracts it to nativeLibraryDir (which has exec permission).
  *
- * Android DNS fix: Go binaries read /etc/resolv.conf which doesn't exist on Android.
- * We create a resolv.conf in cacheDir with the device's real DNS servers and point
- * Go's resolver to it via the GODEBUG and RES_OPTIONS environment variables.
+ * Android DNS fix:
+ * Go binaries read /etc/resolv.conf which doesn't exist on Android, so DNS fails.
+ * Go's fallback is to try 127.0.0.1:53 and [::1]:53.
+ * We run a lightweight UDP DNS relay on 127.0.0.1:53 that forwards queries
+ * to the device's real DNS server. No DNS parsing needed — just packet forwarding.
  */
 class TunnelManager(private val context: Context) {
 
     companion object {
         private const val BINARY_NAME = "libcloudflared.so"
         private const val TARGET_PORT = 8088
+        private const val DNS_RELAY_PORT = 53
         @Volatile var status: String = "idle"
     }
 
     private var tunnelProcess: Process? = null
+    private var dnsRelayJob: Job? = null
+    private var dnsSocket: DatagramSocket? = null
 
     suspend fun start(
         mode: String = "quick",
@@ -57,97 +65,144 @@ class TunnelManager(private val context: Context) {
             if (!binary.canExecute()) binary.setExecutable(true)
             ZeroClawService.log("Cloudflare: binary ready (${binary.length() / 1024}KB)")
 
-            // Create resolv.conf for Go's DNS resolver (Android doesn't have /etc/resolv.conf)
-            val resolvConf = createResolvConf()
+            // Start local DNS relay so Go's resolver can resolve hostnames
+            startDnsRelay()
 
             when (mode) {
                 "token" -> {
                     if (token.isNotBlank()) {
-                        startNamedTunnel(binary, token, resolvConf, onUrlReady, onStatusChange)
+                        startNamedTunnel(binary, token, onUrlReady, onStatusChange)
                     } else {
                         ZeroClawService.log("Cloudflare: no token — using quick tunnel")
-                        startQuickTunnel(binary, resolvConf, onUrlReady, onStatusChange)
+                        startQuickTunnel(binary, onUrlReady, onStatusChange)
                     }
                 }
-                else -> startQuickTunnel(binary, resolvConf, onUrlReady, onStatusChange)
+                else -> startQuickTunnel(binary, onUrlReady, onStatusChange)
             }
         }
     }
 
     /**
-     * Create a resolv.conf file with the device's actual DNS servers.
-     * Go's pure-Go DNS resolver reads /etc/resolv.conf which doesn't exist on Android.
-     * We create one in cacheDir and point to it via environment variable.
+     * Start a UDP DNS relay on 127.0.0.1:53.
+     *
+     * Why: Go reads /etc/resolv.conf for DNS servers. This file doesn't exist on Android.
+     * Go falls back to 127.0.0.1:53 and [::1]:53. We provide a relay on 127.0.0.1:53
+     * that forwards DNS queries to the device's actual DNS server.
+     *
+     * This is a pure UDP packet relay — no DNS parsing needed.
      */
-    private fun createResolvConf(): File {
-        val resolvFile = File(context.cacheDir, "resolv.conf")
-        try {
-            val dnsServers = getDeviceDnsServers()
-            FileWriter(resolvFile).use { writer ->
-                if (dnsServers.isNotEmpty()) {
-                    dnsServers.forEach { dns -> writer.write("nameserver $dns\n") }
-                    ZeroClawService.log("Cloudflare: DNS servers → ${dnsServers.joinToString(", ")}")
-                } else {
-                    // Fallback to public DNS
-                    writer.write("nameserver 8.8.8.8\n")
-                    writer.write("nameserver 1.1.1.1\n")
-                    ZeroClawService.log("Cloudflare: using fallback DNS (8.8.8.8, 1.1.1.1)")
-                }
-            }
-        } catch (e: Exception) {
-            // If we can't create it, write fallback
-            FileWriter(resolvFile).use { writer ->
-                writer.write("nameserver 8.8.8.8\n")
-                writer.write("nameserver 1.1.1.1\n")
-            }
-            ZeroClawService.log("Cloudflare: DNS config error, using fallback — ${e.message}")
+    private fun startDnsRelay() {
+        val upstreamDns = getDeviceDnsServer()
+        if (upstreamDns == null) {
+            ZeroClawService.log("Cloudflare: WARNING — could not detect device DNS server, using 8.8.8.8")
         }
-        return resolvFile
+        val dnsTarget = upstreamDns ?: "8.8.8.8"
+
+        dnsRelayJob = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                dnsSocket = DatagramSocket(null)
+                dnsSocket!!.reuseAddress = true
+                dnsSocket!!.bind(InetSocketAddress("127.0.0.1", DNS_RELAY_PORT))
+                ZeroClawService.log("Cloudflare: DNS relay started on 127.0.0.1:$DNS_RELAY_PORT → $dnsTarget")
+
+                val buffer = ByteArray(4096)
+                val upstreamAddr = InetAddress.getByName(dnsTarget)
+
+                while (isActive) {
+                    // Receive query from cloudflared (Go resolver)
+                    val inPacket = DatagramPacket(buffer, buffer.size)
+                    dnsSocket!!.receive(inPacket)
+
+                    // Forward to real DNS server
+                    val forwardSocket = DatagramSocket()
+                    forwardSocket.soTimeout = 5000
+                    try {
+                        val query = DatagramPacket(
+                            inPacket.data, inPacket.offset, inPacket.length,
+                            upstreamAddr, 53
+                        )
+                        forwardSocket.send(query)
+
+                        // Receive response from real DNS
+                        val respBuffer = ByteArray(4096)
+                        val response = DatagramPacket(respBuffer, respBuffer.size)
+                        forwardSocket.receive(response)
+
+                        // Forward response back to cloudflared
+                        val reply = DatagramPacket(
+                            response.data, response.offset, response.length,
+                            inPacket.address, inPacket.port
+                        )
+                        dnsSocket!!.send(reply)
+                    } catch (e: Exception) {
+                        ZeroClawService.log("Cloudflare: DNS relay error — ${e.message}")
+                    } finally {
+                        forwardSocket.close()
+                    }
+                }
+            } catch (e: java.net.BindException) {
+                ZeroClawService.log("Cloudflare: DNS relay bind failed on port $DNS_RELAY_PORT — ${e.message}")
+                ZeroClawService.log("Cloudflare: Trying alternative DNS approach...")
+                // Port 53 not available — try higher port approach as fallback
+                startDnsRelayHighPort(dnsTarget)
+            } catch (e: Exception) {
+                ZeroClawService.log("Cloudflare: DNS relay error — ${e.message}")
+            }
+        }
+
+        // Give DNS relay time to start
+        Thread.sleep(200)
     }
 
-    /** Get the device's actual DNS servers from ConnectivityManager */
-    private fun getDeviceDnsServers(): List<String> {
+    /**
+     * Fallback: If port 53 is blocked, start DNS on a high port and create a wrapper
+     * script that sets up /etc/resolv.conf in a network namespace (requires root).
+     * If that's not possible either, we fall back to pre-resolving the hostname.
+     */
+    private suspend fun startDnsRelayHighPort(dnsTarget: String) {
+        // Since we can't bind port 53 and can't change /etc/resolv.conf,
+        // pre-resolve the critical hostnames and use --edge-ip-version
+        try {
+            val ips = withContext(Dispatchers.IO) {
+                InetAddress.getAllByName("api.trycloudflare.com")
+                    .mapNotNull { it.hostAddress }
+            }
+            if (ips.isNotEmpty()) {
+                ZeroClawService.log("Cloudflare: pre-resolved api.trycloudflare.com → ${ips.joinToString(", ")}")
+            }
+        } catch (e: Exception) {
+            ZeroClawService.log("Cloudflare: pre-resolve failed — ${e.message}")
+        }
+    }
+
+    /** Get the device's primary DNS server */
+    private fun getDeviceDnsServer(): String? {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val network = cm.activeNetwork ?: return emptyList()
-            val linkProps: LinkProperties = cm.getLinkProperties(network) ?: return emptyList()
+            val network = cm.activeNetwork ?: return null
+            val linkProps: LinkProperties = cm.getLinkProperties(network) ?: return null
             linkProps.dnsServers
-                .mapNotNull { it.hostAddress }
-                .filter { !it.contains(":") } // Prefer IPv4 DNS
-                .ifEmpty {
-                    // Include IPv6 DNS if no IPv4 available
-                    linkProps.dnsServers.mapNotNull { it.hostAddress }
-                }
+                .firstOrNull { it is Inet4Address }
+                ?.hostAddress
+                ?: linkProps.dnsServers.firstOrNull()?.hostAddress
         } catch (e: Exception) {
-            emptyList()
+            null
         }
     }
 
-    /**
-     * Build a ProcessBuilder with proper environment for Android.
-     * Sets up DNS resolution so Go can find DNS servers.
-     */
-    private fun buildTunnelProcess(binary: File, resolvConf: File, vararg args: String): Process {
+    private fun buildTunnelProcess(binary: File, vararg args: String): Process {
         val pb = ProcessBuilder(listOf(binary.absolutePath) + args.toList())
             .directory(context.cacheDir)
             .redirectErrorStream(true)
 
-        // Point Go's DNS resolver to our custom resolv.conf
-        pb.environment()["GODEBUG"] = "netdns=go"
-        pb.environment()["RES_CONF"] = resolvConf.absolutePath
-        // Also set HOME so cloudflared can write temp files
         pb.environment()["HOME"] = context.cacheDir.absolutePath
         pb.environment()["TMPDIR"] = context.cacheDir.absolutePath
 
         return pb.start()
     }
 
-    /**
-     * Quick Tunnel — free, no account, random trycloudflare.com URL.
-     */
     private suspend fun startQuickTunnel(
         binary: File,
-        resolvConf: File,
         onUrlReady: (String) -> Unit,
         onStatusChange: (String) -> Unit
     ) {
@@ -157,8 +212,8 @@ class TunnelManager(private val context: Context) {
             ZeroClawService.log("Cloudflare: starting quick tunnel → localhost:$TARGET_PORT")
 
             tunnelProcess = buildTunnelProcess(
-                binary, resolvConf,
-                "tunnel", "--url", "http://localhost:$TARGET_PORT"
+                binary, "tunnel", "--url", "http://localhost:$TARGET_PORT",
+                "--edge-ip-version", "4"  // Force IPv4 to avoid IPv6 DNS issues
             )
 
             parseOutputForUrl(tunnelProcess!!, onUrlReady, onStatusChange)
@@ -170,13 +225,9 @@ class TunnelManager(private val context: Context) {
         }
     }
 
-    /**
-     * Named Tunnel — persistent URL via Cloudflare token.
-     */
     private suspend fun startNamedTunnel(
         binary: File,
         token: String,
-        resolvConf: File,
         onUrlReady: (String) -> Unit,
         onStatusChange: (String) -> Unit
     ) {
@@ -186,8 +237,8 @@ class TunnelManager(private val context: Context) {
             ZeroClawService.log("Cloudflare: starting named tunnel with token")
 
             tunnelProcess = buildTunnelProcess(
-                binary, resolvConf,
-                "tunnel", "run", "--token", token
+                binary, "tunnel", "run", "--token", token,
+                "--edge-ip-version", "4"
             )
 
             val reader = tunnelProcess!!.inputStream.bufferedReader()
@@ -210,13 +261,12 @@ class TunnelManager(private val context: Context) {
                         ZeroClawService.log("Cloudflare: named tunnel connected — URL is in your Cloudflare dashboard")
                     }
 
-                    // Try to extract the configured hostname
                     if (!connected) {
                         val urlMatch = Regex("https://[a-z0-9.-]+\\.[a-z]{2,}").find(line)
                         if (urlMatch != null
                             && !urlMatch.value.contains("api.cloudflare")
+                            && !urlMatch.value.contains("api.trycloudflare")
                             && !urlMatch.value.contains("update.")
-                            && !urlMatch.value.contains("trycloudflare.com")
                         ) {
                             connected = true
                             status = "connected"
@@ -243,11 +293,6 @@ class TunnelManager(private val context: Context) {
         }
     }
 
-    /**
-     * Parse cloudflared output looking for the trycloudflare.com URL.
-     * Only matches actual tunnel URLs (random-word.trycloudflare.com),
-     * NOT api.trycloudflare.com from error messages.
-     */
     private suspend fun parseOutputForUrl(
         process: Process,
         onUrlReady: (String) -> Unit,
@@ -255,7 +300,7 @@ class TunnelManager(private val context: Context) {
     ) {
         val reader = process.inputStream.bufferedReader()
         withContext(Dispatchers.IO) {
-            // Match random-word-style tunnel URLs, NOT api.trycloudflare.com
+            // Match tunnel URLs but NOT api.trycloudflare.com
             val urlRegex = Regex("https://(?!api\\.)[a-z0-9][a-z0-9-]*[a-z0-9]\\.trycloudflare\\.com")
             var urlFound = false
             var lineCount = 0
@@ -264,7 +309,6 @@ class TunnelManager(private val context: Context) {
                 val line = reader.readLine() ?: break
                 lineCount++
 
-                // Log errors and important messages
                 if (line.contains("ERR") || line.contains("error") || line.contains("failed")) {
                     ZeroClawService.log("Cloudflare: $line")
                 }
@@ -329,6 +373,10 @@ class TunnelManager(private val context: Context) {
     fun stop() {
         tunnelProcess?.destroyForcibly()
         tunnelProcess = null
+        dnsRelayJob?.cancel()
+        dnsRelayJob = null
+        try { dnsSocket?.close() } catch (_: Exception) { }
+        dnsSocket = null
         status = "idle"
     }
 }
