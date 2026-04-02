@@ -57,6 +57,7 @@ fun SettingsScreen(
     var webChatEnabled by remember { mutableStateOf(false) }
     var tunnelMode by remember { mutableStateOf("quick") }
     var tunnelToken by remember { mutableStateOf("") }
+    var tunnelHostname by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(true) }
     var optimizePrompt by remember { mutableStateOf(false) }
     var offlineWebSummarize by remember { mutableStateOf(true) }
@@ -87,6 +88,7 @@ fun SettingsScreen(
             webChatEnabled = s.webChatEnabled
             tunnelMode = s.tunnelMode
             tunnelToken = s.tunnelToken
+            tunnelHostname = s.tunnelHostname
             autoStart = s.autoStart
             optimizePrompt = s.optimizePrompt
             offlineWebSummarize = s.offlineWebSummarize
@@ -114,7 +116,7 @@ fun SettingsScreen(
                                 twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl,
                                 slackToken, matrixConfig, ircConfig, teamsConfig, twitchConfig,
                                 lineToken, webChatEnabled, optimizePrompt, offlineWebSummarize,
-                                tunnelMode, tunnelToken
+                                tunnelMode, tunnelToken, tunnelHostname
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -226,7 +228,9 @@ fun SettingsScreen(
                     if (tunnelMode == "token") {
                         Spacer(Modifier.height(4.dp))
                         SettingsTextField("Cloudflare Tunnel Token", tunnelToken, true) { tunnelToken = it }
-                        Text("Get your token: Cloudflare Zero Trust → Networks → Tunnels → Create → Copy token",
+                        Spacer(Modifier.height(4.dp))
+                        SettingsTextField("Your Domain (e.g. api.yourdomain.com)", tunnelHostname, false) { tunnelHostname = it }
+                        Text("Setup: Cloudflare Zero Trust → Networks → Tunnels → Create a tunnel → Add your domain → Copy token",
                             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 4.dp))
                     }

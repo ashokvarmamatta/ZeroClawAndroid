@@ -43,7 +43,8 @@ data class SettingsData(
     val optimizePrompt: Boolean = false,
     val offlineWebSummarize: Boolean = true,   // fetch web data + ask model to summarize it
     val tunnelMode: String = "quick",          // "off", "quick" (trycloudflare.com), "token" (named tunnel)
-    val tunnelToken: String = ""               // Cloudflare tunnel token (for named tunnels)
+    val tunnelToken: String = "",              // Cloudflare tunnel token (for named tunnels)
+    val tunnelHostname: String = ""            // Your domain (e.g. "api.yourdomain.com") — shown in UI for named tunnels
 )
 
 class AppSettings(private val context: Context) {
@@ -86,6 +87,7 @@ class AppSettings(private val context: Context) {
         val KEY_OFFLINE_WEB_SUMMARIZE = booleanPreferencesKey("offline_web_summarize")
         val KEY_TUNNEL_MODE = stringPreferencesKey("tunnel_mode")
         val KEY_TUNNEL_TOKEN = stringPreferencesKey("tunnel_token")
+        val KEY_TUNNEL_HOSTNAME = stringPreferencesKey("tunnel_hostname")
     }
 
     suspend fun getAll(): SettingsData {
@@ -123,7 +125,8 @@ class AppSettings(private val context: Context) {
             optimizePrompt = prefs[KEY_OPTIMIZE_PROMPT] ?: false,
             offlineWebSummarize = prefs[KEY_OFFLINE_WEB_SUMMARIZE] ?: true,
             tunnelMode = prefs[KEY_TUNNEL_MODE] ?: "quick",
-            tunnelToken = prefs[KEY_TUNNEL_TOKEN] ?: ""
+            tunnelToken = prefs[KEY_TUNNEL_TOKEN] ?: "",
+            tunnelHostname = prefs[KEY_TUNNEL_HOSTNAME] ?: ""
         )
     }
 
@@ -136,7 +139,8 @@ class AppSettings(private val context: Context) {
         teamsConfig: String = "", twitchConfig: String = "",
         lineToken: String = "", webChatEnabled: Boolean = false,
         optimizePrompt: Boolean = false, offlineWebSummarize: Boolean = true,
-        tunnelMode: String = "quick", tunnelToken: String = ""
+        tunnelMode: String = "quick", tunnelToken: String = "",
+        tunnelHostname: String = ""
     ) {
         context.appDataStore.edit { prefs ->
             prefs[KEY_ZEROCLAW_URL] = zeroClawUrl
@@ -160,6 +164,7 @@ class AppSettings(private val context: Context) {
             prefs[KEY_OFFLINE_WEB_SUMMARIZE] = offlineWebSummarize
             prefs[KEY_TUNNEL_MODE] = tunnelMode
             prefs[KEY_TUNNEL_TOKEN] = tunnelToken
+            prefs[KEY_TUNNEL_HOSTNAME] = tunnelHostname
         }
         // Also save auto_start to legacy SharedPreferences for BootReceiver
         context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)

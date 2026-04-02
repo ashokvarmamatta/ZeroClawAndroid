@@ -48,6 +48,7 @@ class TunnelManager(private val context: Context) {
     suspend fun start(
         mode: String = "quick",
         token: String = "",
+        hostname: String = "",
         onUrlReady: (String) -> Unit,
         onStatusChange: (String) -> Unit = {}
     ) {
@@ -75,7 +76,7 @@ class TunnelManager(private val context: Context) {
             when (mode) {
                 "token" -> {
                     if (token.isNotBlank()) {
-                        startNamedTunnel(binary, token, onUrlReady, onStatusChange)
+                        startNamedTunnel(binary, token, hostname, onUrlReady, onStatusChange)
                     } else {
                         ZeroClawService.log("Cloudflare: no token — using quick tunnel")
                         startQuickTunnel(binary, onUrlReady, onStatusChange)
@@ -284,6 +285,7 @@ class TunnelManager(private val context: Context) {
     private suspend fun startNamedTunnel(
         binary: File,
         token: String,
+        hostname: String,
         onUrlReady: (String) -> Unit,
         onStatusChange: (String) -> Unit
     ) {
@@ -292,17 +294,33 @@ class TunnelManager(private val context: Context) {
             onStatusChange("Starting Cloudflare Named Tunnel...")
             ZeroClawService.log("Cloudflare: starting named tunnel with token")
 
-            tunnelProcess = ProcessBuilder(
+            // Resolve edge IPs from Java (same DNS fix as quick tunnel)
+            val edgeIps = resolveEdgeIps()
+            ZeroClawService.log("Cloudflare: edge IPs for named tunnel → ${edgeIps.joinToString(", ")}")
+
+            val cmd = mutableListOf(
                 binary.absolutePath,
                 "tunnel",
                 "--edge-ip-version", "4",
                 "--no-autoupdate",
-                "--protocol", "http2",
-                "run", "--token", token
+                "--protocol", "http2"
             )
+            for (ip in edgeIps.take(4)) {
+                cmd.addAll(listOf("--edge", ip))
+            }
+            cmd.addAll(listOf("run", "--token", token))
+
+            tunnelProcess = ProcessBuilder(cmd)
                 .directory(context.cacheDir)
                 .redirectErrorStream(true)
                 .start()
+
+            // If user provided their domain, report it immediately
+            if (hostname.isNotBlank()) {
+                val url = if (hostname.startsWith("http")) hostname else "https://$hostname"
+                onUrlReady(url)
+                ZeroClawService.log("Cloudflare: named tunnel URL → $url")
+            }
 
             val reader = tunnelProcess!!.inputStream.bufferedReader()
             withContext(Dispatchers.IO) {
@@ -320,24 +338,8 @@ class TunnelManager(private val context: Context) {
                     if (line.contains("Registered tunnel connection") || line.contains("Connection registered")) {
                         connected = true
                         status = "connected"
-                        onStatusChange("Named tunnel connected")
-                        ZeroClawService.log("Cloudflare: named tunnel connected — check Cloudflare dashboard for URL")
-                    }
-
-                    if (!connected) {
-                        val urlMatch = Regex("https://[a-z0-9.-]+\\.[a-z]{2,}").find(line)
-                        if (urlMatch != null
-                            && !urlMatch.value.contains("api.cloudflare")
-                            && !urlMatch.value.contains("api.trycloudflare")
-                            && !urlMatch.value.contains("update.")
-                        ) {
-                            connected = true
-                            status = "connected"
-                            val url = urlMatch.value
-                            onStatusChange("Connected: $url")
-                            ZeroClawService.log("Cloudflare: named tunnel live → $url")
-                            onUrlReady(url)
-                        }
+                        onStatusChange("Connected: $hostname")
+                        ZeroClawService.log("Cloudflare: named tunnel connected! Edge link established.")
                     }
                 }
 

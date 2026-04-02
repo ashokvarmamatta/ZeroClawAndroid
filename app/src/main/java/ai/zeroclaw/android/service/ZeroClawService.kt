@@ -181,6 +181,7 @@ class ZeroClawService : Service() {
                 tunnelManager.start(
                     mode = settings.tunnelMode,
                     token = settings.tunnelToken,
+                    hostname = settings.tunnelHostname,
                     onUrlReady = { url ->
                         tunnelUrl = url
                         log("Tunnel: $url")
