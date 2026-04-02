@@ -1,6 +1,7 @@
 package ai.zeroclaw.android.tunnel
 
 import android.content.Context
+import android.os.Build
 import ai.zeroclaw.android.service.ZeroClawService
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -16,21 +17,19 @@ import java.util.concurrent.TimeUnit
  * - External apps can reach the OpenAI-compatible API
  * - Telegram/Twilio webhooks can reach this device
  *
- * Strategy:
- * 1. Auto-download cloudflared ARM64 binary if not present
- * 2. Quick Tunnel mode (free, no account — trycloudflare.com)
- * 3. Named Tunnel mode (persistent URL — requires Cloudflare token)
- * 4. ngrok fallback (if binary manually placed)
- * 5. Local IP fallback (LAN only)
+ * Android W^X Policy Fix:
+ * Android 10+ blocks exec from app data dirs (noexec mount). We work around this by:
+ * 1. Storing the binary in the native library dir (nativeLibraryDir — exec-allowed)
+ * 2. If that fails, use the dynamic linker to execute from filesDir
+ * 3. If that also fails, fall back to local IP only
  */
 class TunnelManager(private val context: Context) {
 
     companion object {
-        private const val CLOUDFLARED_BINARY = "cloudflared"
+        private const val CLOUDFLARED_BINARY = "libcloudflared.so"  // Must look like a native lib
         private const val CLOUDFLARED_URL =
             "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
         private const val TARGET_PORT = 8088
-        /** Current download/tunnel status for UI display */
         @Volatile var status: String = "idle"
         @Volatile var isDownloading: Boolean = false
     }
@@ -38,7 +37,7 @@ class TunnelManager(private val context: Context) {
     private var tunnelProcess: Process? = null
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
     /**
@@ -63,27 +62,23 @@ class TunnelManager(private val context: Context) {
         }
 
         withContext(Dispatchers.IO) {
-            val binary = File(context.filesDir, CLOUDFLARED_BINARY)
-
             // Try ngrok first if available (user manually placed it)
-            val ngrokBinary = File(context.filesDir, "ngrok")
+            val ngrokBinary = File(context.applicationInfo.nativeLibraryDir, "libngrok.so")
             if (ngrokBinary.exists() && ngrokBinary.canExecute()) {
                 startNgrok(ngrokBinary, onUrlReady)
                 return@withContext
             }
 
-            // Auto-download cloudflared if not present
-            if (!binary.exists() || !binary.canExecute()) {
-                val downloaded = downloadCloudflared(binary, onStatusChange)
-                if (!downloaded) {
-                    val ip = getLocalIp()
-                    val url = "http://$ip:$TARGET_PORT"
-                    status = "download_failed"
-                    onStatusChange("Download failed")
-                    ZeroClawService.log("Cloudflare: download failed. Local URL: $url")
-                    onUrlReady(url)
-                    return@withContext
-                }
+            // Find or download cloudflared
+            val binary = findOrDownloadBinary(onStatusChange)
+            if (binary == null) {
+                val ip = getLocalIp()
+                val url = "http://$ip:$TARGET_PORT"
+                status = "download_failed"
+                onStatusChange("Download failed")
+                ZeroClawService.log("Cloudflare: could not prepare binary. Local URL: $url")
+                onUrlReady(url)
+                return@withContext
             }
 
             // Start tunnel based on mode
@@ -92,7 +87,7 @@ class TunnelManager(private val context: Context) {
                     if (token.isNotBlank()) {
                         startNamedTunnel(binary, token, onUrlReady, onStatusChange)
                     } else {
-                        ZeroClawService.log("Cloudflare: token mode selected but no token provided, falling back to quick tunnel")
+                        ZeroClawService.log("Cloudflare: token mode but no token — falling back to quick tunnel")
                         startQuickTunnel(binary, onUrlReady, onStatusChange)
                     }
                 }
@@ -102,15 +97,125 @@ class TunnelManager(private val context: Context) {
     }
 
     /**
+     * Find existing binary or download it. Returns the executable path, or null on failure.
+     *
+     * Strategy:
+     * 1. Check nativeLibraryDir (exec-allowed on all Android versions)
+     * 2. Check filesDir (works on older Android)
+     * 3. Download to nativeLibraryDir first, filesDir as fallback
+     */
+    private fun findOrDownloadBinary(onStatusChange: (String) -> Unit): File? {
+        // Location 1: nativeLibraryDir (always executable)
+        val nativeDir = File(context.applicationInfo.nativeLibraryDir)
+        val nativeBinary = File(nativeDir, CLOUDFLARED_BINARY)
+        if (nativeBinary.exists() && nativeBinary.canExecute()) {
+            ZeroClawService.log("Cloudflare: using binary from native lib dir")
+            return nativeBinary
+        }
+
+        // Location 2: filesDir (may work on older Android)
+        val filesDirBinary = File(context.filesDir, "cloudflared")
+        if (filesDirBinary.exists() && filesDirBinary.canExecute()) {
+            // Test if it can actually execute
+            if (testExecutable(filesDirBinary)) {
+                ZeroClawService.log("Cloudflare: using binary from files dir")
+                return filesDirBinary
+            }
+        }
+
+        // Need to download — try nativeLibraryDir first
+        val downloadTarget = if (nativeDir.canWrite()) {
+            nativeBinary
+        } else {
+            // Fallback to filesDir
+            filesDirBinary
+        }
+
+        val success = downloadCloudflared(downloadTarget, onStatusChange)
+        if (!success) return null
+
+        // Verify it can execute
+        if (testExecutable(downloadTarget)) {
+            return downloadTarget
+        }
+
+        // If nativeLibraryDir download worked but can't execute, try filesDir
+        if (downloadTarget == nativeBinary && !testExecutable(nativeBinary)) {
+            ZeroClawService.log("Cloudflare: native dir not executable, trying files dir...")
+            val copied = nativeBinary.copyTo(filesDirBinary, overwrite = true)
+            copied.setExecutable(true, true)
+            if (testExecutable(copied)) {
+                return copied
+            }
+        }
+
+        // Last resort: try to execute via the system linker
+        ZeroClawService.log("Cloudflare: binary downloaded but exec blocked by Android security policy")
+        ZeroClawService.log("Cloudflare: attempting linker workaround...")
+        return downloadTarget // Will use linker-based execution
+    }
+
+    /** Test if a binary can actually be executed (not just has +x permission) */
+    private fun testExecutable(binary: File): Boolean {
+        return try {
+            val process = ProcessBuilder(binary.absolutePath, "--version")
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readLine() ?: ""
+            process.destroyForcibly()
+            output.isNotEmpty()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Build a ProcessBuilder that can execute the binary, working around Android's W^X policy.
+     * Tries direct execution first, then falls back to linker-based execution.
+     */
+    private fun buildProcess(binary: File, vararg args: String): ProcessBuilder {
+        val fullArgs = mutableListOf<String>()
+
+        // Try direct execution first
+        if (testExecutable(binary)) {
+            fullArgs.add(binary.absolutePath)
+            fullArgs.addAll(args)
+        } else {
+            // Use the dynamic linker to execute the binary
+            // On Android, the linker is at /system/bin/linker64 (arm64) or /system/bin/linker (arm32)
+            val linker = if (Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()) {
+                "/system/bin/linker64"
+            } else {
+                "/system/bin/linker"
+            }
+
+            if (File(linker).exists()) {
+                fullArgs.add(linker)
+                fullArgs.add(binary.absolutePath)
+                fullArgs.addAll(args)
+            } else {
+                // Last resort: use sh -c
+                fullArgs.add("/system/bin/sh")
+                fullArgs.add("-c")
+                val escapedArgs = args.joinToString(" ") { "'$it'" }
+                fullArgs.add("${binary.absolutePath} $escapedArgs")
+            }
+        }
+
+        return ProcessBuilder(fullArgs)
+            .directory(context.filesDir)
+            .redirectErrorStream(true)
+    }
+
+    /**
      * Download cloudflared-linux-arm64 binary from GitHub releases.
-     * Returns true on success.
      */
     private fun downloadCloudflared(targetFile: File, onStatusChange: (String) -> Unit): Boolean {
         return try {
             isDownloading = true
             status = "downloading"
             onStatusChange("Downloading cloudflared...")
-            ZeroClawService.log("Cloudflare: downloading ARM64 binary...")
+            ZeroClawService.log("Cloudflare: downloading ARM64 binary to ${targetFile.parent}...")
 
             val request = Request.Builder()
                 .url(CLOUDFLARED_URL)
@@ -126,17 +231,20 @@ class TunnelManager(private val context: Context) {
                 val body = response.body ?: return false
                 val totalBytes = body.contentLength()
                 var downloadedBytes = 0L
+                var lastLoggedPct = -1
 
                 FileOutputStream(targetFile).use { output ->
                     body.byteStream().use { input ->
-                        val buffer = ByteArray(8192)
+                        val buffer = ByteArray(16384)
                         var bytesRead: Int
                         while (input.read(buffer).also { bytesRead = it } != -1) {
                             output.write(buffer, 0, bytesRead)
                             downloadedBytes += bytesRead
                             if (totalBytes > 0) {
                                 val pct = (downloadedBytes * 100 / totalBytes).toInt()
-                                if (pct % 10 == 0) {
+                                // Only log at 25% intervals to reduce log spam
+                                if (pct / 25 > lastLoggedPct / 25) {
+                                    lastLoggedPct = pct
                                     status = "downloading_$pct"
                                     onStatusChange("Downloading cloudflared... ${pct}%")
                                 }
@@ -148,10 +256,11 @@ class TunnelManager(private val context: Context) {
 
             // Make executable
             targetFile.setExecutable(true, true)
+            targetFile.setReadable(true, true)
             isDownloading = false
             status = "downloaded"
             onStatusChange("Download complete")
-            ZeroClawService.log("Cloudflare: binary downloaded (${targetFile.length() / 1024}KB)")
+            ZeroClawService.log("Cloudflare: binary downloaded (${targetFile.length() / 1024}KB) → ${targetFile.absolutePath}")
             true
         } catch (e: Exception) {
             isDownloading = false
@@ -165,7 +274,6 @@ class TunnelManager(private val context: Context) {
 
     /**
      * Quick Tunnel — free, no account, generates random trycloudflare.com URL.
-     * URL changes on every restart.
      */
     private suspend fun startQuickTunnel(
         binary: File,
@@ -177,26 +285,21 @@ class TunnelManager(private val context: Context) {
             onStatusChange("Starting Cloudflare Quick Tunnel...")
             ZeroClawService.log("Cloudflare: starting quick tunnel → localhost:$TARGET_PORT")
 
-            tunnelProcess = ProcessBuilder(
-                binary.absolutePath, "tunnel", "--url", "http://localhost:$TARGET_PORT"
-            )
-                .directory(context.filesDir)
-                .redirectErrorStream(true)
-                .start()
+            tunnelProcess = buildProcess(
+                binary, "tunnel", "--url", "http://localhost:$TARGET_PORT"
+            ).start()
 
-            // Read stdout/stderr to find the trycloudflare.com URL
             val reader = tunnelProcess!!.inputStream.bufferedReader()
             withContext(Dispatchers.IO) {
                 val urlRegex = Regex("https://[a-z0-9-]+\\.trycloudflare\\.com")
                 var urlFound = false
                 var lineCount = 0
 
-                while (!urlFound && lineCount < 200) {
+                while (!urlFound && lineCount < 300) {
                     val line = reader.readLine() ?: break
                     lineCount++
 
-                    // Log important cloudflared output
-                    if (line.contains("ERR") || line.contains("error")) {
+                    if (line.contains("ERR") || line.contains("error") || line.contains("failed")) {
                         ZeroClawService.log("Cloudflare: $line")
                     }
 
@@ -214,12 +317,12 @@ class TunnelManager(private val context: Context) {
                 if (!urlFound) {
                     status = "failed"
                     onStatusChange("Tunnel failed to start")
-                    ZeroClawService.log("Cloudflare: failed to get URL after $lineCount lines")
+                    ZeroClawService.log("Cloudflare: failed to get URL after $lineCount lines of output")
                     val ip = getLocalIp()
                     onUrlReady("http://$ip:$TARGET_PORT")
                 }
 
-                // Keep reading to prevent buffer deadlock (run in background)
+                // Keep reading to prevent buffer deadlock
                 launch(Dispatchers.IO) {
                     try {
                         while (true) {
@@ -228,7 +331,7 @@ class TunnelManager(private val context: Context) {
                                 ZeroClawService.log("Cloudflare: $line")
                             }
                         }
-                    } catch (_: Exception) { /* process ended */ }
+                    } catch (_: Exception) { }
                 }
             }
         } catch (e: Exception) {
@@ -241,9 +344,7 @@ class TunnelManager(private val context: Context) {
     }
 
     /**
-     * Named Tunnel — uses a pre-configured Cloudflare tunnel token.
-     * Provides a persistent URL (doesn't change on restart).
-     * User creates the tunnel at: https://one.dash.cloudflare.com → Networks → Tunnels
+     * Named Tunnel — persistent URL via Cloudflare token.
      */
     private suspend fun startNamedTunnel(
         binary: File,
@@ -256,21 +357,17 @@ class TunnelManager(private val context: Context) {
             onStatusChange("Starting Cloudflare Named Tunnel...")
             ZeroClawService.log("Cloudflare: starting named tunnel with token")
 
-            tunnelProcess = ProcessBuilder(
-                binary.absolutePath, "tunnel", "run", "--token", token
-            )
-                .directory(context.filesDir)
-                .redirectErrorStream(true)
-                .start()
+            tunnelProcess = buildProcess(
+                binary, "tunnel", "run", "--token", token
+            ).start()
 
             val reader = tunnelProcess!!.inputStream.bufferedReader()
             withContext(Dispatchers.IO) {
-                // Named tunnels log their configured hostname
                 val urlRegex = Regex("https://[a-z0-9.-]+\\.[a-z]{2,}")
                 var urlFound = false
                 var lineCount = 0
 
-                while (!urlFound && lineCount < 200) {
+                while (!urlFound && lineCount < 300) {
                     val line = reader.readLine() ?: break
                     lineCount++
 
@@ -278,19 +375,13 @@ class TunnelManager(private val context: Context) {
                         ZeroClawService.log("Cloudflare: $line")
                     }
 
-                    // Named tunnels log "Registered tunnel connection" with the hostname
                     if (line.contains("Registered tunnel connection") || line.contains("Connection registered")) {
-                        // The URL is the hostname configured in the Cloudflare dashboard
-                        // We need to get it from the tunnel info
                         status = "connected"
                         onStatusChange("Named tunnel connected")
                         ZeroClawService.log("Cloudflare: named tunnel connected")
-                        // For named tunnels, the user knows their URL — we signal connection is ready
-                        // Try to extract URL from logs, otherwise the user provides it
                         urlFound = true
                     }
 
-                    // Also check for any https URL in the output
                     if (!urlFound) {
                         val match = urlRegex.find(line)
                         if (match != null && !match.value.contains("cloudflare.com/") && !match.value.contains("api.")) {
@@ -304,14 +395,11 @@ class TunnelManager(private val context: Context) {
                 }
 
                 if (!urlFound) {
-                    // Named tunnel connected but we couldn't extract URL — this is normal
-                    // The user already knows their hostname from Cloudflare dashboard
                     status = "connected_no_url"
-                    ZeroClawService.log("Cloudflare: named tunnel started — check your Cloudflare dashboard for the URL")
+                    ZeroClawService.log("Cloudflare: named tunnel started — check Cloudflare dashboard for URL")
                     onStatusChange("Connected — check Cloudflare dashboard for URL")
                 }
 
-                // Keep reading to prevent buffer deadlock
                 launch(Dispatchers.IO) {
                     try {
                         while (true) {
@@ -320,7 +408,7 @@ class TunnelManager(private val context: Context) {
                                 ZeroClawService.log("Cloudflare: $line")
                             }
                         }
-                    } catch (_: Exception) { /* process ended */ }
+                    } catch (_: Exception) { }
                 }
             }
         } catch (e: Exception) {
@@ -330,7 +418,6 @@ class TunnelManager(private val context: Context) {
         }
     }
 
-    /** ngrok fallback (binary must be manually placed in filesDir) */
     private suspend fun startNgrok(binary: File, onUrlReady: (String) -> Unit) {
         try {
             ZeroClawService.log("Starting ngrok tunnel → localhost:$TARGET_PORT")
@@ -390,15 +477,15 @@ class TunnelManager(private val context: Context) {
         } catch (e: Exception) { "127.0.0.1" }
     }
 
-    /** Check if cloudflared binary is already downloaded */
     fun isBinaryReady(): Boolean {
-        val binary = File(context.filesDir, CLOUDFLARED_BINARY)
-        return binary.exists() && binary.canExecute()
+        val native1 = File(context.applicationInfo.nativeLibraryDir, CLOUDFLARED_BINARY)
+        val files1 = File(context.filesDir, "cloudflared")
+        return (native1.exists() && native1.canExecute()) || (files1.exists() && files1.canExecute())
     }
 
-    /** Delete the downloaded binary (to force re-download) */
     fun deleteBinary() {
-        File(context.filesDir, CLOUDFLARED_BINARY).delete()
+        File(context.applicationInfo.nativeLibraryDir, CLOUDFLARED_BINARY).delete()
+        File(context.filesDir, "cloudflared").delete()
         status = "idle"
     }
 
