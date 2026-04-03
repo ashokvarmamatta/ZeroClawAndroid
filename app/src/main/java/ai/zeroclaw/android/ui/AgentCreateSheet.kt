@@ -86,6 +86,7 @@ fun AgentCreateSheet(
     var intervalRaw   by remember { mutableStateOf((existing?.intervalMinutes ?: template?.intervalMinutes ?: 60).toString()) }
     var extractPrompt by remember { mutableStateOf(existing?.extractPrompt ?: template?.extractPrompt ?: "") }
     var onlyOnChange  by remember { mutableStateOf(existing?.onlyOnChange ?: template?.onlyOnChange ?: true) }
+    var trackingMode  by remember { mutableStateOf(existing?.safeTrackingMode ?: "full_site") }
     var customInput   by remember { mutableStateOf("") }
     var selectedSubs  by remember { mutableStateOf(setOf<String>()) }
 
@@ -323,10 +324,48 @@ fun AgentCreateSheet(
             item { SectionLabel("Schedule", accentColor) }
 
             item {
+                Column {
+                    Text("Tracking mode", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf("full_site" to "Full Site Reload", "value_only" to "Value Change Only").forEach { (mode, label) ->
+                            FilterChip(
+                                selected = trackingMode == mode,
+                                onClick = {
+                                    trackingMode = mode
+                                    // Auto-adjust interval when switching modes
+                                    if (mode == "full_site") {
+                                        val current = intervalRaw.toIntOrNull() ?: 60
+                                        if (current < 5) intervalRaw = "5"
+                                    }
+                                },
+                                label = { Text(label, fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = accentColor,
+                                    selectedLabelColor = Color.White
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Text(
+                        if (trackingMode == "value_only")
+                            "Reads changing values (prices, scores) without reloading the page. Faster, lower ban risk."
+                        else
+                            "Reloads the full page each time. Use for content that updates between page loads.",
+                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                    )
+                }
+            }
+
+            item {
                 IntervalPicker(
                     value = intervalRaw,
                     onChange = { intervalRaw = it },
-                    accent = accentColor
+                    accent = accentColor,
+                    isValueOnly = trackingMode == "value_only"
                 )
             }
 
@@ -1056,7 +1095,8 @@ Start directly with the data list:"""
                         }
                         if (!ok) return@Button
 
-                        val intervalMins = intervalRaw.toIntOrNull()?.coerceAtLeast(1) ?: 60
+                        val minInterval = if (trackingMode == "value_only") 1 else 5
+                        val intervalMins = intervalRaw.toIntOrNull()?.coerceAtLeast(minInterval) ?: 60
                         // Resolve template {query} placeholder
                         var finalUrl = url.trim()
                         var finalPrompt = extractPrompt.trim()
@@ -1110,7 +1150,8 @@ Start directly with the data list:"""
                             onlyOnChange = onlyOnChange,
                             apiSource = template?.apiSource ?: existing?.apiSource,
                             fetchType = aiFetchType,
-                            formatPreview = aiFormatPreview
+                            formatPreview = aiFormatPreview,
+                            trackingMode = trackingMode
                         )
                         onSave(config)
                     },
@@ -1333,13 +1374,17 @@ private fun FormField(
 }
 
 @Composable
-private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Color) {
-    val presets = listOf("1" to "1m", "2" to "2m", "5" to "5m", "15" to "15m", "30" to "30m", "60" to "1h",
-                         "360" to "6h", "720" to "12h", "1440" to "24h")
+private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Color, isValueOnly: Boolean = false) {
+    val allPresets = listOf("1" to "1m", "2" to "2m", "5" to "5m", "15" to "15m", "30" to "30m", "60" to "1h",
+                            "360" to "6h", "720" to "12h", "1440" to "24h")
+    // Full site reload: hide 1m and 2m (minimum 5m). Value change only: show all.
+    val presets = if (isValueOnly) allPresets else allPresets.filter { it.first.toInt() >= 5 }
+    val minMinutes = if (isValueOnly) 1 else 5
+
     Column {
         Text("Check interval", fontSize = 12.sp, color = accent, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
-        // Short intervals row
+        // First row
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
             presets.take(5).forEach { (mins, label) ->
                 FilterChip(
@@ -1355,21 +1400,23 @@ private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Co
                 )
             }
         }
-        Spacer(Modifier.height(4.dp))
-        // Long intervals row
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            presets.drop(5).forEach { (mins, label) ->
-                FilterChip(
-                    selected = value == mins,
-                    onClick = { onChange(mins) },
-                    label = { Text(label, fontSize = 11.sp) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = accent,
-                        selectedLabelColor = Color.White
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
+        if (presets.size > 5) {
+            Spacer(Modifier.height(4.dp))
+            // Second row for remaining presets
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                presets.drop(5).forEach { (mins, label) ->
+                    FilterChip(
+                        selected = value == mins,
+                        onClick = { onChange(mins) },
+                        label = { Text(label, fontSize = 11.sp) },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = accent,
+                            selectedLabelColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -1390,7 +1437,11 @@ private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Co
                 unfocusedContainerColor = Color.White.copy(alpha = 0.02f)
             )
         )
-        Text("Minimum 1 minute. Short intervals (1-5m) recommended only for API-powered agents.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.3f),
-            modifier = Modifier.padding(top = 2.dp, start = 4.dp))
+        Text(
+            if (isValueOnly) "Minimum 1 minute. Reads value changes without reloading — safe for short intervals."
+            else "Minimum 5 minutes. Full page reload each run — shorter intervals risk IP bans.",
+            fontSize = 10.sp, color = Color.White.copy(alpha = 0.3f),
+            modifier = Modifier.padding(top = 2.dp, start = 4.dp)
+        )
     }
 }
