@@ -1056,7 +1056,7 @@ Start directly with the data list:"""
                         }
                         if (!ok) return@Button
 
-                        val intervalMins = intervalRaw.toIntOrNull()?.coerceAtLeast(5) ?: 60
+                        val intervalMins = intervalRaw.toIntOrNull()?.coerceAtLeast(1) ?: 60
                         // Resolve template {query} placeholder
                         var finalUrl = url.trim()
                         var finalPrompt = extractPrompt.trim()
@@ -1334,13 +1334,31 @@ private fun FormField(
 
 @Composable
 private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Color) {
-    val presets = listOf("15" to "15m", "30" to "30m", "60" to "1h",
+    val presets = listOf("1" to "1m", "2" to "2m", "5" to "5m", "15" to "15m", "30" to "30m", "60" to "1h",
                          "360" to "6h", "720" to "12h", "1440" to "24h")
     Column {
         Text("Check interval", fontSize = 12.sp, color = accent, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
+        // Short intervals row
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            presets.forEach { (mins, label) ->
+            presets.take(5).forEach { (mins, label) ->
+                FilterChip(
+                    selected = value == mins,
+                    onClick = { onChange(mins) },
+                    label = { Text(label, fontSize = 11.sp) },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = accent,
+                        selectedLabelColor = Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        // Long intervals row
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            presets.drop(5).forEach { (mins, label) ->
                 FilterChip(
                     selected = value == mins,
                     onClick = { onChange(mins) },
@@ -1372,7 +1390,7 @@ private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Co
                 unfocusedContainerColor = Color.White.copy(alpha = 0.02f)
             )
         )
-        Text("Minimum 5 minutes.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.3f),
+        Text("Minimum 1 minute. Short intervals (1-5m) recommended only for API-powered agents.", fontSize = 10.sp, color = Color.White.copy(alpha = 0.3f),
             modifier = Modifier.padding(top = 2.dp, start = 4.dp))
     }
 }

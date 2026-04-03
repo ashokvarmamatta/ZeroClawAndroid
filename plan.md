@@ -929,6 +929,65 @@ External apps can check this to know if real-time data is available.
 
 ---
 
+## 🔮 Future Phases (Planned)
+
+### Phase 174 — Persistent WebView Agent (Live Data Tracking)
+> **Goal:** Load a page ONCE in a persistent WebView, keep it alive, and periodically extract changing values via JavaScript injection — no page reload, no extra HTTP requests, zero IP ban risk.
+>
+> **Use case:** Stock prices, crypto tickers, gold prices, forex rates — any site that updates values in real-time via WebSocket/SSE/JS polling without page reload.
+>
+> **Architecture:**
+> ```
+> Agent created with fetchType = "live"
+>     │
+>     ├── First run: Create persistent WebView → loadUrl(site)
+>     │              WebSocket/SSE connects automatically
+>     │              WebView stays alive in ZeroClawService
+>     │
+>     ├── Every N minutes: Inject JS → document.querySelector('.price').innerText
+>     │                    Extract current DOM values (no page reload!)
+>     │                    Site sees ZERO new HTTP requests
+>     │                    Compare with last value → deliver if changed
+>     │
+>     └── Cleanup: Destroy WebView when agent disabled/deleted
+> ```
+>
+> **Implementation Tasks:**
+> | # | Task | File | Status |
+> |---|------|------|--------|
+> | 1 | Create `PersistentWebView` manager — pool of live WebViews keyed by agent ID | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 2 | Add `fetchType = "live"` option to AgentConfig | `agents/AgentConfig.kt` | ⬜ PENDING |
+> | 3 | Agent create UI — "Live Tracking" fetch type with JS selector field (CSS selector for the value to track) | `ui/AgentCreateSheet.kt` | ⬜ PENDING |
+> | 4 | WebScraperAgent — if fetchType=live, use PersistentWebView instead of loading new page | `agents/WebScraperAgent.kt` | ⬜ PENDING |
+> | 5 | JS extraction — inject `document.querySelector(selector).innerText` periodically | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 6 | WebView lifecycle — create on agent enable, destroy on disable/delete, recreate on crash | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 7 | Memory management — max 3-5 persistent WebViews, LRU eviction if exceeded | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 8 | WebSocket keep-alive — detect if WebSocket disconnects, auto-reload page once | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 9 | AI Smart Extract for live mode — "AI Analyze" detects trackable elements, suggests CSS selectors | `ui/AgentCreateSheet.kt` | ⬜ PENDING |
+>
+> **Benefits over current approach:**
+> - **Zero ban risk** — site sees one page load, then nothing (WebSocket feeds data)
+> - **Instant extraction** — no 3s page load wait, just read DOM (~50ms)
+> - **Lower battery/data** — no repeated full page loads
+> - **Real-time capable** — can track every 10-30 seconds safely
+>
+> **Safe intervals for live mode:** 10s / 30s / 1min / 5min (vs 5min minimum for HTTP fetch)
+
+### Phase 175 — Anti-Ban Protection (Web Scraping Hardening)
+> **Goal:** Protect agents that use web search, HTTP fetch, and WebView from IP bans when running at high frequency.
+>
+> **Features:**
+> | # | Feature | Description |
+> |---|---------|-------------|
+> | 1 | Per-domain rate limiter | Track last fetch per domain, enforce min interval (e.g., 5min between same-domain requests) |
+> | 2 | Response caching | Cache fetched content with TTL, return cached if content hash unchanged |
+> | 3 | User-Agent rotation | Rotate through 10-15 real browser UAs per request |
+> | 4 | Request jitter | Add random ±30s delay so requests don't hit at exact intervals |
+> | 5 | 429/403 backoff | Exponential backoff per domain on rate-limit/block responses |
+> | 6 | Smart interval warning | UI warning when agent interval is too aggressive for the fetch method |
+
+---
+
 ## 🔧 Resumption Instructions (if chat crashes)
 1. Open new Claude chat
 2. Upload this `plan.md` file
