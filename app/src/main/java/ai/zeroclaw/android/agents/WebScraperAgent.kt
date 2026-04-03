@@ -2,6 +2,8 @@ package ai.zeroclaw.android.agents
 
 import android.content.Context
 import ai.zeroclaw.android.agents.api.FreeApiRegistry
+import ai.zeroclaw.android.data.AgentResultDatabase
+import ai.zeroclaw.android.data.AgentResultEntity
 import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolSystem
@@ -9,6 +11,7 @@ import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.tools.WebFetchTool
 import ai.zeroclaw.android.ui.ChannelTarget
 import ai.zeroclaw.android.ui.parseChannelTargets
+import java.util.UUID
 
 /**
  * WebScraperAgent — executes a single web scraper agent run.
@@ -22,8 +25,10 @@ import ai.zeroclaw.android.ui.parseChannelTargets
 class WebScraperAgent(private val context: Context) {
 
     private val agentManager = AgentManager.getInstance(context)
+    private val resultDb = AgentResultDatabase.getInstance(context).agentResultDao()
 
     suspend fun run(agent: AgentConfig) {
+        val runId = UUID.randomUUID().toString()
         ZeroClawService.log("AGENT[${agent.name}]: starting run → ${agent.url}")
 
         // ── Step 1: Try direct free API first (Phase 166) ────────────────────
@@ -60,27 +65,42 @@ class WebScraperAgent(private val context: Context) {
                 ZeroClawService.log("AGENT[${agent.name}]: API failed (${apiResult.error}), falling back to web scrape")
             }
 
-            // Use the saved fetch type (http/rss/webview) — fallback to http
+            // Fetch from all URLs (primary + extras) and combine
+            val allUrls = agent.allUrls
             val fetchMethod = agent.safeFetchType
-            ZeroClawService.log("AGENT[${agent.name}]: fetching via ${fetchMethod.uppercase()}")
-            val fetchResult = when (fetchMethod) {
-                "rss" -> try {
-                    ai.zeroclaw.android.tools.RssFeedTool().execute(mapOf("url" to agent.url, "limit" to "10"))
-                } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to agent.url)) }
-                "webview" -> try {
-                    ai.zeroclaw.android.tools.WebViewTool(context).execute(mapOf("action" to "fetch", "url" to agent.url, "wait_ms" to "3000"))
-                } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to agent.url)) }
-                else -> WebFetchTool().execute(mapOf("url" to agent.url))
+            val allContent = StringBuilder()
+            var anySuccess = false
+
+            for ((idx, fetchUrl) in allUrls.withIndex()) {
+                if (fetchUrl.isBlank()) continue
+                ZeroClawService.log("AGENT[${agent.name}]: fetching [${idx + 1}/${allUrls.size}] via ${fetchMethod.uppercase()} → $fetchUrl")
+                val fetchResult = when (fetchMethod) {
+                    "rss" -> try {
+                        ai.zeroclaw.android.tools.RssFeedTool().execute(mapOf("url" to fetchUrl, "limit" to "10"))
+                    } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to fetchUrl)) }
+                    "webview" -> try {
+                        ai.zeroclaw.android.tools.WebViewTool(context).execute(mapOf("action" to "fetch", "url" to fetchUrl, "wait_ms" to "3000"))
+                    } catch (_: Exception) { WebFetchTool().execute(mapOf("url" to fetchUrl)) }
+                    else -> WebFetchTool().execute(mapOf("url" to fetchUrl))
+                }
+                if (fetchResult.success && fetchResult.content.isNotBlank()) {
+                    anySuccess = true
+                    if (allUrls.size > 1) allContent.appendLine("\n--- Source: $fetchUrl ---")
+                    allContent.appendLine(fetchResult.content)
+                } else {
+                    ZeroClawService.log("AGENT[${agent.name}]: fetch failed for $fetchUrl — ${fetchResult.error}")
+                }
             }
 
-            if (!fetchResult.success) {
-                val status = "Fetch failed ($fetchMethod): ${fetchResult.error}"
+            if (!anySuccess) {
+                val status = "All ${allUrls.size} URLs failed to fetch ($fetchMethod)"
                 ZeroClawService.log("AGENT[${agent.name}]: $status")
                 agentManager.markRun(agent.id, agent.lastContentHash, status)
+                saveResult(agent, runId, "failed", "", "", emptyList(), status, false, agent.lastContentHash)
                 return
             }
 
-            content = fetchResult.content
+            content = allContent.toString()
 
             // ── Extract / Summarize via LLM ──────────────────────────────────
             if (agent.extractPrompt.isNotBlank()) {
@@ -94,6 +114,7 @@ class WebScraperAgent(private val context: Context) {
             val status = "No change detected — skipped push"
             ZeroClawService.log("AGENT[${agent.name}]: $status")
             agentManager.markRun(agent.id, newHash, status)
+            saveResult(agent, runId, "skipped", content, content, emptyList(), status, usedApi, newHash)
             return
         }
 
@@ -106,6 +127,7 @@ class WebScraperAgent(private val context: Context) {
             val status = "Service not running — delivery skipped"
             ZeroClawService.log("AGENT[${agent.name}]: $status")
             agentManager.markRun(agent.id, newHash, status)
+            saveResult(agent, runId, "failed", content, content, emptyList(), status, usedApi, newHash)
             return
         }
 
@@ -119,7 +141,9 @@ class WebScraperAgent(private val context: Context) {
             // Legacy fallback: treat channel as single bot, chatId as target
             val chatId = resolveSingleChatId(agent.channel, agent.chatId, agent, newHash)
             if (chatId != null) {
-                deliverToChannel(svc, agent, agent.channel, chatId, message, content.length, newHash)
+                deliverToChannel(svc, agent, agent.channel, chatId, message, content.length, newHash, runId, content, usedApi)
+            } else {
+                saveResult(agent, runId, "failed", content, message, emptyList(), "No chat available", usedApi, newHash)
             }
             return
         }
@@ -166,12 +190,17 @@ class WebScraperAgent(private val context: Context) {
             }
         }
 
+        val resultStatus = if (deliveredTo.isNotEmpty() && errors.isEmpty()) "success"
+            else if (deliveredTo.isNotEmpty()) "partial"
+            else "failed"
+
         if (deliveredTo.isNotEmpty()) {
             ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
         } else {
             ZeroClawService.log("AGENT[${agent.name}]: ✗ $status")
         }
         agentManager.markRun(agent.id, newHash, status)
+        saveResult(agent, runId, resultStatus, content, message, deliveredTo, errors.joinToString("; "), usedApi, newHash)
     }
 
     /**
@@ -217,17 +246,20 @@ class WebScraperAgent(private val context: Context) {
     private suspend fun deliverToChannel(
         svc: ZeroClawService, agent: AgentConfig,
         channel: String, chatId: String, message: String,
-        contentLength: Int, newHash: Int
+        contentLength: Int, newHash: Int,
+        runId: String = "", rawContent: String = "", usedApi: Boolean = false
     ) {
         try {
             svc.sendProactive(channel, chatId, message)
             val status = "Delivered $contentLength chars → $channel/$chatId"
             ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
             agentManager.markRun(agent.id, newHash, status)
+            saveResult(agent, runId, "success", rawContent, message, listOf(channel), "", usedApi, newHash)
         } catch (e: Exception) {
             val status = "Delivery error: ${e.message}"
             ZeroClawService.log("AGENT[${agent.name}]: ✗ $status")
             agentManager.markRun(agent.id, newHash, status)
+            saveResult(agent, runId, "failed", rawContent, message, emptyList(), e.message ?: status, usedApi, newHash)
         }
     }
 
@@ -388,7 +420,35 @@ OUTPUT (start directly with the extracted data, following the reference format a
         else        -> "📤"
     }
 
+    /** Persist agent run result to Room database for API access */
+    private suspend fun saveResult(
+        agent: AgentConfig, runId: String, status: String,
+        rawContent: String, extractedContent: String,
+        deliveredTo: List<String>, errorMessage: String,
+        usedApi: Boolean, contentHash: Int
+    ) {
+        try {
+            val deliveredJson = org.json.JSONArray(deliveredTo).toString()
+            resultDb.insert(AgentResultEntity(
+                agentId = agent.id,
+                agentName = agent.name,
+                runId = runId,
+                status = status,
+                url = agent.url,
+                usedApi = usedApi,
+                rawContent = rawContent.take(MAX_RAW_CONTENT_CHARS),
+                extractedContent = extractedContent.take(MAX_MESSAGE_CHARS),
+                deliveredTo = deliveredJson,
+                errorMessage = errorMessage.take(500),
+                contentHash = contentHash
+            ))
+        } catch (e: Exception) {
+            ZeroClawService.log("AGENT[${agent.name}]: failed to save result to DB — ${e.message}")
+        }
+    }
+
     companion object {
         private const val MAX_MESSAGE_CHARS = 3500
+        private const val MAX_RAW_CONTENT_CHARS = 5000
     }
 }

@@ -2034,6 +2034,61 @@ class LlmRouter(private val context: Context) {
             }
         }
 
+        // ── Agents — list, status, enable, disable, run, results ────────
+        if (toolCalls.isEmpty()) {
+            val agentKeywords = msg.contains("agent") || msg.contains("agents") ||
+                msg.contains("scraper") || msg.contains("scrapers") ||
+                msg.contains("my bots") || msg.contains("background task")
+            if (agentKeywords) {
+                val action = when {
+                    msg.contains("create") || msg.contains("add agent") || msg.contains("new agent") ||
+                        msg.contains("set up") || msg.contains("setup") || msg.contains("make an agent") ||
+                        msg.contains("track") || msg.contains("monitor") || msg.contains("watch") -> "create"
+                    msg.contains("list") || msg.contains("show") || msg.contains("all agent") ||
+                        msg.contains("what agent") || msg.contains("how many agent") -> "list"
+                    msg.contains("enable") || msg.contains("activate") || msg.contains("turn on") || msg.contains("start agent") -> "enable"
+                    msg.contains("disable") || msg.contains("deactivate") || msg.contains("turn off") || msg.contains("stop agent") || msg.contains("pause") -> "disable"
+                    msg.contains("run") || msg.contains("execute") || msg.contains("trigger") || msg.contains("fetch now") -> "run"
+                    msg.contains("delete") || msg.contains("remove") -> "delete"
+                    msg.contains("change") || msg.contains("modify") || msg.contains("update agent") || msg.contains("adjust") ||
+                        msg.contains("instead") || msg.contains("only remote") || msg.contains("only show") -> "modify"
+                    msg.contains("result") || msg.contains("history") || msg.contains("output") || msg.contains("fetched") || msg.contains("data from") -> "results"
+                    msg.contains("status") || msg.contains("detail") || msg.contains("info") || msg.contains("about") -> "status"
+                    else -> "list"
+                }
+                // Try to extract agent name from the message
+                val namePatterns = listOf(
+                    Regex("(?:agent|scraper)\\s+['\"]?([\\w\\s-]+?)['\"]?\\s*(?:agent|status|result|history|detail|info|\\?|\$)", RegexOption.IGNORE_CASE),
+                    Regex("(?:enable|disable|run|delete|start|stop|pause|activate|deactivate|trigger)\\s+(?:agent\\s+)?['\"]?([\\w\\s-]+?)['\"]?\\s*(?:\\?|\$)", RegexOption.IGNORE_CASE),
+                    Regex("(?:results?|history|output|data)\\s+(?:from|of|for)\\s+(?:agent\\s+)?['\"]?([\\w\\s-]+?)['\"]?\\s*(?:\\?|\$)", RegexOption.IGNORE_CASE),
+                    Regex("(?:about|status of|info on)\\s+(?:agent\\s+)?['\"]?([\\w\\s-]+?)['\"]?\\s*(?:\\?|\$)", RegexOption.IGNORE_CASE)
+                )
+                var agentTarget = ""
+                for (p in namePatterns) {
+                    val m = p.find(userMessage)
+                    if (m != null) { agentTarget = m.groupValues[1].trim(); break }
+                }
+                val agentArgs = mutableMapOf("action" to action)
+                if (agentTarget.isNotBlank()) agentArgs["target"] = agentTarget
+                // For create, try to extract URL, interval, channel from the message
+                if (action == "create") {
+                    val urlMatch = Regex("(https?://[^\\s]+)", RegexOption.IGNORE_CASE).find(userMessage)
+                    if (urlMatch != null) agentArgs["url"] = urlMatch.groupValues[1].removeSuffix(",").removeSuffix(")")
+                    val intervalMatch = Regex("every\\s+(\\d+)\\s*(?:min|minute|m\\b|hour|h\\b)", RegexOption.IGNORE_CASE).find(userMessage)
+                    if (intervalMatch != null) {
+                        val num = intervalMatch.groupValues[1].toIntOrNull() ?: 60
+                        val isHour = intervalMatch.value.contains(Regex("hour|h\\b", RegexOption.IGNORE_CASE))
+                        agentArgs["interval"] = if (isHour) (num * 60).toString() else num.toString()
+                    }
+                    val channelMatch = Regex("(?:send|deliver|push)\\s+(?:to|via|on)\\s+(telegram|discord|slack|whatsapp|signal|matrix|email|teams|twitch|line|irc)", RegexOption.IGNORE_CASE).find(userMessage)
+                    if (channelMatch != null) agentArgs["channel"] = channelMatch.groupValues[1].lowercase()
+                    // Pass the full message as extract_prompt context for the LLM to use
+                    agentArgs["_user_request"] = userMessage
+                }
+                toolCalls.add(ToolCall("auto_agents", "agents", agentArgs))
+            }
+        }
+
         // No auto-tool matched — return original
         if (toolCalls.isEmpty()) return userMessage
 

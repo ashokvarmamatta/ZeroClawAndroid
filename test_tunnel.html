@@ -101,6 +101,112 @@
     margin: 8px 0; font-size: 12px; color: #c9d1d9;
   }
   .response-info { color: #8b949e; font-size: 11px; margin-top: 4px; }
+
+  /* Agents Section */
+  .agents-section {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  .agents-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .agents-header h2 { font-size: 16px; color: #f0f6fc; }
+  .btn-refresh {
+    background: #21262d; color: #8b949e; padding: 6px 14px;
+    border: 1px solid #30363d; font-size: 12px;
+  }
+  .btn-refresh:hover { background: #30363d; color: #c9d1d9; }
+  .agent-list { display: flex; flex-direction: column; gap: 8px; }
+  .agent-card {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 10px;
+    padding: 14px 16px; cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .agent-card:hover { border-color: #e53935; background: #13161d; }
+  .agent-card.active { border-left: 3px solid #3fb950; }
+  .agent-card.inactive { border-left: 3px solid #484f58; opacity: 0.7; }
+  .agent-card.selected { border-color: #e53935; background: #1a1520; }
+  .agent-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .agent-dot.on { background: #3fb950; }
+  .agent-dot.off { background: #484f58; }
+  .agent-info { flex: 1; min-width: 0; }
+  .agent-name { font-weight: 600; font-size: 14px; color: #f0f6fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent-meta { font-size: 11px; color: #8b949e; margin-top: 2px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .agent-badge {
+    font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  }
+  .badge-active { background: #0d2818; color: #3fb950; }
+  .badge-inactive { background: #21262d; color: #8b949e; }
+  .badge-api { background: #1c1e24; color: #d29922; }
+  .agent-empty { text-align: center; color: #484f58; padding: 32px; font-size: 14px; }
+
+  /* Agent Results Panel */
+  .results-panel {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 20px; margin-bottom: 16px; display: none;
+  }
+  .results-panel.visible { display: block; }
+  .results-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .results-header h2 { font-size: 16px; color: #f0f6fc; }
+  .btn-close-panel {
+    background: none; border: 1px solid #30363d; color: #8b949e;
+    padding: 4px 12px; font-size: 18px; line-height: 1;
+  }
+  .btn-close-panel:hover { color: #f85149; border-color: #f85149; }
+  .result-card {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 8px;
+  }
+  .result-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .result-status {
+    font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 10px;
+    text-transform: uppercase;
+  }
+  .result-status.success { background: #0d2818; color: #3fb950; }
+  .result-status.failed { background: #2d1215; color: #f85149; }
+  .result-status.skipped { background: #1c1e24; color: #d29922; }
+  .result-status.partial { background: #1c1e24; color: #d29922; }
+  .result-time { font-size: 11px; color: #8b949e; }
+  .result-content {
+    font-size: 13px; color: #c9d1d9; white-space: pre-wrap;
+    word-wrap: break-word; max-height: 200px; overflow-y: auto;
+    background: #161b22; padding: 10px; border-radius: 6px;
+    border: 1px solid #21262d; margin-top: 6px;
+  }
+  .result-delivered { font-size: 11px; color: #8b949e; margin-top: 6px; }
+  .result-error { font-size: 12px; color: #f85149; margin-top: 6px; }
+  .result-toggle {
+    background: none; border: none; color: #58a6ff; font-size: 12px;
+    cursor: pointer; padding: 0; margin-top: 6px;
+  }
+  .result-toggle:hover { text-decoration: underline; }
+  .results-empty { text-align: center; color: #484f58; padding: 24px; font-size: 13px; }
+  .results-loading { text-align: center; color: #8b949e; padding: 24px; font-size: 13px; }
+  .results-pagination {
+    display: flex; justify-content: center; gap: 8px; margin-top: 12px;
+  }
+  .btn-page {
+    background: #21262d; color: #c9d1d9; padding: 6px 14px;
+    border: 1px solid #30363d; font-size: 12px;
+  }
+  .btn-page:hover { background: #30363d; }
+  .btn-page:disabled { opacity: 0.4; cursor: not-allowed; }
+  .result-stats {
+    display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;
+  }
+  .stat-box {
+    background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
+    padding: 10px 16px; text-align: center; flex: 1; min-width: 80px;
+  }
+  .stat-value { font-size: 20px; font-weight: 700; color: #f0f6fc; }
+  .stat-label { font-size: 10px; color: #8b949e; margin-top: 2px; text-transform: uppercase; }
 </style>
 </head>
 <body>
@@ -134,6 +240,28 @@
              onkeydown="if(event.key==='Enter') sendMessage()" />
       <button class="btn-send" id="sendBtn" onclick="sendMessage()" disabled>Send</button>
     </div>
+  </div>
+
+  <!-- Agents Section -->
+  <div class="agents-section" id="agentsSection">
+    <div class="agents-header">
+      <h2>Agents</h2>
+      <button class="btn-refresh" onclick="loadAgents()">Refresh</button>
+    </div>
+    <div class="agent-list" id="agentList">
+      <div class="agent-empty">Connect to ZeroClaw to view agents</div>
+    </div>
+  </div>
+
+  <!-- Agent Results Panel -->
+  <div class="results-panel" id="resultsPanel">
+    <div class="results-header">
+      <h2 id="resultsPanelTitle">Agent Results</h2>
+      <button class="btn-close-panel" onclick="closeResults()">&times;</button>
+    </div>
+    <div class="result-stats" id="resultStats"></div>
+    <div id="resultsList"></div>
+    <div class="results-pagination" id="resultsPagination"></div>
   </div>
 
   <!-- Info Card -->
@@ -230,6 +358,9 @@ async function testConnection() {
     addMessage('Connected to ZeroClaw at ' + url, 'system');
     messageHistory = [];
 
+    // Auto-load agents
+    loadAgents();
+
   } catch (e) {
     setStatus('error', 'Connection failed');
     document.getElementById('serverInfo').textContent = 'Error: ' + e.message;
@@ -295,6 +426,253 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('msgInput').disabled = false;
   document.getElementById('msgInput').focus();
+}
+
+// ── Agents & Results ─────────────────────────────────────────────────
+
+let allAgents = [];        // from /api/agents/results (distinct agents)
+let allAgentConfigs = [];  // from SharedPreferences via discover workaround
+let selectedAgentId = null;
+let resultsPage = 0;
+const RESULTS_PER_PAGE = 20;
+
+async function loadAgents() {
+  const url = getUrl();
+  if (!url || !isConnected) return;
+
+  const listEl = document.getElementById('agentList');
+  listEl.innerHTML = '<div class="results-loading">Loading agents...</div>';
+
+  try {
+    // Get all results to build agent list (includes inactive agents with history)
+    const resp = await fetch(url + '/api/agents/results?limit=1000', {
+      headers: { 'Authorization': 'Bearer zc-no-key-needed' }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    // Build unique agent map from results
+    const agentMap = {};
+    for (const r of (data.results || [])) {
+      if (!agentMap[r.agent_id]) {
+        agentMap[r.agent_id] = {
+          id: r.agent_id,
+          name: r.agent_name,
+          url: r.url,
+          totalRuns: 0,
+          lastRun: 0,
+          lastStatus: '',
+          successes: 0,
+          failures: 0,
+          enabled: null  // unknown until we check config
+        };
+      }
+      const a = agentMap[r.agent_id];
+      a.totalRuns++;
+      if (r.timestamp > a.lastRun) {
+        a.lastRun = r.timestamp;
+        a.lastStatus = r.status;
+      }
+      if (r.status === 'success') a.successes++;
+      else if (r.status === 'failed') a.failures++;
+    }
+
+    // Try to get active/inactive status from discover endpoint
+    try {
+      const discResp = await fetch(url + '/api/discover', {
+        headers: { 'Authorization': 'Bearer zc-no-key-needed' }
+      });
+      if (discResp.ok) {
+        const disc = await discResp.json();
+        // If agent configs are exposed, use them
+        if (disc.agents) {
+          for (const ac of disc.agents) {
+            if (agentMap[ac.id]) {
+              agentMap[ac.id].enabled = ac.enabled;
+              agentMap[ac.id].name = ac.name || agentMap[ac.id].name;
+            } else {
+              // Agent exists in config but has no results yet
+              agentMap[ac.id] = {
+                id: ac.id, name: ac.name, url: ac.url || '',
+                totalRuns: 0, lastRun: 0, lastStatus: 'No runs yet',
+                successes: 0, failures: 0, enabled: ac.enabled
+              };
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    allAgents = Object.values(agentMap).sort((a, b) => b.lastRun - a.lastRun);
+    renderAgentList();
+
+  } catch (e) {
+    listEl.innerHTML = '<div class="agent-empty">Failed to load agents: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function renderAgentList() {
+  const listEl = document.getElementById('agentList');
+
+  if (allAgents.length === 0) {
+    listEl.innerHTML = '<div class="agent-empty">No agents found. Create agents in the ZeroClaw app first.</div>';
+    return;
+  }
+
+  listEl.innerHTML = allAgents.map(a => {
+    const isActive = a.enabled === true;
+    const isInactive = a.enabled === false;
+    const statusClass = isActive ? 'active' : (isInactive ? 'inactive' : '');
+    const dotClass = isActive ? 'on' : 'off';
+    const badgeClass = isActive ? 'badge-active' : 'badge-inactive';
+    const badgeText = a.enabled === null ? 'UNKNOWN' : (isActive ? 'ACTIVE' : 'INACTIVE');
+    const lastRunStr = a.lastRun > 0 ? timeAgo(a.lastRun) : 'Never';
+    const isSelected = selectedAgentId === a.id;
+
+    return `<div class="agent-card ${statusClass} ${isSelected ? 'selected' : ''}" onclick="selectAgent('${a.id}')">
+      <div class="agent-dot ${dotClass}"></div>
+      <div class="agent-info">
+        <div class="agent-name">${escapeHtml(a.name)}</div>
+        <div class="agent-meta">
+          <span>Runs: ${a.totalRuns}</span>
+          <span>Last: ${lastRunStr}</span>
+          <span>${a.successes} ok / ${a.failures} fail</span>
+        </div>
+      </div>
+      <span class="agent-badge ${badgeClass}">${badgeText}</span>
+    </div>`;
+  }).join('');
+}
+
+function selectAgent(agentId) {
+  selectedAgentId = agentId;
+  resultsPage = 0;
+  renderAgentList();
+  loadResults(agentId);
+}
+
+async function loadResults(agentId) {
+  const url = getUrl();
+  if (!url) return;
+
+  const panel = document.getElementById('resultsPanel');
+  const listEl = document.getElementById('resultsList');
+  const statsEl = document.getElementById('resultStats');
+  const titleEl = document.getElementById('resultsPanelTitle');
+
+  panel.classList.add('visible');
+  listEl.innerHTML = '<div class="results-loading">Loading results...</div>';
+  statsEl.innerHTML = '';
+
+  const agent = allAgents.find(a => a.id === agentId);
+  titleEl.textContent = agent ? agent.name + ' — Results' : 'Agent Results';
+
+  try {
+    const offset = resultsPage * RESULTS_PER_PAGE;
+    const resp = await fetch(url + `/api/agents/results?agent_id=${encodeURIComponent(agentId)}&limit=${RESULTS_PER_PAGE}&offset=${offset}`, {
+      headers: { 'Authorization': 'Bearer zc-no-key-needed' }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    const results = data.results || [];
+    const total = data.total || 0;
+
+    // Stats
+    const successes = results.filter(r => r.status === 'success').length;
+    const failures = results.filter(r => r.status === 'failed').length;
+    const skipped = results.filter(r => r.status === 'skipped').length;
+    statsEl.innerHTML = `
+      <div class="stat-box"><div class="stat-value">${total}</div><div class="stat-label">Total Runs</div></div>
+      <div class="stat-box"><div class="stat-value" style="color:#3fb950">${agent ? agent.successes : successes}</div><div class="stat-label">Success</div></div>
+      <div class="stat-box"><div class="stat-value" style="color:#f85149">${agent ? agent.failures : failures}</div><div class="stat-label">Failed</div></div>
+    `;
+
+    if (results.length === 0) {
+      listEl.innerHTML = '<div class="results-empty">No results yet for this agent</div>';
+    } else {
+      listEl.innerHTML = results.map((r, idx) => {
+        const time = new Date(r.timestamp).toLocaleString();
+        const delivered = Array.isArray(r.delivered_to) ? r.delivered_to.join(', ') : '';
+        const contentId = 'content_' + r.id;
+        const rawId = 'raw_' + r.id;
+        const hasContent = r.extracted_content && r.extracted_content.length > 0;
+        const hasRaw = r.raw_content && r.raw_content.length > 0;
+
+        return `<div class="result-card">
+          <div class="result-top">
+            <span class="result-status ${r.status}">${r.status}</span>
+            <span class="result-time">${time}</span>
+          </div>
+          ${r.url ? `<div style="font-size:11px;color:#58a6ff;margin-bottom:4px;word-break:break-all">${escapeHtml(r.url)}</div>` : ''}
+          ${r.used_api ? '<span class="agent-badge badge-api" style="margin-bottom:6px;display:inline-block">FREE API</span>' : ''}
+          ${delivered ? `<div class="result-delivered">Delivered to: ${escapeHtml(delivered)}</div>` : ''}
+          ${r.error_message ? `<div class="result-error">${escapeHtml(r.error_message)}</div>` : ''}
+          ${hasContent ? `<button class="result-toggle" onclick="toggleContent('${contentId}')">Show extracted content</button>
+            <div class="result-content" id="${contentId}" style="display:none">${escapeHtml(r.extracted_content)}</div>` : ''}
+          ${hasRaw ? `<button class="result-toggle" onclick="toggleContent('${rawId}')">Show raw content</button>
+            <div class="result-content" id="${rawId}" style="display:none">${escapeHtml(r.raw_content)}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    // Pagination
+    const pagEl = document.getElementById('resultsPagination');
+    const totalPages = Math.ceil(total / RESULTS_PER_PAGE);
+    if (totalPages > 1) {
+      pagEl.innerHTML = `
+        <button class="btn-page" onclick="prevPage('${agentId}')" ${resultsPage === 0 ? 'disabled' : ''}>&larr; Prev</button>
+        <span style="color:#8b949e;font-size:12px;padding:6px">Page ${resultsPage + 1} of ${totalPages}</span>
+        <button class="btn-page" onclick="nextPage('${agentId}', ${totalPages})" ${resultsPage >= totalPages - 1 ? 'disabled' : ''}>Next &rarr;</button>
+      `;
+    } else {
+      pagEl.innerHTML = '';
+    }
+
+  } catch (e) {
+    listEl.innerHTML = '<div class="results-empty">Failed to load results: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function toggleContent(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isHidden = el.style.display === 'none';
+  el.style.display = isHidden ? 'block' : 'none';
+  // Update button text
+  const btn = el.previousElementSibling;
+  if (btn && btn.classList.contains('result-toggle')) {
+    const isRaw = id.startsWith('raw_');
+    btn.textContent = isHidden
+      ? (isRaw ? 'Hide raw content' : 'Hide extracted content')
+      : (isRaw ? 'Show raw content' : 'Show extracted content');
+  }
+}
+
+function closeResults() {
+  document.getElementById('resultsPanel').classList.remove('visible');
+  selectedAgentId = null;
+  renderAgentList();
+}
+
+function prevPage(agentId) {
+  if (resultsPage > 0) { resultsPage--; loadResults(agentId); }
+}
+
+function nextPage(agentId, totalPages) {
+  if (resultsPage < totalPages - 1) { resultsPage++; loadResults(agentId); }
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return secs + 's ago';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  return days + 'd ago';
 }
 
 // Auto-fill URL from query string

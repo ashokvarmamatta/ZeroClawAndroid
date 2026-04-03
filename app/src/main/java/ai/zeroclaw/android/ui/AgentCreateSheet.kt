@@ -1,5 +1,6 @@
 package ai.zeroclaw.android.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -189,49 +193,109 @@ fun AgentCreateSheet(
 
     val accentColor = Color(0xFF1E88E5)
     val greenColor = Color(0xFF2E7D32)
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    var showExitDialog by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    // Check if user has entered any data worth saving
+    val defaultName = existing?.name ?: template?.name ?: ""
+    val defaultUrl = existing?.url ?: template?.url ?: ""
+    val hasUnsavedChanges = (name.isNotBlank() && name != defaultName) ||
+        (url.isNotBlank() && url != defaultUrl) ||
+        (extractPrompt.isNotBlank() && extractPrompt != (existing?.extractPrompt ?: template?.extractPrompt ?: ""))
+
+    // Track keyboard visibility
+    val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    var keyboardOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible) { keyboardOpen = imeVisible }
+
+    // Back press: keyboard open → dismiss keyboard; data entered → confirm exit; else → dismiss
+    BackHandler(enabled = true) {
+        if (keyboardOpen) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        } else if (hasUnsavedChanges) {
+            showExitDialog = true
+        } else {
+            onDismiss()
+        }
+    }
+
+    // Exit confirmation dialog
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = Color(0xFF161b22),
+            titleContentColor = Color(0xFFF0F6FC),
+            textContentColor = Color(0xFFC9D1D9),
+            title = { Text("Discard changes?") },
+            text = { Text("You have unsaved changes. Are you sure you want to exit?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showExitDialog = false
+                    onDismiss()
+                }) { Text("Discard", color = Color(0xFFF85149)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("Keep editing", color = Color(0xFF58A6FF))
+                }
+            }
+        )
+    }
+
+    Scaffold(
         containerColor = Color(0xFF0D1117),
-        dragHandle = null
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Header with close button
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(template?.emoji ?: "🕷️", fontSize = 28.sp)
-                    Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(template?.emoji ?: "🕷️", fontSize = 22.sp)
                         Text(
                             when {
                                 isEdit -> "Edit Agent"
                                 isTemplate -> template!!.name
-                                else -> "New Web Scraper Agent"
+                                else -> "New Agent"
                             },
-                            fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
-                        Text(
-                            template?.description ?: "Periodically scrapes a URL and pushes updates to your channel",
-                            fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
-                        // Phase 166: Show API source badge
-                        if (template?.apiSource != null) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "⚡ ${template.apiRateNote ?: "Direct API — no web scraping needed"}",
-                                fontSize = 10.sp,
-                                color = Color(0xFF4ADE80)
-                            )
-                        }
+                            fontWeight = FontWeight.Bold, fontSize = 18.sp
+                        )
                     }
-                    // Close button
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = "Close",
-                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        if (hasUnsavedChanges) showExitDialog = true else onDismiss()
+                    }) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF161b22),
+                    titleContentColor = Color(0xFFF0F6FC),
+                    navigationIconContentColor = Color(0xFFC9D1D9)
+                )
+            )
+        }
+    ) { scaffoldPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(scaffoldPadding).imePadding(),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Description subtitle
+            item {
+                Column {
+                    Text(
+                        template?.description ?: "Periodically scrapes a URL and pushes updates to your channel",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f))
+                    if (template?.apiSource != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "⚡ ${template.apiRateNote ?: "Direct API — no web scraping needed"}",
+                            fontSize = 10.sp,
+                            color = Color(0xFF4ADE80)
+                        )
                     }
                 }
             }

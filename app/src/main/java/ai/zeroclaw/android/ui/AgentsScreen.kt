@@ -48,6 +48,7 @@ fun AgentsScreen(onBack: () -> Unit) {
     var editAgent by remember { mutableStateOf<AgentConfig?>(null) }
     var showTemplates by remember { mutableStateOf(false) }
     var selectedTemplate by remember { mutableStateOf<AgentTemplate?>(null) }
+    var showGuide by remember { mutableStateOf(false) }
 
     // Poll agent list every 5 s so lastStatus updates reflect live runs
     LaunchedEffect(Unit) {
@@ -55,6 +56,23 @@ fun AgentsScreen(onBack: () -> Unit) {
             agents = agentManager.loadAll()
             delay(5_000)
         }
+    }
+
+    // ── Create / Edit screen (full screen, replaces agents list) ──
+    if (showCreateSheet || editAgent != null || selectedTemplate != null) {
+        AgentCreateSheet(
+            existing = editAgent,
+            template = selectedTemplate,
+            onDismiss = { showCreateSheet = false; editAgent = null; selectedTemplate = null },
+            onSave = { config ->
+                agentManager.save(config)
+                agents = agentManager.loadAll()
+                showCreateSheet = false
+                editAgent = null
+                selectedTemplate = null
+            }
+        )
+        return
     }
 
     Scaffold(
@@ -78,6 +96,10 @@ fun AgentsScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showGuide = true }) {
+                        Icon(Icons.Default.Info, "Help",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
                     IconButton(onClick = { showTemplates = true }) {
                         Icon(Icons.Default.Dashboard, "Templates",
                             tint = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -147,6 +169,11 @@ fun AgentsScreen(onBack: () -> Unit) {
         }
     }
 
+    // Agent Guide
+    if (showGuide) {
+        AgentGuideDialog(onDismiss = { showGuide = false })
+    }
+
     // Template gallery sheet
     if (showTemplates) {
         AgentTemplateGallery(
@@ -162,21 +189,6 @@ fun AgentsScreen(onBack: () -> Unit) {
         )
     }
 
-    // Create / edit sheet (from template or custom)
-    if (showCreateSheet || editAgent != null || selectedTemplate != null) {
-        AgentCreateSheet(
-            existing = editAgent,
-            template = selectedTemplate,
-            onDismiss = { showCreateSheet = false; editAgent = null; selectedTemplate = null },
-            onSave = { config ->
-                agentManager.save(config)
-                agents = agentManager.loadAll()
-                showCreateSheet = false
-                editAgent = null
-                selectedTemplate = null
-            }
-        )
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,32 +451,229 @@ private fun InfoChip(text: String, accent: Color) {
 
 @Composable
 private fun EmptyAgentsPlaceholder(modifier: Modifier, onCreateClick: () -> Unit, onCustomClick: () -> Unit) {
-    Column(modifier = modifier,
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("🤖", fontSize = 60.sp)
-        Spacer(Modifier.height(16.dp))
-        Text("No Agents Yet", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Spacer(Modifier.height(8.dp))
-        Text("Choose from 25+ ready-made agent templates\nor create your own custom agent.",
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            lineHeight = 19.sp)
-        Spacer(Modifier.height(28.dp))
-        Button(
-            onClick = onCreateClick,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
-        ) {
-            Icon(Icons.Default.Dashboard, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Browse Agent Templates", fontWeight = FontWeight.Bold)
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        item {
+            Spacer(Modifier.height(32.dp))
+            Text("🤖", fontSize = 60.sp, modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.height(12.dp))
+            Text("No Agents Yet", fontWeight = FontWeight.Bold, fontSize = 22.sp,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.height(8.dp))
+            Text("Agents run in the background and automatically\nfetch data from the web for you.",
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 19.sp, modifier = Modifier.fillMaxWidth())
         }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onCustomClick) {
-            Icon(Icons.Default.Add, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Create Custom Agent")
+
+        item {
+            Button(
+                onClick = onCreateClick,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))
+            ) {
+                Icon(Icons.Default.Dashboard, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Browse 25+ Agent Templates", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        item {
+            OutlinedButton(onClick = onCustomClick, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Create Custom Agent")
+            }
+        }
+
+        // Quick guide
+        item { AgentQuickGuide() }
+    }
+}
+
+@Composable
+private fun AgentQuickGuide() {
+    val guideColor = Color(0xFF161b22)
+    val borderColor = Color(0xFF30363d)
+    val accentBlue = Color(0xFF58A6FF)
+    val accentGreen = Color(0xFF3FB950)
+    val textDim = Color(0xFF8B949E)
+    val textBright = Color(0xFFF0F6FC)
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("How to Create Agents", fontWeight = FontWeight.Bold, fontSize = 16.sp,
+            color = textBright, modifier = Modifier.padding(top = 8.dp))
+
+        // Method 1
+        Surface(shape = RoundedCornerShape(12.dp), color = guideColor,
+            border = BorderStroke(1.dp, borderColor), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Method 1: From App", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = accentBlue)
+                Spacer(Modifier.height(8.dp))
+                GuideStep("1.", "Tap the + button or \"Browse Templates\" above")
+                GuideStep("2.", "Pick a template (News, Crypto, Gold, Weather...)")
+                GuideStep("3.", "Choose categories or enter custom topic")
+                GuideStep("4.", "Set how often to check (e.g., every 30 min)")
+                GuideStep("5.", "Pick where to send results (Telegram, Discord...)")
+                GuideStep("6.", "Tap Save — agent starts running automatically!")
+            }
+        }
+
+        // Method 2 — Agent Manager via Chat
+        Surface(shape = RoundedCornerShape(12.dp), color = guideColor,
+            border = BorderStroke(1.dp, Color(0xFF238636)), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Method 2: Agent Manager (Chat)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = accentGreen)
+                Spacer(Modifier.height(8.dp))
+                Text("ZeroClaw has a built-in Agent Manager that you can talk to from ANY channel — Telegram, Discord, Slack, WhatsApp, Web Chat, or the API. Just describe what you want and the AI does everything for you!",
+                    fontSize = 12.sp, color = textDim, lineHeight = 17.sp)
+
+                Spacer(Modifier.height(12.dp))
+                Text("Step 1: Tell the AI what to track", fontSize = 13.sp, color = textBright, fontWeight = FontWeight.SemiBold)
+                Text("No URL needed — just describe the topic:", fontSize = 11.sp, color = textDim)
+                Spacer(Modifier.height(6.dp))
+                ChatExample("\"Track latest tollywood movies\"")
+                ChatExample("\"Create agent for android developer jobs\"")
+                ChatExample("\"Monitor gold prices every 30 minutes\"")
+                ChatExample("\"Watch earthquake alerts and send to discord\"")
+                ChatExample("\"Track Bitcoin price\"")
+
+                Spacer(Modifier.height(12.dp))
+                Text("Step 2: AI finds sources + shows preview", fontSize = 13.sp, color = textBright, fontWeight = FontWeight.SemiBold)
+                Text("The AI automatically searches the web, finds the best sites for your topic (LinkedIn, IMDB, CoinGecko, etc.), creates the agent, runs it once, and shows you a preview of the data it found.",
+                    fontSize = 11.sp, color = textDim, lineHeight = 16.sp)
+
+                Spacer(Modifier.height(12.dp))
+                Text("Step 3: Refine until perfect", fontSize = 13.sp, color = textBright, fontWeight = FontWeight.SemiBold)
+                Text("Not happy with the preview? Just tell the AI what to change:", fontSize = 11.sp, color = textDim)
+                Spacer(Modifier.height(6.dp))
+                ChatExample("\"Change to only remote jobs in Bangalore\"")
+                ChatExample("\"Show only Hindi movies, not all Indian\"")
+                ChatExample("\"Add Netflix releases too\"")
+                Spacer(Modifier.height(4.dp))
+                Text("The AI modifies the agent, re-runs it, and shows you an updated preview. Keep tweaking until it's exactly right!",
+                    fontSize = 11.sp, color = textDim, lineHeight = 16.sp)
+
+                Spacer(Modifier.height(12.dp))
+                Text("Step 4: Agent runs automatically", fontSize = 13.sp, color = textBright, fontWeight = FontWeight.SemiBold)
+                Text("Once you say \"looks good\", the agent runs on schedule and pushes updates to your chat. No need to open the app — data comes to you!",
+                    fontSize = 11.sp, color = textDim, lineHeight = 16.sp)
+            }
+        }
+
+        // Managing agents via chat
+        Surface(shape = RoundedCornerShape(12.dp), color = guideColor,
+            border = BorderStroke(1.dp, borderColor), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Control Agents from Chat", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFD29922))
+                Spacer(Modifier.height(8.dp))
+                Text("You don't need to open the app to manage agents. Just send a message:", fontSize = 12.sp, color = textDim)
+                Spacer(Modifier.height(8.dp))
+                ChatExample("\"Show my agents\" — list all with status")
+                ChatExample("\"Status of crypto agent\" — details + recent data")
+                ChatExample("\"Run news agent now\" — trigger a fetch")
+                ChatExample("\"Disable weather agent\" — pause it")
+                ChatExample("\"Enable gold agent\" — resume it")
+                ChatExample("\"Show results from gold agent\" — view history")
+                ChatExample("\"Change gold agent to check every 15 minutes\"")
+                ChatExample("\"Delete old agent\" — remove it")
+                Spacer(Modifier.height(8.dp))
+                Text("Works from Telegram, Discord, Slack, WhatsApp, Web Chat, or any app connected to ZeroClaw's API.",
+                    fontSize = 11.sp, color = textDim, lineHeight = 16.sp)
+            }
+        }
+
+        // What agents can do
+        Surface(shape = RoundedCornerShape(12.dp), color = guideColor,
+            border = BorderStroke(1.dp, borderColor), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("What Can Agents Track?", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = textBright)
+                Spacer(Modifier.height(8.dp))
+                TrackItem("📰", "News", "Headlines from any topic")
+                TrackItem("💰", "Prices", "Gold, crypto, stocks, forex, fuel")
+                TrackItem("🌤️", "Weather", "Any city, daily forecasts")
+                TrackItem("🌍", "Earthquakes", "Live USGS seismic alerts")
+                TrackItem("📈", "Stocks & IPOs", "Market data, new listings")
+                TrackItem("🎬", "Movies & YouTube", "Trending content")
+                TrackItem("⚽", "Sports", "Live scores and results")
+                TrackItem("🔗", "Any Website", "Track any URL for changes")
+                Spacer(Modifier.height(6.dp))
+                Text("Agents check automatically and push updates to your chat. No need to open the app!",
+                    fontSize = 11.sp, color = textDim, lineHeight = 16.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuideStep(number: String, text: String) {
+    Row(modifier = Modifier.padding(vertical = 2.dp)) {
+        Text(number, fontSize = 12.sp, color = Color(0xFF58A6FF), fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(20.dp))
+        Text(text, fontSize = 12.sp, color = Color(0xFFC9D1D9), lineHeight = 17.sp)
+    }
+}
+
+@Composable
+private fun ChatExample(text: String) {
+    Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF0D1117),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(text, fontSize = 12.sp, color = Color(0xFF79C0FF),
+            fontFamily = FontFamily.Monospace, modifier = Modifier.padding(8.dp, 6.dp),
+            lineHeight = 16.sp)
+    }
+}
+
+@Composable
+private fun TrackItem(emoji: String, title: String, desc: String) {
+    Row(modifier = Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(emoji, fontSize = 16.sp, modifier = Modifier.width(28.dp))
+        Text(title, fontSize = 12.sp, color = Color(0xFFF0F6FC), fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.width(90.dp))
+        Text(desc, fontSize = 11.sp, color = Color(0xFF8B949E))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AgentGuideDialog(onDismiss: () -> Unit) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color(0xFF0D1117),
+        dragHandle = null
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text("📖", fontSize = 24.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Agent Guide", fontWeight = FontWeight.Bold, fontSize = 20.sp,
+                        color = Color(0xFFF0F6FC), modifier = Modifier.weight(1f))
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Close, "Close",
+                            tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Everything you need to know about creating and managing agents.",
+                    fontSize = 12.sp, color = Color(0xFF8B949E))
+                Spacer(Modifier.height(16.dp))
+            }
+
+            item { AgentQuickGuide() }
+
+            item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }

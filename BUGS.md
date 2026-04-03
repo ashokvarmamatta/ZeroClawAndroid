@@ -7,6 +7,18 @@
 
 ---
 
+## BUG-30 — AgentTool smart create splits words like "tollywood" and gets page titles instead of data
+- **Phase:** 175 (Agent Results API + Agent Manager)
+- **Status:** 🟡 Partially Fixed
+- **Severity:** High
+- **Symptom:** User says "create agent for latest tollywood movies". (1) "tollywood" gets split into "llywood" because regex strips "to" from inside the word. (2) Agent fetches page titles like "Top 10 Movies Lists" instead of actual movie names like "Pushpa 2". (3) When user says "find own" (meaning find URLs yourself), AI asks for URL instead of using AgentTool's smart creation.
+- **Root Cause:** (1) `extractQueryForTemplate()` regex used `to` without word boundaries — matched inside "tollywood". (2) Extraction prompt was too generic ("Extract latest movie releases") — LLM grabbed headings not data. (3) Tool description said `url` was needed, so LLM asked for it instead of calling the tool with just a topic.
+- **Fix (applied):** (1) Changed regex to use `\b` word boundaries. (2) Added movie-specific prompt demanding actual movie names. (3) Updated tool description to say URL is OPTIONAL, just pass a topic. (4) Added job/anime/movie-specific smart URLs (LinkedIn, Naukri, BookMyShow, IMDB, MyAnimeList).
+- **Remaining:** Smart agent creation still unreliable — LLM sometimes doesn't call the tool, or the web-discovered URLs don't return useful data. Needs end-to-end testing with various topics. Preview+modify loop added but untested.
+- **Lesson:** Word-boundary regex (`\b`) is essential when stripping keywords from user input. Tool descriptions must explicitly say what's optional or the LLM will ask for it.
+
+---
+
 ## BUG-29 — Cloudflare edge discovery fails with "too many colons in address"
 - **Phase:** 173 (Cloudflare Tunnel)
 - **Status:** ✅ Fixed

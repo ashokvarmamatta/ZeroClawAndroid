@@ -224,6 +224,7 @@ All under `app/src/main/java/ai/zeroclaw/android/`
 | `ExportImportConfig.kt` | Backup/restore settings as JSON |
 | `MemoryDatabase.kt` | Room DB: memories table (with embeddings) |
 | `MessageDatabase.kt` | Room DB: messages table (chat history) |
+| `AgentResultDatabase.kt` | Room DB: agent_results table (every agent run result) |
 
 ### Infrastructure (`infra/`)
 | File | Purpose |
@@ -307,6 +308,30 @@ data class BookmarkEntity(
 
 **DAO operations:** insert, update, findByUrl, search, list
 
+### 4. AgentResultDatabase (`zeroclaw_agent_results`) — Version 1
+```kotlin
+@Entity(tableName = "agent_results")
+data class AgentResultEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val agentId: String,              // FK to AgentConfig.id
+    val agentName: String,            // Snapshot of agent name at run time
+    val runId: String,                // UUID per run
+    val timestamp: Long,
+    val status: String,               // "success" | "partial" | "failed" | "skipped"
+    val url: String,                  // URL that was fetched
+    val usedApi: Boolean,             // true if free API was used
+    val rawContent: String,           // Raw fetched content (max 5000 chars)
+    val extractedContent: String,     // Delivered content (max 3500 chars)
+    val deliveredTo: String,          // JSON array ["telegram","discord"]
+    val errorMessage: String,         // Error details if failed
+    val contentHash: Int              // Hash for change detection
+)
+```
+
+**Indices:** `agentId`, `timestamp`, composite `(agentId, timestamp)`
+
+**DAO operations:** getAll (limit/offset), getByAgentId (limit/offset), getById, insert, deleteById, deleteByAgentId, deleteOlderThan, count, countByAgent, observeRecent (Flow), getDistinctAgents
+
 All databases use singleton pattern, CoroutineScope.IO, and fallback to destructive migration.
 
 ---
@@ -349,6 +374,8 @@ All databases use singleton pattern, CoroutineScope.IO, and fallback to destruct
 | `POST` | `/api/generate` | ZeroClaw native | Raw LLM output (no tools/history) |
 | `GET` | `/api/discover` | ZeroClaw native | Service discovery (version, port, endpoints) |
 | `GET` | `/` | HTML | Browser-based chat UI |
+| `GET` | `/api/agents/results` | ZeroClaw native | Agent run results (filter: `?agent_id=`, `?id=`, `?limit=`, `?offset=`) |
+| `DELETE` | `/api/agents/results` | ZeroClaw native | Delete results (`?id=`, `?agent_id=`, `?older_than=`) |
 
 ---
 

@@ -25,9 +25,16 @@ data class AgentConfig(
     val apiSource: String? = null,     // Phase 166: free API source ID (e.g. "coingecko") — uses direct API instead of web scraping
     val fetchType: String? = null,     // Phase 165: fetch method — "http" | "rss" | "webview" (null = "http")
     val formatPreview: String? = null, // Phase 165: AI-generated format preview shown to user — persisted so user can review/edit later
-    val trackingMode: String? = null   // Phase 174: "full_site" (reload page each run) | "value_only" (track changing values) — null = "full_site"
+    val trackingMode: String? = null,  // Phase 174: "full_site" (reload page each run) | "value_only" (track changing values) — null = "full_site"
+    val extraUrls: String? = null      // Phase 175: JSON array of additional URLs to fetch from (agent cycles through all)
 ) {
     val safeFetchType: String get() = fetchType ?: "http"
     val safeFormatPreview: String get() = formatPreview ?: ""
     val safeTrackingMode: String get() = trackingMode ?: "full_site"
+    val safeExtraUrls: List<String> get() = try {
+        if (extraUrls.isNullOrBlank()) emptyList()
+        else org.json.JSONArray(extraUrls).let { arr -> (0 until arr.length()).map { arr.getString(it) } }
+    } catch (_: Exception) { emptyList() }
+    /** All URLs this agent fetches from (primary + extras) */
+    val allUrls: List<String> get() = listOf(url) + safeExtraUrls
 }

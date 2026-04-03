@@ -127,6 +127,8 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(MessageTool(context))
         // Phase 151: Pushover notifications
         registerTool(PushoverTool(context))
+        // Phase 175: Agent manager tool
+        registerTool(AgentTool(context))
     }
 
     fun registerTool(tool: Tool) {

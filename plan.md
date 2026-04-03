@@ -265,6 +265,9 @@ See `SESSION_RULES_TEMPLATE.md` in `D:\Ashok\olama\projects\` for full session w
 | | | |
 | | **── CLOUDFLARE TUNNEL (Phase 173) ──** | |
 | **173** | **Cloudflare Quick Tunnel — bundled cloudflared ARM64 binary in APK (jniLibs), Java-side tunnel registration via trycloudflare.com API (bypasses Go DNS), Java-side edge IP resolution via InetAddress, credentials file + config YAML generation, --edge flag for pre-resolved IPs, Settings UI with Off/Quick/Token modes, Server Address dialog shows tunnel URL, test_tunnel.html for verification** | ✅ DONE |
+| | | |
+| | **── AGENT RESULTS API (Phase 175) ──** | |
+| **175** | **Agent Results DB + API + Agent Manager Tool + Multi-URL Agents — (1) Room DB `zeroclaw_agent_results` persists every agent run result. API endpoints: GET/DELETE `/api/agents/results` with pagination. (2) AgentTool: AI-powered agent manager — list/status/results/enable/disable/run/delete/create/modify agents via chat on any channel. (3) Smart agent creation from concept — AI finds best URLs via templates + web search, creates single agent with multiple sources (`extraUrls` field), auto-runs preview, modify loop until user confirms. (4) WebChatServer chat page: tabs (Chat + Agents), agents list with active/inactive status, click for results history. (5) AgentCreateSheet converted from BottomSheet to full screen with back-gesture keyboard dismiss + discard confirmation dialog. (6) Agent guide in AgentsScreen with detailed how-to for app + chat creation. BUG-30: tollywood word-split fix, movie/job/anime smart URLs** | ✅ DONE |
 
 ---
 
