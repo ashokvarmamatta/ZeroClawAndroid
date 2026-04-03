@@ -7,6 +7,70 @@
 
 ---
 
+## BUG-29 — Cloudflare edge discovery fails with "too many colons in address"
+- **Phase:** 173 (Cloudflare Tunnel)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** cloudflared exits with `failed to resolve to TCP address error="address 198.41.192.77:7844,...: too many colons in address"`. Edge IPs are resolved correctly but tunnel can't connect.
+- **Root Cause:** `--edge` flag was passed a comma-separated list of `IP:port` values as a single argument. cloudflared treats each `--edge` value as ONE address, not a list.
+- **Fix:** Pass separate `--edge IP:port` flags for each resolved edge IP (up to 4).
+- **Files Changed:** TunnelManager.kt
+- **Lesson:** CLI flags that accept addresses usually expect one address per flag instance, not a delimited list.
+
+---
+
+## BUG-28 — cloudflared edge connection fails with DNS lookup error on Android
+- **Phase:** 173 (Cloudflare Tunnel)
+- **Status:** ✅ Fixed
+- **Severity:** Critical
+- **Symptom:** After successful tunnel registration, cloudflared fails with `lookup _v2-origintunneld._tcp.argotunnel.com on [::1]:53: connection refused`. SRV record lookup for edge discovery fails.
+- **Root Cause:** Same Go DNS issue as BUG-26 — cloudflared needs to resolve SRV records for edge server discovery, which requires DNS. Even though initial API call was handled by Java, edge discovery still used Go's broken DNS.
+- **Fix:** Resolve `region1.v2.argotunnel.com` and `region2.v2.argotunnel.com` from Java using `InetAddress.getAllByName()`, pass resolved IPs via separate `--edge IP:7844` flags. cloudflared connects directly to edge IPs without DNS.
+- **Files Changed:** TunnelManager.kt
+- **Lesson:** Go binaries on Android need ALL DNS handled externally — not just the first API call, but every subsequent hostname lookup too.
+
+---
+
+## BUG-27 — HTTPS_PROXY environment variable ignored by cloudflared
+- **Phase:** 173 (Cloudflare Tunnel)
+- **Status:** ✅ Fixed (workaround)
+- **Severity:** High
+- **Symptom:** HTTP CONNECT proxy started on port 18053 and `HTTPS_PROXY` env var set, but cloudflared still resolved DNS directly via `[::1]:53`. Proxy received zero connections.
+- **Root Cause:** cloudflared creates a custom `http.Transport{}` (not `http.DefaultTransport`) for its API calls. A zero-value `http.Transport` has `Proxy: nil` which means "no proxy". Only `http.DefaultTransport` has `Proxy: http.ProxyFromEnvironment`.
+- **Fix:** Abandoned proxy approach. Instead, make the initial API call from Java/OkHttp (where Android DNS works), get tunnel credentials, write them to disk, and run cloudflared with `--credentials-file`.
+- **Files Changed:** TunnelManager.kt
+- **Lesson:** Don't assume Go binaries respect standard proxy env vars. Check if they use `http.DefaultTransport` or a custom transport.
+
+---
+
+## BUG-26 — Go DNS resolver fails on Android (no /etc/resolv.conf)
+- **Phase:** 173 (Cloudflare Tunnel)
+- **Status:** ✅ Fixed
+- **Severity:** Critical
+- **Symptom:** cloudflared fails with `lookup api.trycloudflare.com on [::1]:53: read udp [::1]:...->[::1]:53: read: connection refused`. DNS resolution completely broken.
+- **Root Cause:** Go's pure-Go DNS resolver reads `/etc/resolv.conf` (hardcoded path) to find DNS servers. This file doesn't exist on Android (DNS is handled by Bionic's `getaddrinfo` via system properties). Go falls back to `127.0.0.1:53` and `[::1]:53` — neither has a DNS server. Port 53 binding requires root (EACCES). No env var exists to override the resolv.conf path.
+- **Fix (multi-layered):**
+  1. ~~DNS relay on port 53~~ → EACCES, needs root
+  2. ~~HTTPS_PROXY with CONNECT proxy~~ → cloudflared ignores it (BUG-27)
+  3. ~~RES_CONF env var~~ → Not a real Go thing, doesn't work
+  4. **Final fix:** Make ALL DNS-requiring calls from Java/OkHttp where Android's resolver works. Register tunnel via API from Java. Resolve edge IPs from Java. Pass everything to cloudflared via config files and `--edge` flags.
+- **Files Changed:** TunnelManager.kt
+- **Lesson:** Go binaries compiled for Linux (not Android) cannot do DNS on Android. The ONLY fix is to handle DNS from Java and pass results to the binary.
+
+---
+
+## BUG-25 — cloudflared binary permission denied on Android (W^X policy)
+- **Phase:** 173 (Cloudflare Tunnel)
+- **Status:** ✅ Fixed
+- **Severity:** Critical
+- **Symptom:** Downloaded cloudflared binary to `filesDir`, set executable permission, but execution fails with `error=13, Permission denied`. Also tried dynamic linker (`/system/bin/linker64`) which fails with `unexpected e_type: 2`.
+- **Root Cause:** Android 10+ enforces W^X (Write XOR Execute) policy — app data directories (`/data/user/0/.../files/`) are mounted with `noexec`. Can't execute any binary from there. The linker rejects it because it expects shared libraries (e_type=3 ET_DYN), not executables (e_type=2 ET_EXEC).
+- **Fix:** Bundle cloudflared as `libcloudflared.so` in `jniLibs/arm64-v8a/`. Set `android:extractNativeLibs="true"` in AndroidManifest and `jniLibs.useLegacyPackaging = true` in build.gradle. Android extracts jniLibs to `nativeLibraryDir` on install, which HAS execute permission.
+- **Files Changed:** TunnelManager.kt, build.gradle.kts, AndroidManifest.xml, jniLibs/arm64-v8a/libcloudflared.so
+- **Lesson:** On Android, the ONLY way to execute a binary is from `nativeLibraryDir`. Bundle it as a `.so` file in jniLibs. Runtime-downloaded binaries CANNOT be executed on modern Android.
+
+---
+
 ## BUG-24 — Agent extraction sends wrong values to Telegram despite correct format preview
 - **Phase:** Agent extraction (WebScraperAgent)
 - **Status:** ✅ Fixed

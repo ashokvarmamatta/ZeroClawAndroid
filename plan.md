@@ -857,7 +857,7 @@ Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
 
 ---
 
-## Phase 170 — Live Data Tools: Web Search + Fetch in /api/generate
+## Phase 170 — Live Data Tools: Web Search + Fetch in /api/generate ✅ DONE
 
 > **Branch:** `feat/live-data-tools`
 > **Goal:** When web_search and web_fetch tools are enabled, the `/api/generate` endpoint should
@@ -883,15 +883,15 @@ When `use_tools=true` is sent with `/api/generate`, ZeroClaw will:
 
 | # | Task | File | Status |
 |---|------|------|--------|
-| 1 | Add `use_tools` parameter to `/api/generate` endpoint | `WebChatServer.kt` | ⬜ PENDING |
-| 2 | Create `rawGenerateWithTools()` in LlmRouter | `LlmRouter.kt` | ⬜ PENDING |
-| 3 | Extract search topic from prompt (regex or first-line parse) | `LlmRouter.kt` | ⬜ PENDING |
-| 4 | Call `WebSearchTool.execute()` with extracted topic | `LlmRouter.kt` | ⬜ PENDING |
-| 5 | Call `WebFetchTool.execute()` on top 2-3 search result URLs | `LlmRouter.kt` | ⬜ PENDING |
-| 6 | Build enriched prompt: original prompt + "Here is real-time data from the web:\n{fetched content}" | `LlmRouter.kt` | ⬜ PENDING |
-| 7 | Call existing `rawGenerate()` with enriched prompt + JSON mode | `LlmRouter.kt` | ⬜ PENDING |
-| 8 | Add `/api/discover` response field: `"tools_available": ["web_search", "web_fetch"]` | `WebChatServer.kt` | ⬜ PENDING |
-| 9 | Test: send `use_tools=true` request, verify web search runs and data is current | Manual | ⬜ PENDING |
+| 1 | Add `use_tools` parameter to `/api/generate` endpoint | `WebChatServer.kt` | ✅ DONE |
+| 2 | Create `rawGenerateWithTools()` in LlmRouter | `LlmRouter.kt` | ✅ DONE |
+| 3 | Extract search topic from prompt (regex or first-line parse) | `LlmRouter.kt` | ✅ DONE |
+| 4 | Call `WebSearchTool.execute()` with extracted topic | `LlmRouter.kt` | ✅ DONE |
+| 5 | Call `WebFetchTool.execute()` on top 2-3 search result URLs | `LlmRouter.kt` | ✅ DONE |
+| 6 | Build enriched prompt: original prompt + "Here is real-time data from the web:\n{fetched content}" | `LlmRouter.kt` | ✅ DONE |
+| 7 | Call existing `rawGenerate()` with enriched prompt + JSON mode | `LlmRouter.kt` | ✅ DONE |
+| 8 | Add `/api/discover` response field: `"tools_available": ["web_search", "web_fetch"]` | `WebChatServer.kt` | ✅ DONE |
+| 9 | Test: send `use_tools=true` request, verify web search runs and data is current | Manual | ✅ DONE |
 
 ### API Change
 
