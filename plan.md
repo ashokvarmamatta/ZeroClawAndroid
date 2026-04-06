@@ -268,6 +268,9 @@ See `SESSION_RULES_TEMPLATE.md` in `D:\Ashok\olama\projects\` for full session w
 | | | |
 | | **── AGENT RESULTS API (Phase 175) ──** | |
 | **175** | **Agent Results DB + API + Agent Manager Tool + Multi-URL Agents — (1) Room DB `zeroclaw_agent_results` persists every agent run result. API endpoints: GET/DELETE `/api/agents/results` with pagination. (2) AgentTool: AI-powered agent manager — list/status/results/enable/disable/run/delete/create/modify agents via chat on any channel. (3) Smart agent creation from concept — AI finds best URLs via templates + web search, creates single agent with multiple sources (`extraUrls` field), auto-runs preview, modify loop until user confirms. (4) WebChatServer chat page: tabs (Chat + Agents), agents list with active/inactive status, click for results history. (5) AgentCreateSheet converted from BottomSheet to full screen with back-gesture keyboard dismiss + discard confirmation dialog. (6) Agent guide in AgentsScreen with detailed how-to for app + chat creation. BUG-30: tollywood word-split fix, movie/job/anime smart URLs** | ✅ DONE |
+| | | |
+| | **── BUG FIXES & API GUIDE (Phase 176) ──** | |
+| **176** | **Agent Results API bug fixes + API Access Guide — (1) Fix unclosed HTTP responses in WebFetchTool/WebSearchTool (socket leak → .use{}). (2) Fix Thread.sleep→delay() in WebFetchTool retry loop. (3) Fix runBlocking deadlock risk in LlmRouter /profile handler. (4) Fix thread-unsafe failedKeyIds in LlmKeyManager (→ synchronizedSet). (5) BUG-31: No auth on agent results API (documented for later fix). (6) AgentCreateSheet edit mode: expandable API Access Guide with 6-step beginner walkthrough — 3 connection methods (Local WiFi, Cloudflare Quick/Named Tunnel, ngrok), copy-paste code snippets (JS/Python/cURL/Kotlin), live tunnel URL auto-detection (reads ZeroClawService.tunnelUrl, shows real URL when connected with green banner, yellow "Local Only" when no tunnel), response format docs, all endpoints reference** | ✅ DONE |
 
 ---
 
@@ -289,6 +292,8 @@ If using a tunnel (ngrok/Cloudflare), use the tunnel URL instead for remote acce
 | `GET` | `/v1/models` | OpenAI-compatible | Returns model list (`zeroclaw`). |
 | `POST` | `/api/chat` | ZeroClaw native | Simple chat with session memory. |
 | `POST` | `/api/generate` | ZeroClaw native | Raw LLM output — no tools, no history. Supports `json_mode`. |
+| `GET` | `/api/agents/results` | ZeroClaw native | Query agent run results. Filter: `?agent_id=`, `?limit=`, `?offset=`, `?id=`. |
+| `DELETE` | `/api/agents/results` | ZeroClaw native | Delete results. Params: `?id=`, `?agent_id=`, `?older_than=`. |
 | `GET` | `/api/discover` | ZeroClaw native | Service discovery — version, port, all endpoints. |
 | `GET` | `/` | HTML | Browser-based chat UI. |
 

@@ -92,6 +92,8 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 | 🔄 **Smart updates** | Only sends when content actually changes |
 | ▶️ **Run Now** | Test any agent instantly |
 | 🔗 **Multi-channel** | Same agent can push to multiple chat apps |
+| 🔌 **Results API** | `GET /api/agents/results` — query agent data from any app (JS, Python, cURL) |
+| 📖 **Built-in API Guide** | Edit any agent → see copy-paste code for your language + live tunnel URL |
 
 ### 🧪 Tool Playground ![](https://img.shields.io/badge/Interactive-FF6B6B?style=flat-square) ![](https://img.shields.io/badge/Live_Testing-orange?style=flat-square)
 
@@ -224,6 +226,8 @@ Your public URL appears in **Live Logs → Server Address** dialog.
 | `GET` | `/v1/models` | 📋 List available models |
 | `POST` | `/api/chat` | 💬 Simple chat with session memory |
 | `POST` | `/api/generate` | ⚡ Raw AI generation (no tools). Supports `json_mode` |
+| `GET` | `/api/agents/results` | 🕷️ Query agent run results (filter by agent, paginate) |
+| `DELETE` | `/api/agents/results` | 🗑️ Delete agent results (by ID, agent, or age) |
 | `GET` | `/api/discover` | 🔍 Service discovery |
 | `GET` | `/` or `/chat` | 🌐 Web chat UI in browser |
 
