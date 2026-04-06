@@ -1527,6 +1527,21 @@ private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
     val clipboardManager = LocalClipboardManager.current
     var copiedSnippet by remember { mutableStateOf<String?>(null) }
 
+    // Detect live tunnel URL from the running service
+    val rawTunnelUrl = ai.zeroclaw.android.service.ZeroClawService.tunnelUrl
+    val isTunnelConnected = rawTunnelUrl != null &&
+        (rawTunnelUrl.contains("trycloudflare.com") ||
+         rawTunnelUrl.contains("ngrok") ||
+         (rawTunnelUrl.startsWith("https://") && !rawTunnelUrl.contains("localhost") && !rawTunnelUrl.contains("192.168.")))
+    // The base URL for all examples — real tunnel URL if connected, placeholder otherwise
+    val liveBaseUrl = if (isTunnelConnected) rawTunnelUrl!! else null
+    val tunnelType = when {
+        rawTunnelUrl?.contains("trycloudflare.com") == true -> "Cloudflare Quick Tunnel"
+        rawTunnelUrl?.contains("ngrok") == true -> "ngrok"
+        isTunnelConnected -> "Cloudflare Named Tunnel"
+        else -> null
+    }
+
     // Reset copied state
     LaunchedEffect(copiedSnippet) {
         if (copiedSnippet != null) { kotlinx.coroutines.delay(2000); copiedSnippet = null }
@@ -1568,7 +1583,69 @@ private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
             }
 
             if (expanded) {
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
+
+                // ── Live connection status banner ──
+                if (isTunnelConnected && liveBaseUrl != null) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF0F2A1F),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4ADE80).copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("🟢", fontSize = 14.sp)
+                                Text("$tunnelType Connected!",
+                                    fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                    color = Color(0xFF4ADE80))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text("Your live API URL:",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                            Spacer(Modifier.height(4.dp))
+                            val fullLiveUrl = "$liveBaseUrl/api/agents/results?agent_id=$agentId"
+                            CodeSnippet(
+                                label = "Your Live URL (ready to use!)",
+                                code = fullLiveUrl,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(fullLiveUrl))
+                                    copiedSnippet = "live"
+                                },
+                                isCopied = copiedSnippet == "live",
+                                accent = Color(0xFF4ADE80)
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "This is your real URL right now — paste it in a browser or app and it works!",
+                                fontSize = 10.sp, color = Color(0xFF4ADE80).copy(alpha = 0.6f))
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                } else if (rawTunnelUrl != null && !isTunnelConnected) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF1A2233),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("🟡", fontSize = 14.sp)
+                            Column {
+                                Text("Local Network Only",
+                                    fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                                    color = Color(0xFFFFA726))
+                                Text("No tunnel connected. Enable Cloudflare Tunnel or ngrok in Settings for remote access.",
+                                    fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
 
                 // ── Step 1: What is this? ──
                 GuideStep(
@@ -1834,30 +1911,43 @@ private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
                     title = "Copy-Paste Code for Your App",
                     accent = accent
                 ) {
+                    // Show the correct base URL — live tunnel if connected, placeholder otherwise
+                    val codeBaseUrl = liveBaseUrl ?: "https://your-tunnel.trycloudflare.com"
+                    val urlComment = if (liveBaseUrl != null)
+                        "// Your live URL (from $tunnelType)"
+                    else
+                        "// Replace BASE_URL with your address from Step 2"
+
                     Text(
-                        "Pick your language and paste this code. Replace BASE_URL with your address from Step 2:",
+                        if (liveBaseUrl != null)
+                            "Your tunnel is connected! These code snippets use your real URL — just copy and run:"
+                        else
+                            "Pick your language and paste this code. Replace BASE_URL with your address from Step 2:",
                         fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f),
                         lineHeight = 18.sp
                     )
-                    Spacer(Modifier.height(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF1A2233),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Replace BASE_URL with one of:", fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold, color = accent)
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "  Local WiFi:    http://192.168.1.42:8088\n" +
-                                "  Quick Tunnel:  https://abc-xyz.trycloudflare.com\n" +
-                                "  Named Tunnel:  https://api.yourdomain.com\n" +
-                                "  ngrok:         https://a1b2c3d4.ngrok-free.app",
-                                fontSize = 10.sp, fontFamily = FontFamily.Monospace,
-                                color = Color.White.copy(alpha = 0.6f),
-                                lineHeight = 15.sp
-                            )
+
+                    if (liveBaseUrl == null) {
+                        Spacer(Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF1A2233),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Replace BASE_URL with one of:", fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold, color = accent)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "  Local WiFi:    http://192.168.1.42:8088\n" +
+                                    "  Quick Tunnel:  https://abc-xyz.trycloudflare.com\n" +
+                                    "  Named Tunnel:  https://api.yourdomain.com\n" +
+                                    "  ngrok:         https://a1b2c3d4.ngrok-free.app",
+                                    fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    lineHeight = 15.sp
+                                )
+                            }
                         }
                     }
 
@@ -1865,8 +1955,8 @@ private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
 
                     // JavaScript
                     val jsCode = """// JavaScript / Node.js / React / any web app
-// Replace BASE_URL with your address from Step 2
-const BASE_URL = "https://your-tunnel.trycloudflare.com";
+$urlComment
+const BASE_URL = "$codeBaseUrl";
 fetch(BASE_URL + "/api/agents/results?agent_id=$agentId&limit=1")
   .then(r => r.json())
   .then(data => {
@@ -1883,8 +1973,8 @@ fetch(BASE_URL + "/api/agents/results?agent_id=$agentId&limit=1")
                     // Python
                     val pyCode = """# Python
 import requests
-# Replace BASE_URL with your address from Step 2
-BASE_URL = "https://your-tunnel.trycloudflare.com"
+$urlComment
+BASE_URL = "$codeBaseUrl"
 data = requests.get(f"{BASE_URL}/api/agents/results",
     params={"agent_id": "$agentId", "limit": 1}).json()
 latest = data["results"][0]
@@ -1898,8 +1988,8 @@ print(latest["extracted_content"])"""
 
                     // cURL
                     val curlCode = """# cURL (Terminal / Command Prompt)
-# Replace the URL with your address from Step 2
-curl "https://your-tunnel.trycloudflare.com/api/agents/results?agent_id=$agentId&limit=1" """
+$urlComment
+curl "$codeBaseUrl/api/agents/results?agent_id=$agentId&limit=1" """
                     CodeSnippet("cURL / Terminal", curlCode, onCopy = {
                         clipboardManager.setText(AnnotatedString(curlCode))
                         copiedSnippet = "curl"
@@ -1909,8 +1999,8 @@ curl "https://your-tunnel.trycloudflare.com/api/agents/results?agent_id=$agentId
 
                     // Kotlin/Android
                     val ktCode = """// Kotlin / Android (OkHttp)
-// Replace BASE_URL with your address from Step 2
-val BASE_URL = "https://your-tunnel.trycloudflare.com"
+$urlComment
+val BASE_URL = "$codeBaseUrl"
 val url = "${'$'}BASE_URL/api/agents/results?agent_id=$agentId&limit=1"
 val json = OkHttpClient().newCall(Request.Builder().url(url).build())
     .execute().use { it.body?.string() }"""
