@@ -1587,37 +1587,210 @@ private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
 
                 Spacer(Modifier.height(14.dp))
 
-                // ── Step 2: Your API URL ──
+                // ── Step 2: Your API Address (3 ways) ──
                 GuideStep(
                     number = "2",
-                    title = "Your API Address",
+                    title = "Your API Address (3 Ways to Connect)",
                     accent = accent
                 ) {
                     Text(
                         "While ZeroClaw is running, your phone becomes a mini server. " +
-                        "The address looks like this:",
+                        "There are 3 ways to reach it — pick whichever works for you:",
                         fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f),
                         lineHeight = 18.sp
                     )
-                    Spacer(Modifier.height(8.dp))
-                    val localUrl = "http://<YOUR-PHONE-IP>:8088/api/agents/results?agent_id=$agentId"
-                    CodeSnippet(
-                        label = "Local (same WiFi)",
-                        code = localUrl,
-                        onCopy = {
-                            clipboardManager.setText(AnnotatedString(localUrl))
-                            copiedSnippet = "local"
-                        },
-                        isCopied = copiedSnippet == "local",
-                        accent = accent
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Find your phone's IP: Settings > WiFi > tap your network > IP address.\n" +
-                        "If you enabled Cloudflare Tunnel, use your tunnel URL instead of the IP.",
-                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f),
-                        lineHeight = 14.sp
-                    )
+
+                    // ── Method A: Local WiFi ──
+                    Spacer(Modifier.height(12.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF1A2233),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("A. Same WiFi (Local Network)",
+                                fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF58A6FF))
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Both your phone and computer/app must be on the same WiFi.",
+                                fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                            Spacer(Modifier.height(8.dp))
+                            val localUrl = "http://<YOUR-PHONE-IP>:8088/api/agents/results?agent_id=$agentId"
+                            CodeSnippet(
+                                label = "Local WiFi",
+                                code = localUrl,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(localUrl))
+                                    copiedSnippet = "local"
+                                },
+                                isCopied = copiedSnippet == "local",
+                                accent = accent
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "How to find your phone IP:\n" +
+                                "  Android: Settings > WiFi > tap your network > IP address\n" +
+                                "  Usually looks like: 192.168.1.xxx or 192.168.0.xxx\n" +
+                                "  Only works when both devices are on the same WiFi!",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+
+                    // ── Method B: Cloudflare Tunnel ──
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF1A2233),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("B. Cloudflare Tunnel (Access from Anywhere)",
+                                fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFF6821F))
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Enable in Settings > Cloudflare Tunnel. Works from anywhere in the world — " +
+                                "no port forwarding needed!",
+                                fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+
+                            // Quick Tunnel (temporary)
+                            Spacer(Modifier.height(10.dp))
+                            Text("Option 1: Quick Tunnel (temporary link)",
+                                fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Color(0xFFFFA726))
+                            Text(
+                                "Turn on \"Quick Tunnel\" in Settings. ZeroClaw gives you a random URL like:",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                            Spacer(Modifier.height(6.dp))
+                            val quickUrl = "https://abc-xyz-123.trycloudflare.com/api/agents/results?agent_id=$agentId"
+                            CodeSnippet(
+                                label = "Quick Tunnel (temporary)",
+                                code = quickUrl,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(quickUrl))
+                                    copiedSnippet = "cftmp"
+                                },
+                                isCopied = copiedSnippet == "cftmp",
+                                accent = accent
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "This link changes every time you restart the tunnel.\n" +
+                                "Copy the actual URL from Settings > Cloudflare Tunnel > Tunnel URL.\n" +
+                                "Great for testing — not for permanent apps.",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f),
+                                lineHeight = 14.sp
+                            )
+
+                            // Named Tunnel (permanent)
+                            Spacer(Modifier.height(10.dp))
+                            Text("Option 2: Named Tunnel (permanent link)",
+                                fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Color(0xFF4ADE80))
+                            Text(
+                                "Set up a Named Tunnel with your own domain. The URL never changes:",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                            Spacer(Modifier.height(6.dp))
+                            val namedUrl = "https://your-app.yourdomain.com/api/agents/results?agent_id=$agentId"
+                            CodeSnippet(
+                                label = "Named Tunnel (permanent)",
+                                code = namedUrl,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(namedUrl))
+                                    copiedSnippet = "cfperm"
+                                },
+                                isCopied = copiedSnippet == "cfperm",
+                                accent = accent
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Setup: Settings > Cloudflare Tunnel > enter your Tunnel ID, " +
+                                "Account Tag, Secret, and Domain.\n" +
+                                "This URL is permanent — use it in production apps!",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+
+                    // ── Method C: ngrok ──
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF1A2233),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("C. ngrok (Quick Remote Access)",
+                                fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF1DB954))
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "If you have ngrok installed on your phone or PC, " +
+                                "point it at port 8088 to get a public URL:",
+                                fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                            Spacer(Modifier.height(8.dp))
+                            val ngrokCmd = "ngrok http 8088"
+                            CodeSnippet(
+                                label = "Run this in terminal",
+                                code = ngrokCmd,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(ngrokCmd))
+                                    copiedSnippet = "ngcmd"
+                                },
+                                isCopied = copiedSnippet == "ngcmd",
+                                accent = accent
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "ngrok gives you a URL like:",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                            Spacer(Modifier.height(6.dp))
+                            val ngrokUrl = "https://a1b2c3d4.ngrok-free.app/api/agents/results?agent_id=$agentId"
+                            CodeSnippet(
+                                label = "ngrok URL",
+                                code = ngrokUrl,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString(ngrokUrl))
+                                    copiedSnippet = "ngurl"
+                                },
+                                isCopied = copiedSnippet == "ngurl",
+                                accent = accent
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Free ngrok URLs change every restart (like Quick Tunnel).\n" +
+                                "Paid ngrok plans give you a fixed subdomain.\n" +
+                                "Run ngrok on the same device or point it at your phone's local IP.",
+                                fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+
+                    // Quick comparison
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = accent.copy(alpha = 0.06f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Which should I use?", fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp, color = accent)
+                            Spacer(Modifier.height(6.dp))
+                            val comparisons = listOf(
+                                "Just testing?" to "Local WiFi — simplest, no setup",
+                                "Quick demo to a friend?" to "Quick Tunnel or ngrok — instant public link",
+                                "Building a real app?" to "Named Tunnel — permanent URL, always works",
+                            )
+                            comparisons.forEach { (q, a) ->
+                                Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                    Text("$q ", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
+                                    Text(a, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                        color = Color.White.copy(alpha = 0.8f))
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(14.dp))
@@ -1662,16 +1835,39 @@ private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
                     accent = accent
                 ) {
                     Text(
-                        "Pick your language and paste this code. It fetches the latest result from your agent:",
+                        "Pick your language and paste this code. Replace BASE_URL with your address from Step 2:",
                         fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f),
                         lineHeight = 18.sp
                     )
+                    Spacer(Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF1A2233),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text("Replace BASE_URL with one of:", fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold, color = accent)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "  Local WiFi:    http://192.168.1.42:8088\n" +
+                                "  Quick Tunnel:  https://abc-xyz.trycloudflare.com\n" +
+                                "  Named Tunnel:  https://api.yourdomain.com\n" +
+                                "  ngrok:         https://a1b2c3d4.ngrok-free.app",
+                                fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                color = Color.White.copy(alpha = 0.6f),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
 
                     Spacer(Modifier.height(10.dp))
 
                     // JavaScript
                     val jsCode = """// JavaScript / Node.js / React / any web app
-fetch("http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1")
+// Replace BASE_URL with your address from Step 2
+const BASE_URL = "https://your-tunnel.trycloudflare.com";
+fetch(BASE_URL + "/api/agents/results?agent_id=$agentId&limit=1")
   .then(r => r.json())
   .then(data => {
     const latest = data.results[0];
@@ -1687,8 +1883,10 @@ fetch("http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1")
                     // Python
                     val pyCode = """# Python
 import requests
-url = "http://YOUR_PHONE_IP:8088/api/agents/results"
-data = requests.get(url, params={"agent_id": "$agentId", "limit": 1}).json()
+# Replace BASE_URL with your address from Step 2
+BASE_URL = "https://your-tunnel.trycloudflare.com"
+data = requests.get(f"{BASE_URL}/api/agents/results",
+    params={"agent_id": "$agentId", "limit": 1}).json()
 latest = data["results"][0]
 print(latest["extracted_content"])"""
                     CodeSnippet("Python", pyCode, onCopy = {
@@ -1700,7 +1898,8 @@ print(latest["extracted_content"])"""
 
                     // cURL
                     val curlCode = """# cURL (Terminal / Command Prompt)
-curl "http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1" """
+# Replace the URL with your address from Step 2
+curl "https://your-tunnel.trycloudflare.com/api/agents/results?agent_id=$agentId&limit=1" """
                     CodeSnippet("cURL / Terminal", curlCode, onCopy = {
                         clipboardManager.setText(AnnotatedString(curlCode))
                         copiedSnippet = "curl"
@@ -1710,7 +1909,9 @@ curl "http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1" ""
 
                     // Kotlin/Android
                     val ktCode = """// Kotlin / Android (OkHttp)
-val url = "http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1"
+// Replace BASE_URL with your address from Step 2
+val BASE_URL = "https://your-tunnel.trycloudflare.com"
+val url = "${'$'}BASE_URL/api/agents/results?agent_id=$agentId&limit=1"
 val json = OkHttpClient().newCall(Request.Builder().url(url).build())
     .execute().use { it.body?.string() }"""
                     CodeSnippet("Kotlin / Android", ktCode, onCopy = {
@@ -1809,9 +2010,9 @@ val json = OkHttpClient().newCall(Request.Builder().url(url).build())
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("💡", fontSize = 16.sp)
                         Text(
-                            "Replace YOUR_PHONE_IP with your actual phone IP address. " +
-                            "Both devices must be on the same WiFi. " +
-                            "Or enable Cloudflare Tunnel in Settings to access from anywhere!",
+                            "For local WiFi: replace BASE_URL with http://<phone-ip>:8088. " +
+                            "For access from anywhere: enable Cloudflare Tunnel or ngrok in Settings " +
+                            "and use the tunnel URL as BASE_URL. Named Tunnels give you a permanent link!",
                             fontSize = 11.sp, color = Color(0xFFFFA726),
                             lineHeight = 16.sp
                         )
