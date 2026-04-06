@@ -424,7 +424,7 @@ private suspend fun sendMessage(
             try {
                 val imageTool = ImageAnalysisTool(context)
                 val result = imageTool.execute(mapOf(
-                    "image" to imageUri.toString(),
+                    "source" to imageUri.toString(),
                     "prompt" to prompt
                 ))
                 if (result.success) result.content else "Image analysis failed: ${result.error}"
