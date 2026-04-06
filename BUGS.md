@@ -7,6 +7,28 @@
 
 ---
 
+## BUG-33 — Chat image analysis fails with "Missing source parameter"
+- **Phase:** 177 (Chat Screen)
+- **Status:** ✅ Fixed
+- **Severity:** Medium
+- **Symptom:** User attaches an image in the Chat screen, sends "analyze this image". Gets error: "Image analysis failed: Missing 'source' parameter".
+- **Root Cause:** `ChatScreen.sendMessage()` passed the image URI as `"image"` key, but `ImageAnalysisTool.execute()` expects `"source"` as the parameter name.
+- **Fix:** Changed `mapOf("image" to imageUri.toString())` to `mapOf("source" to imageUri.toString())` in ChatScreen.kt.
+- **Lesson:** Always check the tool's `parameters` list for exact param names before calling `execute()`. Tool param names are defined in the Tool class, not guessable.
+
+---
+
+## BUG-32 — Widget buttons all open Home screen instead of navigating
+- **Phase:** 177 (Super Widget)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** Tapping "Agents" or "Chat" buttons on the home screen widget opens the app but always lands on the Home screen. Connected bots (Telegram, Discord, etc.) never show in the widget even when connected.
+- **Root Cause:** Two issues: (1) `setOnClickPendingIntent(R.id.widget_root, ...)` on the root layout swallowed all child button taps — Android RemoteViews propagates clicks to the nearest parent with a PendingIntent. (2) `HomeWidget.broadcastUpdate()` was never called after bots connected in `ZeroClawService.onCreate()`, so the widget only updated on its 30-min system cycle.
+- **Fix:** (1) Removed root click handler. Each button and info area gets its own `PendingIntent.getActivity()` with unique request codes. Agents/Chat buttons deep-link via `navigate_to` intent extra. (2) Added `broadcastUpdate()` call 5s after service start + every 30s periodic refresh + on tunnel connect.
+- **Lesson:** In RemoteViews, never set a click listener on the root layout if children need their own click handlers. Use unique request codes for each PendingIntent or Android will reuse/overwrite them.
+
+---
+
 ## BUG-31 — Agent Results API has no authentication or access control
 - **Phase:** 175 (Agent Results API)
 - **Status:** 🔴 Open
