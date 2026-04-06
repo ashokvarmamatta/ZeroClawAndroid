@@ -273,6 +273,12 @@ fun SettingsScreen(
                     Switch(checked = offlineWebSummarize, onCheckedChange = { offlineWebSummarize = it })
                 }
             }
+            // ── Add Widget to Home Screen ──
+            item { SectionHeader("📱 Home Screen Widget") }
+            item {
+                AddWidgetButton()
+            }
+
             item { SectionHeaderWithInfo("🚀 Advanced Features", "nullclaw") { onNavigateToInfo("nullclaw") } }
             item {
                 Card(
@@ -368,6 +374,69 @@ fun SectionHeaderWithInfo(title: String, sectionId: String, onInfoClick: () -> U
             )
         }
     }
+}
+
+@Composable
+fun AddWidgetButton() {
+    val context = LocalContext.current
+    var added by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+        ),
+        onClick = {
+            // Use Android's requestPinAppWidget API (Android 8.0+)
+            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
+            val widgetProvider = android.content.ComponentName(context, ai.zeroclaw.android.service.HomeWidget::class.java)
+            if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                appWidgetManager.requestPinAppWidget(widgetProvider, null, null)
+                added = true
+            } else {
+                // Fallback: tell user to add manually
+                android.widget.Toast.makeText(
+                    context,
+                    "Long-press your home screen → Widgets → ZeroClaw",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("📱", fontSize = 28.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Add Widget to Home Screen", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    if (added) "Widget added! Check your home screen"
+                    else "Live status, bots, agents, tunnel — all at a glance",
+                    fontSize = 12.sp,
+                    color = if (added) Color(0xFF4CAF50)
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (!added) {
+                Icon(Icons.Default.Add, contentDescription = "Add widget",
+                    tint = MaterialTheme.colorScheme.primary)
+            } else {
+                Icon(Icons.Default.Check, contentDescription = "Added",
+                    tint = Color(0xFF4CAF50))
+            }
+        }
+    }
+
+    // Also show manual instructions
+    Text(
+        "Or: long-press home screen → Widgets → ZeroClaw",
+        fontSize = 11.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+    )
 }
 
 @Composable
