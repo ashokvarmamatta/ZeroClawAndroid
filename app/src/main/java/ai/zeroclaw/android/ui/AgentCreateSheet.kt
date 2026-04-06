@@ -1230,6 +1230,13 @@ Start directly with the data list:"""
                 }
                 Spacer(Modifier.height(16.dp))
             }
+
+            // ── API Access Guide (only in edit mode) ──────────────────────
+            if (isEdit && existing != null) {
+                item {
+                    ApiAccessGuide(agentId = existing.id, agentName = existing.name, accent = accentColor)
+                }
+            }
         }
     }
 
@@ -1507,5 +1514,429 @@ private fun IntervalPicker(value: String, onChange: (String) -> Unit, accent: Co
             fontSize = 10.sp, color = Color.White.copy(alpha = 0.3f),
             modifier = Modifier.padding(top = 2.dp, start = 4.dp)
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API Access Guide — shows in edit mode so users know how to read agent data
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ApiAccessGuide(agentId: String, agentName: String, accent: Color) {
+    var expanded by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    var copiedSnippet by remember { mutableStateOf<String?>(null) }
+
+    // Reset copied state
+    LaunchedEffect(copiedSnippet) {
+        if (copiedSnippet != null) { kotlinx.coroutines.delay(2000); copiedSnippet = null }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF0D1117),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.2f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+
+            // Header — tap to expand/collapse
+            Surface(
+                onClick = { expanded = !expanded },
+                shape = RoundedCornerShape(10.dp),
+                color = accent.copy(alpha = 0.08f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("🔌", fontSize = 20.sp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Use This Agent in Your App",
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                        Text("Tap to see how to get this agent's data via API",
+                            fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                    }
+                    Icon(
+                        if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = accent
+                    )
+                }
+            }
+
+            if (expanded) {
+                Spacer(Modifier.height(16.dp))
+
+                // ── Step 1: What is this? ──
+                GuideStep(
+                    number = "1",
+                    title = "What is this?",
+                    accent = accent
+                ) {
+                    Text(
+                        "Your agent \"$agentName\" runs on a schedule and saves results every time. " +
+                        "You can read these results from ANY app, website, or script — " +
+                        "just like reading data from any website.",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f),
+                        lineHeight = 18.sp
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // ── Step 2: Your API URL ──
+                GuideStep(
+                    number = "2",
+                    title = "Your API Address",
+                    accent = accent
+                ) {
+                    Text(
+                        "While ZeroClaw is running, your phone becomes a mini server. " +
+                        "The address looks like this:",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f),
+                        lineHeight = 18.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val localUrl = "http://<YOUR-PHONE-IP>:8088/api/agents/results?agent_id=$agentId"
+                    CodeSnippet(
+                        label = "Local (same WiFi)",
+                        code = localUrl,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(localUrl))
+                            copiedSnippet = "local"
+                        },
+                        isCopied = copiedSnippet == "local",
+                        accent = accent
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Find your phone's IP: Settings > WiFi > tap your network > IP address.\n" +
+                        "If you enabled Cloudflare Tunnel, use your tunnel URL instead of the IP.",
+                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f),
+                        lineHeight = 14.sp
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // ── Step 3: Try it now ──
+                GuideStep(
+                    number = "3",
+                    title = "Try It Right Now",
+                    accent = accent
+                ) {
+                    Text(
+                        "Open your phone's browser and paste this:",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val tryUrl = "http://localhost:8088/api/agents/results?agent_id=$agentId&limit=5"
+                    CodeSnippet(
+                        label = "Paste in browser",
+                        code = tryUrl,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(tryUrl))
+                            copiedSnippet = "try"
+                        },
+                        isCopied = copiedSnippet == "try",
+                        accent = accent
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "You'll see JSON data with all your agent's results. " +
+                        "That's it — if you can see it in the browser, any app can read it too!",
+                        fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f),
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // ── Step 4: Use in your app ──
+                GuideStep(
+                    number = "4",
+                    title = "Copy-Paste Code for Your App",
+                    accent = accent
+                ) {
+                    Text(
+                        "Pick your language and paste this code. It fetches the latest result from your agent:",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f),
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // JavaScript
+                    val jsCode = """// JavaScript / Node.js / React / any web app
+fetch("http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1")
+  .then(r => r.json())
+  .then(data => {
+    const latest = data.results[0];
+    console.log(latest.extracted_content);
+  });"""
+                    CodeSnippet("JavaScript", jsCode, onCopy = {
+                        clipboardManager.setText(AnnotatedString(jsCode))
+                        copiedSnippet = "js"
+                    }, isCopied = copiedSnippet == "js", accent = accent)
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // Python
+                    val pyCode = """# Python
+import requests
+url = "http://YOUR_PHONE_IP:8088/api/agents/results"
+data = requests.get(url, params={"agent_id": "$agentId", "limit": 1}).json()
+latest = data["results"][0]
+print(latest["extracted_content"])"""
+                    CodeSnippet("Python", pyCode, onCopy = {
+                        clipboardManager.setText(AnnotatedString(pyCode))
+                        copiedSnippet = "py"
+                    }, isCopied = copiedSnippet == "py", accent = accent)
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // cURL
+                    val curlCode = """# cURL (Terminal / Command Prompt)
+curl "http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1" """
+                    CodeSnippet("cURL / Terminal", curlCode, onCopy = {
+                        clipboardManager.setText(AnnotatedString(curlCode))
+                        copiedSnippet = "curl"
+                    }, isCopied = copiedSnippet == "curl", accent = accent)
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // Kotlin/Android
+                    val ktCode = """// Kotlin / Android (OkHttp)
+val url = "http://YOUR_PHONE_IP:8088/api/agents/results?agent_id=$agentId&limit=1"
+val json = OkHttpClient().newCall(Request.Builder().url(url).build())
+    .execute().use { it.body?.string() }"""
+                    CodeSnippet("Kotlin / Android", ktCode, onCopy = {
+                        clipboardManager.setText(AnnotatedString(ktCode))
+                        copiedSnippet = "kt"
+                    }, isCopied = copiedSnippet == "kt", accent = accent)
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // ── Step 5: What you get back ──
+                GuideStep(
+                    number = "5",
+                    title = "What You Get Back",
+                    accent = accent
+                ) {
+                    Text(
+                        "The API returns JSON like this:",
+                        fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val responseExample = """{
+  "results": [
+    {
+      "id": 42,
+      "agent_name": "$agentName",
+      "status": "success",
+      "extracted_content": "...the data your agent found...",
+      "timestamp": 1712345678000,
+      "url": "https://...",
+      "delivered_to": ["telegram"]
+    }
+  ],
+  "total": 150,
+  "limit": 1,
+  "offset": 0
+}"""
+                    CodeSnippet("Response example", responseExample, onCopy = {
+                        clipboardManager.setText(AnnotatedString(responseExample))
+                        copiedSnippet = "resp"
+                    }, isCopied = copiedSnippet == "resp", accent = accent)
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Key fields:\n" +
+                        "  extracted_content = the useful data (what gets sent to Telegram etc.)\n" +
+                        "  status = \"success\", \"failed\", \"partial\", or \"skipped\"\n" +
+                        "  timestamp = when it ran (milliseconds, use Date(timestamp))\n" +
+                        "  raw_content = full page text (bigger, use if you need everything)",
+                        fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f),
+                        fontFamily = FontFamily.Default,
+                        lineHeight = 16.sp
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // ── Step 6: Other useful API calls ──
+                GuideStep(
+                    number = "6",
+                    title = "Other Useful API Calls",
+                    accent = accent
+                ) {
+                    val endpoints = listOf(
+                        "Get last 20 results" to "/api/agents/results?agent_id=$agentId&limit=20",
+                        "Get results page 2" to "/api/agents/results?agent_id=$agentId&limit=20&offset=20",
+                        "Get ALL agents' results" to "/api/agents/results",
+                        "Get one result by ID" to "/api/agents/results?id=42",
+                        "Delete old results" to "DELETE /api/agents/results?older_than=1712345678000",
+                        "See all API endpoints" to "/api/discover"
+                    )
+                    endpoints.forEach { (label, endpoint) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(label, fontSize = 11.sp, color = accent,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.width(140.dp))
+                            Text(endpoint, fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f),
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                // ── Quick tip ──
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF1A2233),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("💡", fontSize = 16.sp)
+                        Text(
+                            "Replace YOUR_PHONE_IP with your actual phone IP address. " +
+                            "Both devices must be on the same WiFi. " +
+                            "Or enable Cloudflare Tunnel in Settings to access from anywhere!",
+                            fontSize = 11.sp, color = Color(0xFFFFA726),
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                // Agent ID for easy copy
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Agent ID:", fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f))
+                    Text(agentId, fontSize = 10.sp, color = accent,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.weight(1f))
+                    IconButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(agentId))
+                            copiedSnippet = "id"
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            if (copiedSnippet == "id") Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = "Copy Agent ID",
+                            tint = if (copiedSnippet == "id") Color(0xFF4ADE80) else accent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuideStep(
+    number: String,
+    title: String,
+    accent: Color,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = accent,
+                modifier = Modifier.size(22.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text(number, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        color = Color.White)
+                }
+            }
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+        }
+        Spacer(Modifier.height(8.dp))
+        Column(modifier = Modifier.padding(start = 30.dp), content = content)
+    }
+}
+
+@Composable
+private fun CodeSnippet(
+    label: String,
+    code: String,
+    onCopy: () -> Unit,
+    isCopied: Boolean,
+    accent: Color
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Color(0xFF161b22),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            // Label bar with copy button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    color = accent.copy(alpha = 0.7f))
+                Surface(
+                    onClick = onCopy,
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isCopied) Color(0xFF4ADE80).copy(alpha = 0.15f) else accent.copy(alpha = 0.1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = "Copy",
+                            tint = if (isCopied) Color(0xFF4ADE80) else accent,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            if (isCopied) "Copied!" else "Copy",
+                            fontSize = 10.sp,
+                            color = if (isCopied) Color(0xFF4ADE80) else accent
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+            // Code content
+            Text(
+                code,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                color = Color(0xFFE6EDF3),
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(10.dp)
+            )
+        }
     }
 }

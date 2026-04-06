@@ -384,15 +384,15 @@ class LlmRouter(private val context: Context) {
             val arg = userMessage.trim().removePrefix("/profile").trim()
             val pm = AgentProfileManager.getInstance(context)
             return if (arg.isBlank()) {
-                val profiles = kotlinx.coroutines.runBlocking { pm.getAllProfiles() }
-                val activeId = kotlinx.coroutines.runBlocking { pm.getActiveProfileId() }
+                val profiles = pm.getAllProfiles()
+                val activeId = pm.getActiveProfileId()
                 "🤖 Agent Profiles:\n" + profiles.joinToString("\n") { p ->
                     val active = if (p.id == activeId) " ← active" else ""
                     "• ${p.emoji} ${p.name} (${p.id})$active"
                 } + "\n\nSwitch: /profile <id>"
             } else {
-                kotlinx.coroutines.runBlocking { pm.setActiveProfile(arg) }
-                val profile = kotlinx.coroutines.runBlocking { pm.resolveProfile(chatId) }
+                pm.setActiveProfile(arg)
+                val profile = pm.resolveProfile(chatId)
                 "✅ Switched to ${profile.emoji} ${profile.name}"
             }
         }

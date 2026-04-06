@@ -1,6 +1,7 @@
 package ai.zeroclaw.android.tools
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -43,7 +44,7 @@ class WebFetchTool : Tool {
         }
     }
 
-    private fun fetchWithRetry(url: String, retries: Int): ToolResult {
+    private suspend fun fetchWithRetry(url: String, retries: Int): ToolResult {
         var lastError = ""
         repeat(retries) { attempt ->
             try {
@@ -65,42 +66,43 @@ class WebFetchTool : Tool {
                     .get()
                     .build()
 
-                val response = client.newCall(request).execute()
-                val code = response.code
+                client.newCall(request).execute().use { response ->
+                    val code = response.code
 
-                // Give a clear error for common non-success codes
-                if (code == 403) return ToolResult(false, "", "Access denied (HTTP 403) — $url blocks automated access")
-                if (code == 429) return ToolResult(false, "", "Rate limited (HTTP 429) — try again later")
-                if (code == 404) return ToolResult(false, "", "Page not found (HTTP 404) — $url")
-                if (code !in 200..299) return ToolResult(false, "", "HTTP $code from $url")
+                    // Give a clear error for common non-success codes
+                    if (code == 403) return ToolResult(false, "", "Access denied (HTTP 403) — $url blocks automated access")
+                    if (code == 429) return ToolResult(false, "", "Rate limited (HTTP 429) — try again later")
+                    if (code == 404) return ToolResult(false, "", "Page not found (HTTP 404) — $url")
+                    if (code !in 200..299) return ToolResult(false, "", "HTTP $code from $url")
 
-                val body = response.body?.string()
-                    ?: return ToolResult(false, "", "Empty response from $url")
+                    val body = response.body?.string()
+                        ?: return ToolResult(false, "", "Empty response from $url")
 
-                val contentType = response.header("Content-Type", "") ?: ""
-                val text = if (contentType.contains("text/html") || body.trimStart().startsWith("<")) {
-                    extractReadableText(body)
-                } else {
-                    body
+                    val contentType = response.header("Content-Type", "") ?: ""
+                    val text = if (contentType.contains("text/html") || body.trimStart().startsWith("<")) {
+                        extractReadableText(body)
+                    } else {
+                        body
+                    }
+
+                    if (text.isBlank()) {
+                        return ToolResult(true, "Page fetched but no readable text found at: $url")
+                    }
+
+                    val header = "Content from: $url\n\n"
+                    return ToolResult(true, header + text.take(MAX_CONTENT_LENGTH))
                 }
-
-                if (text.isBlank()) {
-                    return ToolResult(true, "Page fetched but no readable text found at: $url")
-                }
-
-                val header = "Content from: $url\n\n"
-                return ToolResult(true, header + text.take(MAX_CONTENT_LENGTH))
 
             } catch (e: java.net.SocketTimeoutException) {
                 lastError = "Timeout on attempt ${attempt + 1}/${retries}"
-                if (attempt < retries - 1) Thread.sleep(2000)
+                if (attempt < retries - 1) delay(2000)
             } catch (e: java.net.UnknownHostException) {
                 return ToolResult(false, "", "Cannot reach host — check internet connection or URL: $url")
             } catch (e: javax.net.ssl.SSLException) {
                 return ToolResult(false, "", "SSL/TLS error for $url: ${e.message}")
             } catch (e: Exception) {
                 lastError = e.message ?: "Unknown error"
-                if (attempt < retries - 1) Thread.sleep(1000)
+                if (attempt < retries - 1) delay(1000)
             }
         }
         return ToolResult(false, "", "Failed to fetch $url after $retries attempts: $lastError")

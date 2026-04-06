@@ -7,6 +7,17 @@
 
 ---
 
+## BUG-31 — Agent Results API has no authentication or access control
+- **Phase:** 175 (Agent Results API)
+- **Status:** 🔴 Open
+- **Severity:** High
+- **Symptom:** Anyone on the same network (or via tunnel) can read, query, and delete all agent results without any authentication. The API endpoints `GET /api/agents/results` and `DELETE /api/agents/results` are fully open. `Access-Control-Allow-Origin: *` allows any website to call the API. Raw fetched content, extracted data, delivery targets, and agent metadata are all exposed.
+- **Root Cause:** No authentication layer was implemented for the WebChatServer HTTP API. All endpoints are publicly accessible.
+- **Fix (planned):** Add token-based auth (API key in header or query param). Generate a random token on first launch, show it in Settings. Require `Authorization: Bearer <token>` header on all `/api/*` endpoints. Optionally add IP allowlist for local-only access.
+- **Lesson:** Any HTTP API — even a local one — needs auth if it exposes user data. Tunnels make "local" APIs globally reachable.
+
+---
+
 ## BUG-30 — AgentTool smart create splits words like "tollywood" and gets page titles instead of data
 - **Phase:** 175 (Agent Results API + Agent Manager)
 - **Status:** 🟡 Partially Fixed
