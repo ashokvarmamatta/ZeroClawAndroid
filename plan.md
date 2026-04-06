@@ -5,6 +5,20 @@
 
 ---
 
+## 📚 Session Rules — Read These Files First
+Before writing ANY code, read these files in order:
+1. `plan.md` (this file) — current state, what's done, what's pending
+2. `blueprint.md` — full app architecture, components, navigation, DB schema
+3. `skills.md` — all technologies, libraries, SDKs used
+4. `permissions.md` — Play Store compliance status, all Android permissions
+5. `bugs.md` — all past bugs and fixes (avoid re-introducing them)
+
+**DO NOT** re-read the entire codebase. These files ARE the codebase summary.
+
+See `SESSION_RULES_TEMPLATE.md` in `D:\Ashok\olama\projects\` for full session workflow rules.
+
+---
+
 ## 🔗 Source Repositories (IMPORTANT — analyse these before implementing new features)
 
 | Repo | URL | Purpose |
@@ -24,13 +38,13 @@
 4. **Update tool count** in `InfoData.kt` `APP_FEATURES` if a new tool was added
 5. **Mark phase done** in `plan.md` with ✅
 6. **Build** with `JAVA_HOME="C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr" ./gradlew assembleDebug`
-7. **Commit & push** to GitHub after every successful build
+7. **Commit & push** to GitHub after every successful build by updating readme
 8. **Screenshots** for testing go to `test_screenshots/` (gitignored) — analyse then delete before commit
 9. When setting `isNew = true` on a GuideStep, it shows a **NEW** badge until the user taps it (tracked via SharedPreferences)
 
 ---
 
-## 🗂️ Skills Used (see SKILL.md for details)
+## 🗂️ Skills Used (see skills.md for details)
 - Android Native (Kotlin + Jetpack Compose)
 - Foreground Service (background daemon)
 - Retrofit + OkHttp (HTTP client for ZeroClaw API)
@@ -221,6 +235,133 @@
 | **155** | **SkillForge.kt — runtime skill creation from LLM output (save & run)** | ✅ DONE |
 | **156** | **AuditLog.kt — tamper-evident JSON Lines log of all tool actions** | ✅ DONE |
 | **157** | **OpenTelemetry.kt — OTLP span export for tracing + metrics** | ✅ DONE |
+| | | |
+| | **── BUG FIXES & UI IMPROVEMENTS (Phase 158+) ──** | |
+| **158** | **Offline summarizer refusal fallback — isSummarizerRefusal() detects useless "can't answer from context" replies from small models, falls back to direct web data reply** | ✅ DONE |
+| **159** | **Garbage offline reply detection — isGarbageOfflineReply() catches hallucinated URLs and irrelevant responses with zero keyword overlap, triggers Pass 2** | ✅ DONE |
+| | | |
+| | **── AGENTS SYSTEM (Phase 160) ──** | |
+| **160** | **Web Scraper Agent system — AgentConfig, AgentManager, WebScraperAgent, AgentsScreen, AgentCreateSheet, Run Now, Test Fetch, chatId validation** | ✅ DONE |
+| | | |
+| | **── UI & UX IMPROVEMENTS (Phase 161+) ──** | |
+| **161** | **Summarizer prompt improvement — simpler directive language for small models ("Do NOT say the data is missing"), removed FETCHED DATA delimiters** | ✅ DONE |
+| **162** | **Extended summarizer refusal patterns — "available in the text", "has not occurred", "based on...the text...not", "no evidence/indication"** | ✅ DONE |
+| **163** | **Log UI improvements — increased DetailedLogCard font 10/11sp→12/13sp, LiveLogs 11sp→12sp; added Copy button to both log cards with 2s "Copied!" feedback** | ✅ DONE |
+| | | |
+| | **── CURL API ACCESS GENERATOR (Phase 164) ──** | |
+| **164** | **HomeScreen LiveLog — "Generate cURL" button in Server Address dialog: generates OpenAI-compatible cURL commands for /api/chat and /api/generate endpoints so any external app (GPT wrappers, IDE plugins, scripts) can connect to ZeroClaw as an AI backend. Adds /v1/chat/completions & /v1/models OpenAI-compatible endpoints to WebChatServer. Curl dialog with copy-to-clipboard for chat, generate, and OpenAI-compatible formats** | ✅ DONE |
+| | | |
+| | **── AI SMART EXTRACTION (Phase 165) ──** | |
+| **165** | **AgentCreateSheet — AI Smart Extract: text field for user to describe what they need, "AI Analyze" button that fetches URL → AI checks if content exists → shows formatted preview with editable output template → fetch type selector (HTTP/RSS/WebView) with retry → WebView headless fallback when HTTP fails** | ✅ DONE |
+| **166** | **Agent extraction formatting — extractWithLlm() strict prompt: output ONLY requested data in Telegram Markdown (*bold*, bullets, numbered lists), no preamble/disclaimers. cleanExtractedReply() post-processor strips leaked filler. AI Analyze preview matches delivery format** | ✅ DONE |
+| **167** | **Persist fetch type & format — AgentConfig gets fetchType (http/rss/webview) and formatPreview fields. Edit mode pre-fills all AI Smart Extract state. WebScraperAgent uses saved fetchType for fetching. Agent cards show fetch type & AI Format badges** | ✅ DONE |
+| **168** | **JS-rendered page detection — AI Analyze detects when HTTP fetch returns empty values (SPAs like groww.in) and sets found=false with suggest_webview. Auto-switches to WebView. Editable format preview (OutlinedTextField). "Show live data" button lists all extractable values. "Copy all" button for raw fetched data. WebView warning panel** | ✅ DONE |
+| **169** | **Bottom sheet scroll fix — all ModalBottomSheets (AgentCreateSheet, AgentTemplateGallery, ToolTestSheet, ModelSelector) set dragHandle=null to prevent dismiss-on-scroll conflict. Added explicit close (X) buttons to all sheet headers instead** | ✅ DONE |
+| | | |
+| | **── AGENT DELIVERY FIXES (Phase 170+) ──** | |
+| **170** | **Agent delivery to all 10 channels — sendProactive() expanded from 3 channels (telegram/discord/slack) to all 10 (+ whatsapp, signal, matrix, irc, teams, twitch, line). Added sendProactiveMessage() to all channel managers. AgentCreateSheet shows all 10 channels as delivery targets** | ✅ DONE |
+| **171** | **Agent extraction format guide — extractWithLlm() now includes saved formatPreview as REFERENCE FORMAT so LLM matches fields by meaning and finds correct values instead of guessing. Fixes wrong values in Telegram delivery** | ✅ DONE |
+| **172** | **SDK update — compileSdk and targetSdk updated from 34 to 36. Intent actions use ${applicationId} for side-by-side install safety. Enabled BuildConfig generation** | ✅ DONE |
+| | | |
+| | **── CLOUDFLARE TUNNEL (Phase 173) ──** | |
+| **173** | **Cloudflare Quick Tunnel — bundled cloudflared ARM64 binary in APK (jniLibs), Java-side tunnel registration via trycloudflare.com API (bypasses Go DNS), Java-side edge IP resolution via InetAddress, credentials file + config YAML generation, --edge flag for pre-resolved IPs, Settings UI with Off/Quick/Token modes, Server Address dialog shows tunnel URL, test_tunnel.html for verification** | ✅ DONE |
+| | | |
+| | **── AGENT RESULTS API (Phase 175) ──** | |
+| **175** | **Agent Results DB + API + Agent Manager Tool + Multi-URL Agents — (1) Room DB `zeroclaw_agent_results` persists every agent run result. API endpoints: GET/DELETE `/api/agents/results` with pagination. (2) AgentTool: AI-powered agent manager — list/status/results/enable/disable/run/delete/create/modify agents via chat on any channel. (3) Smart agent creation from concept — AI finds best URLs via templates + web search, creates single agent with multiple sources (`extraUrls` field), auto-runs preview, modify loop until user confirms. (4) WebChatServer chat page: tabs (Chat + Agents), agents list with active/inactive status, click for results history. (5) AgentCreateSheet converted from BottomSheet to full screen with back-gesture keyboard dismiss + discard confirmation dialog. (6) Agent guide in AgentsScreen with detailed how-to for app + chat creation. BUG-30: tollywood word-split fix, movie/job/anime smart URLs** | ✅ DONE |
+| | | |
+| | **── BUG FIXES & API GUIDE (Phase 176) ──** | |
+| **176** | **Agent Results API bug fixes + API Access Guide — (1) Fix unclosed HTTP responses in WebFetchTool/WebSearchTool (socket leak → .use{}). (2) Fix Thread.sleep→delay() in WebFetchTool retry loop. (3) Fix runBlocking deadlock risk in LlmRouter /profile handler. (4) Fix thread-unsafe failedKeyIds in LlmKeyManager (→ synchronizedSet). (5) BUG-31: No auth on agent results API (documented for later fix). (6) AgentCreateSheet edit mode: expandable API Access Guide with 6-step beginner walkthrough — 3 connection methods (Local WiFi, Cloudflare Quick/Named Tunnel, ngrok), copy-paste code snippets (JS/Python/cURL/Kotlin), live tunnel URL auto-detection (reads ZeroClawService.tunnelUrl, shows real URL when connected with green banner, yellow "Local Only" when no tunnel), response format docs, all endpoints reference** | ✅ DONE |
+
+---
+
+## 🔌 Phase 164 Detail: Connect Any App to ZeroClaw API
+
+### Quick Connect (any app that supports custom OpenAI base URL)
+```
+Base URL:  http://<DEVICE_IP>:8088/v1
+API Key:   zc-no-key-needed
+Model:     zeroclaw
+```
+Replace `<DEVICE_IP>` with the phone's LAN IP (shown in app: Live Logs → Server Address).
+If using a tunnel (ngrok/Cloudflare), use the tunnel URL instead for remote access.
+
+### Endpoints
+| Method | Path | Format | What It Does |
+|--------|------|--------|-------------|
+| `POST` | `/v1/chat/completions` | OpenAI-compatible | **Full agent pipeline** — 30 tools (user-enabled), memory, thinking mode, multi-provider failover. Drop-in OpenAI replacement. |
+| `GET` | `/v1/models` | OpenAI-compatible | Returns model list (`zeroclaw`). |
+| `POST` | `/api/chat` | ZeroClaw native | Simple chat with session memory. |
+| `POST` | `/api/generate` | ZeroClaw native | Raw LLM output — no tools, no history. Supports `json_mode`. |
+| `GET` | `/api/agents/results` | ZeroClaw native | Query agent run results. Filter: `?agent_id=`, `?limit=`, `?offset=`, `?id=`. |
+| `DELETE` | `/api/agents/results` | ZeroClaw native | Delete results. Params: `?id=`, `?agent_id=`, `?older_than=`. |
+| `GET` | `/api/discover` | ZeroClaw native | Service discovery — version, port, all endpoints. |
+| `GET` | `/` | HTML | Browser-based chat UI. |
+
+### cURL Examples
+
+**OpenAI-compatible (recommended — works with any GPT wrapper):**
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer zc-no-key-needed" \
+  -d '{"model":"zeroclaw","messages":[{"role":"user","content":"Hello!"}],"max_tokens":8192}'
+```
+
+**Response format (standard OpenAI):**
+```json
+{
+  "id": "chatcmpl-zc1719849600000",
+  "object": "chat.completion",
+  "created": 1719849600,
+  "model": "zeroclaw",
+  "choices": [{"index":0,"message":{"role":"assistant","content":"Hello! How can I help?"},"finish_reason":"stop"}],
+  "usage": {"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}
+}
+```
+
+**Simple chat API:**
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello!","session_id":"my_app"}'
+# Response: {"reply":"Hello! How can I help?"}
+```
+
+**Raw generate (no tools, no history):**
+```bash
+curl -X POST "http://<DEVICE_IP>:8088/api/generate" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"List 5 colors as JSON","json_mode":true,"max_tokens":8192}'
+# Response: {"text":"[\"red\",\"blue\",\"green\",\"yellow\",\"purple\"]"}
+```
+
+### SDK Integration
+
+**Python (OpenAI SDK):**
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://<DEVICE_IP>:8088/v1", api_key="zc-no-key-needed")
+r = client.chat.completions.create(model="zeroclaw", messages=[{"role":"user","content":"Hello"}])
+print(r.choices[0].message.content)
+```
+
+**JavaScript (OpenAI SDK):**
+```javascript
+import OpenAI from 'openai';
+const client = new OpenAI({baseURL:'http://<DEVICE_IP>:8088/v1', apiKey:'zc-no-key-needed'});
+const r = await client.chat.completions.create({model:'zeroclaw', messages:[{role:'user',content:'Hello'}]});
+console.log(r.choices[0].message.content);
+```
+
+### Compatible Apps & Tools
+Continue.dev, Cursor, Open WebUI, LangChain, LlamaIndex, AutoGen, CrewAI, Aider, any app with `OPENAI_API_BASE` env var support — just set the base URL and it works.
+
+### What the connected app gets
+All 30 AI tools (web search, weather, translate, image gen, calculator, RSS, GitHub, email, smart home, etc. — user enables what they need), multi-provider LLM failover, vector memory, thinking mode, conversation history, and the full agent pipeline — the connected app doesn't need to know about any of this, it just sends messages and gets intelligent responses.
+
+### Files Changed
+- `WebChatServer.kt` — added `POST /v1/chat/completions`, `GET /v1/models`, `OPTIONS` CORS preflight
+- `HomeScreen.kt` — added `CurlGeneratorDialog` composable with 3 tabs (OpenAI / Chat / Generate), copy-to-clipboard, Python/JS code snippets
 
 ---
 
@@ -498,6 +639,200 @@ data class ApiKeyEntry(
 
 ---
 
+## 🧪 Tool Playground & UI Enhancements (merged into `feat/curl-api-generator`)
+
+### Tool Playground Screen (`ui/ToolPlaygroundScreen.kt`) ✅ DONE
+- Interactive screen to test any of the 30 built-in tools individually
+- Per-tool toggle switches (enable/disable per playground session, seeded from ToolSystem)
+- `ModelSelectorSheet` — choose which LLM model to use for playground test calls
+- **PlaygroundCategory grid** — tools grouped by category for easy browsing
+- Logs every tool invocation to `ZeroClawService.log()` so results appear in HomeScreen log card
+
+### Tool Test Sheet (`ui/ToolTestSheet.kt`) ✅ DONE
+- Bottom sheet form for configuring and running a single tool with custom args
+- `runTool()` helper wraps `tool.execute()` with before/after logging
+- Supports image picker for `ImageAnalysisTestUI`
+- All tool test runs logged to HomeScreen activity feed
+
+### AI Tools Screen (`ui/AiToolsScreen.kt`) ✅ DONE
+- Browseable list of all available tools with enable/disable toggles
+- Shows tool name, description, and parameter list
+
+### Home Screen UX Improvements ✅ DONE
+- **LogCard expand** — "View all N / Show less" pill toggle when log entries exceed 20; playground tool logs highlighted blue; trailing "…" pill when collapsed
+- **DetailedLogCard** — second log panel below LogCard showing full `conversationLogs` (from `offline-websearch-fix` merge) — detailed LLM call traces, tool results, web search steps
+- **🤖 Agents button** in TopAppBar — `Icons.Default.SmartToy` IconButton navigates to Agents screen
+
+---
+
+## 🤖 Phase 160+ — Agents System
+
+### Phase 160 — Web Scraper Agent (merged into `feat/curl-api-generator`) ✅ DONE
+First autonomous agent type. User creates an agent that watches a URL and pushes updates to a chosen channel.
+
+**Architecture:**
+```
+AgentManager (SharedPreferences)
+    └── AgentConfig (id, name, type, url, interval, channel, chatId, extractPrompt, onlyOnChange)
+
+ZeroClawService polling loop (every 60s)
+    └── AgentManager.getDueAgents()
+         └── WebScraperAgent.run(agent)
+              ├── WebFetchTool.execute(url)           ← fetch page
+              ├── LlmRouter.call(extractPrompt)       ← optional AI extraction
+              ├── change detection (content hash)     ← skip if unchanged
+              └── ZeroClawService.sendProactive()     ← deliver to channel
+```
+
+**Files created:**
+- `agents/AgentConfig.kt` — data class for agent definition
+- `agents/AgentManager.kt` — CRUD + getDueAgents() + markRun()
+- `agents/WebScraperAgent.kt` — scrape → extract → detect change → deliver
+- `ui/AgentsScreen.kt` — list agents (summary banner, agent cards with status/last-run)
+- `ui/AgentCreateSheet.kt` — create/edit form (URL, interval presets, channel selector, extract prompt templates)
+- `ZeroClawService.kt` — added agent polling coroutine alongside cron loop
+- `MainActivity.kt` — added `agents` nav route
+- `HomeScreen.kt` — added 🤖 SmartToy icon button in TopAppBar → Agents screen
+
+**Supported delivery channels:** Telegram, Discord, Slack, WhatsApp, Email
+**Supported intervals:** 15m / 30m / 1h / 6h / 12h / 24h (or custom, min 5m)
+**Change detection:** SHA hash of fetched content — only pushes if page actually changed (configurable)
+**AI extraction:** Optional extract prompt passed to LlmRouter — e.g. "extract top 5 headlines"
+
+**UX additions (post-launch fixes):**
+- **Run Now button** on each AgentCard — triggers a fresh scrape instantly, shows "Scraping…" spinner while running, refreshes card status on completion
+- **Test Fetch button** in AgentCreateSheet — calls WebFetchTool inline while user is still on the create form, shows green preview card (first 600 chars + total count) on success or red error card on failure
+- **Telegram chatId validation** — real-time check: if chatId contains ':' and length > 20, shows "This looks like a bot token, not a Chat ID" error inline
+- **Offline model token guard** — three-layer defense against JNI SIGABRT: OfflineModelManager truncates at 2457 chars, LlmRouter budgets message vs system+history overhead, WebScraperAgent passes at most 600 chars to extraction
+- **Web fetch gzip fix** — removed manual `Accept-Encoding` header so OkHttp auto-handles transparent gzip decompression
+
+### Phase 161 — RSS Monitor Agent (planned)
+Auto-detect RSS feed from URL, only push new items since last run.
+
+### Phase 162 — Price Tracker Agent (planned)
+Extract a price from a page using regex + LLM, alert only when price drops below threshold.
+
+### Phase 163 — Social Feed Agent (planned)
+Monitor Twitter/Reddit/HN via API, push trending or filtered posts.
+
+### Phase 164 — Agent reliability fixes ✅ DONE
+- **Chat ID optional for connected channels**: `AgentCreateSheet` now allows blank Chat ID when the channel is already connected (has a token configured). Field label shows "(optional)", placeholder updated. At delivery time, `WebScraperAgent` resolves blank chatId from `LlmRouter.getKnownChatIds()` (most recent conversation for that channel).
+- **JNI crash prevention (MediaPipe Mutex)**: Added `kotlinx.coroutines.sync.Mutex` to `OfflineModelManager` — both `loadModel()` and `generateResponse()` are now serialized. Prevents concurrent JNI access that caused `nativeRemoveCallback` crash with "invalid global reference". Added JNI error detection in catch block that auto-destroys the engine so next call can recover.
+- **Agent extraction error handling**: `WebScraperAgent.extractWithLlm()` now catches `Throwable` (not just `Exception`) to handle JNI `Error` types. Falls back gracefully to raw content.
+- **Agent extraction pipeline rewrite**: `extractWithLlm()` now calls `LlmRouter.extractOnly()` — a new direct-to-model method that bypasses Pass 2 web search, tool enrichment, and chat history. Prevents agents from getting irrelevant web scraping tutorials instead of actual news. Content increased from 600→2000 chars with RSS boilerplate stripping.
+
+---
+
+## 🐛 Bug Log (Summary)
+> Full details, root causes, and lessons in [BUGS.md](BUGS.md)
+
+| # | Phase | Bug Summary | Status |
+|---|-------|-------------|--------|
+| BUG-01 | 37 | Gson null deserialization → NPE crash on `ApiKeyEntry` fields after save/reload | ✅ Fixed |
+| BUG-02 | 35 | HTTP 429 treated as hard key failure — valid key permanently skipped after one rate-limit | ✅ Fixed |
+| BUG-03 | 41 | Test Key always tested provider default model, not the model user actually selected | ✅ Fixed |
+| BUG-04 | 55 | Stale model ID carried over when switching providers — OpenAI model sent to Anthropic | ✅ Fixed |
+| BUG-05 | 68–70 | LLM response leaked raw `tool_call` JSON blocks into chat — users saw internal calls | ✅ Fixed |
+| BUG-06 | 68 | DuckDuckGo search returned 0 results — raw query contained punctuation/quotes that broke URL | ✅ Fixed |
+| BUG-07 | 70 | Offline model skipped Pass 2 synthesis — replied with raw tool JSON instead of natural answer | ✅ Fixed |
+| BUG-08 | 83 | Online-first failover routed to offline model even when online keys were available | ✅ Fixed |
+| BUG-09 | 117 | Conversation summarizer ran on Pass 2 call — corrupted context by summarizing tool results mid-response | ✅ Fixed |
+| BUG-10 | — | `web_search` query not sanitized — special chars caused HTTP 400 / empty result set | ✅ Fixed |
+| BUG-11 | — | Refusal detection false-positive — short AI replies flagged as refusals, triggering unnecessary retry | ✅ Fixed |
+| BUG-12 | — | System date injected incorrectly — LLM received wrong year in system prompt | ✅ Fixed |
+| BUG-13 | 160 | `runTool()` infinite recursion — global replace of `tool.execute(` → `runTool(tool,` also hit the call inside `runTool` itself, causing StackOverflow crash | ✅ Fixed |
+| BUG-14 | 160 | Offline model JNI SIGABRT — `input_size(3386) >= maxTokens(1024)`. MediaPipe aborts the process via JNI (not catchable). Three-layer fix: OfflineModelManager guard (2457-char cap), LlmRouter budget, WebScraperAgent content cap (600 chars) | ✅ Fixed |
+| BUG-15 | 160 | Web fetch returned binary garbage (`����gM`) — manually setting `Accept-Encoding: gzip` disables OkHttp's transparent decompression. Fixed by removing the header entirely | ✅ Fixed |
+| BUG-16 | 160 | Telegram chatId validation — user entered bot token (`8143…:AAEe…`) as chat ID. Added real-time validation + updated placeholder text in AgentCreateSheet | ✅ Fixed |
+| BUG-17 | 164 | Agent creation blocked when chatId blank even though channel is connected. Validation now skips chatId requirement for connected channels | ✅ Fixed |
+| BUG-18 | 164 | JNI `nativeRemoveCallback` crash — MediaPipe LlmInference not thread-safe, concurrent agent + chat calls corrupted JNI global reference. Fixed with Mutex serialization + auto-destroy on JNI error | ✅ Fixed |
+| BUG-19 | 164 | Agent extraction returned web scraping tutorials instead of news — `router.call()` triggered Pass 2 web search with extraction prompt as query. Fixed by adding `LlmRouter.extractOnly()` that bypasses Pass 2 entirely | ✅ Fixed |
+| BUG-20 | 164 | RSS content truncated to 600 chars — only got XML copyright header, zero headlines. Increased to 2000 chars with boilerplate stripping | ✅ Fixed |
+| BUG-21 | 165 | Agent proactive messages not delivered to Telegram — chatId stored as non-numeric `"g"`, `toLongOrNull()` failed silently. Fixed with 3-tier chatId resolution + TelegramBotManager persisted last chat + seed from API on start | ✅ Fixed |
+
+---
+
+### Phase 165 — Multi-channel agent delivery + template improvements ✅ DONE
+- **Bots + Channels delivery UI**: Completely redesigned the Delivery section in `AgentCreateSheet` with two sub-sections:
+  - **Bots**: Shows all bots configured in Settings (Telegram, Discord, Slack, WhatsApp, Signal) with checkboxes. Connected bots shown with green "Connected" badge. All connected bots auto-checked by default. No chat ID required — auto-resolves to bot's last known chat.
+  - **Channels**: Add specific chat/channel targets with IDs (e.g., specific Telegram group, Discord channel ID). Inline form with channel selector, chat ID input, known ID suggestions, and validation.
+- **Multi-channel delivery in WebScraperAgent**: Agent now delivers to ALL selected bots + channel targets in a single run. Status shows which channels succeeded/failed. Backward-compatible with legacy single-channel agents.
+- **Data model (backward-compatible)**: `channel` field stores comma-separated bot names (`"telegram,discord"`), `chatId` field stores `channel:id` pairs for specific targets (`"discord:123,slack:C456"`). Old single-channel values still work via legacy fallback path.
+- **TelegramBotManager seed**: On first polling start, fetches the most recent update from Telegram API (`offset=-1`) to seed the bot's chat ID immediately — agents can deliver without waiting for a new message. Chat ID persisted to SharedPreferences and restored on app restart.
+- **AgentsScreen**: Agent card now shows multiple channel chips with horizontal scroll, plus channel target count badge.
+- **Template category system fix**: Added `{query}` placeholder to all template URLs and extractPrompts. Categories now produce different results (e.g., "Technology" vs "AI & Machine Learning" in Latest News fetches different content). Live-updates URL, extractPrompt, and agent name as user toggles categories in `AgentCreateSheet`.
+- **LLM extraction "no real-time access" fix**: LLM was refusing to extract data from fetched content (saying "I don't have access to real-time data"). Fixed by updating system prompt in `LlmRouter.extractOnly()` to explicitly state "this data was JUST FETCHED from a live website" and wrapping content with `BEGIN/END FETCHED CONTENT` markers in `WebScraperAgent`. Increased content snippet from 1000→2500 chars.
+- **Gold Price Tracker template**: Expanded from single USD gold price to 17 sub-categories including: Gold (India INR/gram, INR/10g, USD/oz, GBP, EUR, AED), Silver (India INR/kg, USD/oz), Copper, Platinum, Palladium, Crude Oil (WTI + Brent), Natural Gas, Aluminium, Zinc, Nickel. Uses Google Search with `{query}` so each metal/country gets its own specific search.
+- **GitHub Actions workflow**: Added `build-and-release.yml` — builds debug + release APK, creates GitHub Release with artifacts, supports signed/unsigned builds, manual dispatch.
+
+---
+
+### Phase 166 — Free API Agents System ✅ DONE
+> **Branch:** merged into `feat/curl-api-generator`
+> **Goal:** Research all free APIs that agents can use, document rate limits, and integrate them as proper agent data sources. Replace Google Search scraping with direct APIs where possible for more reliable data.
+>
+> **Implemented:**
+> - Created `agents/api/` package with 10 free API data sources:
+>   - **CoinGecko** — Crypto prices (30 req/min, no key)
+>   - **CoinCap** — Alternative crypto data (200 req/min, no key)
+>   - **Metals.live** — Gold, silver, platinum, palladium spot prices (no key)
+>   - **ExchangeRate-API** — Currency exchange rates (~50 req/day free, no key)
+>   - **USGS Earthquake** — Earthquake data (unlimited, public government API)
+>   - **MFAPI.in** — Indian mutual fund NAV data (unlimited, no key)
+>   - **GitHub Trending** — Trending repos via search API (60 req/hr unauthenticated)
+>   - **wttr.in** — Weather data (unlimited, no key)
+>   - **Football-Data.org** — Football/soccer scores & standings (10 req/min free)
+>   - **Numbers API** — Fun number/date facts (unlimited)
+> - Created `ApiDataSource` interface + `ApiResult` + `ApiRateLimit` data classes
+> - Created `ApiRateLimiter` — per-API sliding window rate limit tracker
+> - Created `FreeApiRegistry` — maps template IDs to API sources, handles rate checking
+> - Created `HttpUtil.kt` — shared HTTP GET helper for all API sources
+> - Updated `AgentConfig` with `apiSource` field
+> - Updated `AgentManager.createWebScraper()` to accept `apiSource`
+> - Updated `AgentTemplate` with `apiSource` and `apiRateNote` fields
+> - Updated 8 existing templates with free API sources (crypto, gold, forex, weather, sports, earthquake, GitHub trending, mutual funds)
+> - Updated `WebScraperAgent.run()`: tries direct API first → falls back to web scraping + LLM extraction if API fails/rate-limited
+> - Updated `AgentCreateSheet` — shows green API badge with rate limit info
+> - Updated `AgentsScreen` — agent cards show ⚡API indicator for API-powered agents
+> - All API data sources return pre-formatted text → NO LLM extraction needed → faster, cheaper, more reliable
+
+**Research checklist — find free (unlimited or generous rate-limit) APIs for:**
+
+| Agent | API Candidate | Rate Limit | Notes |
+|-------|--------------|------------|-------|
+| **Gold/Commodities** | GoldAPI.io, Metals.live, MetalpriceAPI | ? | Need: gold, silver, copper, platinum by country/currency |
+| **Crypto Prices** | CoinGecko API (free), CoinCap, Binance public | 30 req/min (CoinGecko) | BTC, ETH, SOL, XRP etc. |
+| **Stock/Index** | Yahoo Finance API, Alpha Vantage (free tier), Twelve Data | 5 req/min (Alpha Vantage) | NIFTY, SENSEX, S&P 500 etc. |
+| **Currency/Forex** | ExchangeRate-API, Fixer.io (free), Open Exchange Rates | 1500/month (ExchangeRate) | USD/INR, EUR/USD etc. |
+| **Weather** | wttr.in (unlimited), OpenWeatherMap (free 1000/day) | Unlimited / 1000/day | Already using wttr.in |
+| **News** | NewsAPI.org (free 100/day), GNews.io, Currents API | 100/day (NewsAPI) | Category-filtered news |
+| **Earthquake/Disaster** | USGS GeoJSON (unlimited, public) | Unlimited | Already using this |
+| **Fuel Prices** | collectAPI, government open data portals | ? | India-specific needed |
+| **IPO/Stock Events** | Finnhub (free tier), SEC EDGAR | 60 req/min (Finnhub) | IPO calendar, earnings |
+| **GitHub Trending** | GitHub REST API (unauthenticated 60/hr, auth 5000/hr) | 60-5000/hr | Trending repos |
+| **Sports Scores** | ESPN API (unofficial), CricAPI, Football-Data.org | Varies | Cricket, football, F1 |
+| **Mutual Funds** | MFAPI.in (India, free, unlimited) | Unlimited | NAV data for Indian MFs |
+| **Flights** | Skyscanner API, Kiwi.com Tequila | ? | Price tracking |
+| **Movies/TV** | TMDb API (free, unlimited) | 40 req/10s | New releases, trending |
+| **YouTube Trending** | YouTube Data API v3 (free 10k units/day) | 10k units/day | Trending videos |
+
+**Implementation plan:**
+1. Create `agents/api/` package with one data source class per API
+2. Each data source: `suspend fun fetch(params: Map<String,String>): ApiResult`
+3. Add API key fields in Settings for APIs that need keys (most are free/no-key)
+4. `WebScraperAgent` gets a new path: if agent template has `apiSource` field → use direct API instead of web scrape + LLM extraction
+5. Add rate limit tracking per API: store last call timestamp, enforce minimum interval
+6. Add condition notes in agent creation UI: "This API allows 1 fetch per day" / "100 requests per day" etc.
+7. Fallback: if API fails or rate-limited → fall back to current Google Search scraping method
+
+**Conditions to document per API:**
+- Free tier limits (requests per minute/hour/day/month)
+- Whether API key is required (and how to get one)
+- Data freshness (real-time vs 15-min delay vs daily)
+- Geographic coverage (global vs India-only vs US-only)
+
+---
+
 ## 🚀 Build & Run Instructions (Android Studio)
 
 1. Open Android Studio → **File → Open** → Select `H:\Antigravity\ZeroClawAndroid`
@@ -508,6 +843,156 @@ data class ApiKeyEntry(
 6. In Settings tap **Manage API Keys** → add your keys (OpenAI, Gemini, Anthropic, etc.)
 7. Add Telegram token and Twilio credentials
 8. Tap **Start** — service begins, failover is automatic
+
+---
+
+## 🌿 Branch Status (cleaned 2026-03-31)
+
+**Active branch:** `feat/live-data-tools` (branched from `dev`)
+
+| Branch | Status | Purpose |
+|--------|--------|---------|
+| `feat/live-data-tools` | **ACTIVE** | Phase 170 — web search/fetch in /api/generate |
+| `dev` | Main | All work from Phases 1-169 |
+| `master` | Release | Last stable release (Phase 15 + R8 fixes) |
+| `openclaw-toolbox` | Unmerged | OpenClaw phases 85-102 (alternative implementation) |
+| `openclaw-channels` | Unmerged | OpenClaw phases 103-109 |
+| `openclaw-intelligence` | Unmerged | OpenClaw phases 110-117 |
+| `openclaw-memory` | Unmerged | OpenClaw phases 118-122 |
+| `openclaw-infra` | Unmerged | OpenClaw phases 123-130 |
+
+**Deleted (2026-03-31):** 14 merged branches cleaned up — `agents-api-integration`, `agents-feature`, `ai-tools-screen`, `feat/offline-model-support`, `feat/per-model-testing`, `feat/smart-summarize-default-agents`, `feat/zeroclaw-features`, `feature/raw-generate-waterfall`, `fix/offline-summarizer-fallback`, `offline-websearch-fix`, `openclaw-config-ux`, `openclaw-nullclaw`, `tools-playground`, `update1`, `feat/addedzeroclawserver`. Also deleted broken Codex branch `codex/zeroclaw-api-metagen-fix`.
+
+---
+
+## Phase 170 — Live Data Tools: Web Search + Fetch in /api/generate ✅ DONE
+
+> **Branch:** `feat/live-data-tools`
+> **Goal:** When web_search and web_fetch tools are enabled, the `/api/generate` endpoint should
+> automatically search the web for real-time data before generating the response. This makes
+> external apps (like Neural Forge) get live, current data instead of stale AI knowledge.
+
+### The Problem
+- `/api/generate` uses `rawGenerate()` which calls the LLM directly — no tools, no web search
+- `/api/chat` uses `call()` which has tools — but doesn't support JSON mode
+- External apps need BOTH: real-time data + structured JSON output
+
+### The Solution: Pre-Search Enrichment
+When `use_tools=true` is sent with `/api/generate`, ZeroClaw will:
+1. Check if `web_search` and `web_fetch` tools are enabled
+2. Extract the search topic from the prompt
+3. Run `web_search` to get top results for the topic
+4. Run `web_fetch` on the best URLs to get actual content
+5. Inject all fetched data as context into the prompt
+6. Call the LLM with JSON mode + enriched prompt
+7. Return JSON with real, current data
+
+### Implementation Tasks
+
+| # | Task | File | Status |
+|---|------|------|--------|
+| 1 | Add `use_tools` parameter to `/api/generate` endpoint | `WebChatServer.kt` | ✅ DONE |
+| 2 | Create `rawGenerateWithTools()` in LlmRouter | `LlmRouter.kt` | ✅ DONE |
+| 3 | Extract search topic from prompt (regex or first-line parse) | `LlmRouter.kt` | ✅ DONE |
+| 4 | Call `WebSearchTool.execute()` with extracted topic | `LlmRouter.kt` | ✅ DONE |
+| 5 | Call `WebFetchTool.execute()` on top 2-3 search result URLs | `LlmRouter.kt` | ✅ DONE |
+| 6 | Build enriched prompt: original prompt + "Here is real-time data from the web:\n{fetched content}" | `LlmRouter.kt` | ✅ DONE |
+| 7 | Call existing `rawGenerate()` with enriched prompt + JSON mode | `LlmRouter.kt` | ✅ DONE |
+| 8 | Add `/api/discover` response field: `"tools_available": ["web_search", "web_fetch"]` | `WebChatServer.kt` | ✅ DONE |
+| 9 | Test: send `use_tools=true` request, verify web search runs and data is current | Manual | ✅ DONE |
+
+### API Change
+
+**Before:**
+```json
+POST /api/generate
+{"prompt": "...", "json_mode": true, "max_tokens": 8192}
+```
+
+**After:**
+```json
+POST /api/generate
+{"prompt": "...", "json_mode": true, "max_tokens": 8192, "use_tools": true}
+```
+
+When `use_tools=true`:
+- Checks if web_search tool is enabled → searches the web for the topic
+- Checks if web_fetch tool is enabled → fetches top result pages
+- Injects fetched data into the prompt as context
+- LLM generates response using real data + JSON mode
+
+When `use_tools=false` or omitted → same behavior as before (raw LLM, no tools).
+
+### `/api/discover` Enhancement
+```json
+{
+  "service": "zeroclaw",
+  "version": "1.0",
+  "port": 8088,
+  "endpoints": [...],
+  "tools_available": ["web_search", "web_fetch"]  // NEW — only lists enabled tools
+}
+```
+External apps can check this to know if real-time data is available.
+
+---
+
+## 🔮 Future Phases (Planned)
+
+### Phase 174 — Persistent WebView Agent (Live Data Tracking)
+> **Goal:** Load a page ONCE in a persistent WebView, keep it alive, and periodically extract changing values via JavaScript injection — no page reload, no extra HTTP requests, zero IP ban risk.
+>
+> **Use case:** Stock prices, crypto tickers, gold prices, forex rates — any site that updates values in real-time via WebSocket/SSE/JS polling without page reload.
+>
+> **Architecture:**
+> ```
+> Agent created with fetchType = "live"
+>     │
+>     ├── First run: Create persistent WebView → loadUrl(site)
+>     │              WebSocket/SSE connects automatically
+>     │              WebView stays alive in ZeroClawService
+>     │
+>     ├── Every N minutes: Inject JS → document.querySelector('.price').innerText
+>     │                    Extract current DOM values (no page reload!)
+>     │                    Site sees ZERO new HTTP requests
+>     │                    Compare with last value → deliver if changed
+>     │
+>     └── Cleanup: Destroy WebView when agent disabled/deleted
+> ```
+>
+> **Implementation Tasks:**
+> | # | Task | File | Status |
+> |---|------|------|--------|
+> | 1 | Create `PersistentWebView` manager — pool of live WebViews keyed by agent ID | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 2 | Add `fetchType = "live"` option to AgentConfig | `agents/AgentConfig.kt` | ⬜ PENDING |
+> | 3 | Agent create UI — "Live Tracking" fetch type with JS selector field (CSS selector for the value to track) | `ui/AgentCreateSheet.kt` | ⬜ PENDING |
+> | 4 | WebScraperAgent — if fetchType=live, use PersistentWebView instead of loading new page | `agents/WebScraperAgent.kt` | ⬜ PENDING |
+> | 5 | JS extraction — inject `document.querySelector(selector).innerText` periodically | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 6 | WebView lifecycle — create on agent enable, destroy on disable/delete, recreate on crash | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 7 | Memory management — max 3-5 persistent WebViews, LRU eviction if exceeded | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 8 | WebSocket keep-alive — detect if WebSocket disconnects, auto-reload page once | `agents/PersistentWebViewManager.kt` | ⬜ PENDING |
+> | 9 | AI Smart Extract for live mode — "AI Analyze" detects trackable elements, suggests CSS selectors | `ui/AgentCreateSheet.kt` | ⬜ PENDING |
+>
+> **Benefits over current approach:**
+> - **Zero ban risk** — site sees one page load, then nothing (WebSocket feeds data)
+> - **Instant extraction** — no 3s page load wait, just read DOM (~50ms)
+> - **Lower battery/data** — no repeated full page loads
+> - **Real-time capable** — can track every 10-30 seconds safely
+>
+> **Safe intervals for live mode:** 10s / 30s / 1min / 5min (vs 5min minimum for HTTP fetch)
+
+### Phase 175 — Anti-Ban Protection (Web Scraping Hardening)
+> **Goal:** Protect agents that use web search, HTTP fetch, and WebView from IP bans when running at high frequency.
+>
+> **Features:**
+> | # | Feature | Description |
+> |---|---------|-------------|
+> | 1 | Per-domain rate limiter | Track last fetch per domain, enforce min interval (e.g., 5min between same-domain requests) |
+> | 2 | Response caching | Cache fetched content with TTL, return cached if content hash unchanged |
+> | 3 | User-Agent rotation | Rotate through 10-15 real browser UAs per request |
+> | 4 | Request jitter | Add random ±30s delay so requests don't hit at exact intervals |
+> | 5 | 429/403 backoff | Exponential backoff per domain on rate-limit/block responses |
+> | 6 | Smart interval warning | UI warning when agent interval is too aggressive for the fetch method |
 
 ---
 

@@ -9,7 +9,7 @@ name: Build & Release APK
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   workflow_dispatch:
     inputs:
       release_name:
@@ -160,7 +160,7 @@ jobs:
             | Version | `${{ steps.version.outputs.version }}` |
             | Build # | `${{ github.run_number }}` |
             | Commit | `${{ github.sha }}` |
-            | Branch | `master` |
+            | Branch | `${{ github.ref_name }}` |
 
             > **Debug APK** also attached — has `.debug` app-id suffix, can be installed alongside release.
 
@@ -183,7 +183,7 @@ jobs:
       #   with:
       #     serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
       #     packageName: ai.zeroclaw.android
-      #     releaseFiles: ${{ steps.version.outputs.release_apk }}
+      #     releaseFiles: ${{ steps.version.outputs.release_apk }}ok check now then
       #     track: internal          # internal | alpha | beta | production
       #     status: draft            # draft | completed
       #     releaseName: ZeroClaw ${{ steps.tag.outputs.tag }}

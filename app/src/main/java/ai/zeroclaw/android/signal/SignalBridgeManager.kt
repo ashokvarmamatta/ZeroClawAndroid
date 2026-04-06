@@ -119,6 +119,9 @@ class SignalBridgeManager(private val context: Context) {
         }
     }
 
+    /** Public API for proactive messaging from agents/crons. */
+    fun sendProactiveMessage(recipient: String, text: String) = sendMessage(recipient, text)
+
     private fun sendMessage(recipient: String, text: String) {
         try {
             val json = JSONObject().apply {

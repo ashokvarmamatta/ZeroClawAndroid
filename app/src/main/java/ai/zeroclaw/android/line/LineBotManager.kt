@@ -127,6 +127,35 @@ class LineBotManager(private val context: Context) {
         }
     }
 
+    /**
+     * Public API for proactive messaging from agents/crons.
+     * chatId = LINE userId (not replyToken — push API can send anytime).
+     */
+    fun sendProactiveMessage(userId: String, text: String) {
+        val chunks = text.chunked(5000).take(5)
+        val messages = JSONArray()
+        for (chunk in chunks) {
+            messages.put(JSONObject().apply {
+                put("type", "text")
+                put("text", chunk)
+            })
+        }
+        val json = JSONObject().apply {
+            put("to", userId)
+            put("messages", messages)
+        }
+        val request = Request.Builder()
+            .url("https://api.line.me/v2/bot/message/push")
+            .header("Authorization", "Bearer $channelToken")
+            .post(json.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        try {
+            client.newCall(request).execute().close()
+        } catch (e: Exception) {
+            ZeroClawService.log("LINE: proactive send error — ${e.message}")
+        }
+    }
+
     private fun replyMessage(replyToken: String, text: String) {
         // LINE has a 5000 char limit per message bubble, max 5 bubbles per reply
         val chunks = text.chunked(5000).take(5)

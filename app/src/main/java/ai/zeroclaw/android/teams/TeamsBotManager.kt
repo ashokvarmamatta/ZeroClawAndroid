@@ -36,6 +36,8 @@ class TeamsBotManager(private val context: Context) {
     private var botSecret = ""
     private var accessToken = ""
     private var tokenExpiry = 0L
+    private var lastServiceUrl = ""
+    private var lastConversationId = ""
 
     /**
      * Start Teams bot webhook server. Config: "botId|botSecret"
@@ -122,6 +124,10 @@ class TeamsBotManager(private val context: Context) {
         val serviceUrl = activity.optString("serviceUrl", "")
         val activityId = activity.optString("id", "")
 
+        // Persist last known conversation for proactive messaging
+        if (serviceUrl.isNotBlank()) lastServiceUrl = serviceUrl
+        if (conversationId.isNotBlank()) lastConversationId = conversationId
+
         ZeroClawService.log("Teams @$userName: $text")
 
         try {
@@ -132,6 +138,21 @@ class TeamsBotManager(private val context: Context) {
             ZeroClawService.log("Teams: reply error — ${e.message}")
             runCatching { sendReply(serviceUrl, conversationId, activityId, "⚠️ Error: ${e.message?.take(200)}") }
         }
+    }
+
+    /**
+     * Public API for proactive messaging from agents/crons.
+     * chatId can be "serviceUrl|conversationId" or just conversationId (uses last known serviceUrl).
+     */
+    fun sendProactiveMessage(chatId: String, text: String) {
+        val parts = chatId.split("|", limit = 2)
+        val svcUrl = if (parts.size == 2) parts[0] else lastServiceUrl
+        val convId = if (parts.size == 2) parts[1] else chatId.ifBlank { lastConversationId }
+        if (svcUrl.isBlank() || convId.isBlank()) {
+            ZeroClawService.log("Teams: no conversation available — someone must message the bot first")
+            return
+        }
+        sendReply(svcUrl, convId, "", text)
     }
 
     private fun sendReply(serviceUrl: String, conversationId: String, replyToId: String, text: String) {

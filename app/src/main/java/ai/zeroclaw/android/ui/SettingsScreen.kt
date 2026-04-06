@@ -2,6 +2,7 @@ package ai.zeroclaw.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToApiKeys: () -> Unit,
+    onNavigateToAiTools: () -> Unit = {},
     onNavigateToInfo: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -53,21 +55,22 @@ fun SettingsScreen(
     var twitchConfig by remember { mutableStateOf("") }
     var lineToken by remember { mutableStateOf("") }
     var webChatEnabled by remember { mutableStateOf(false) }
+    var tunnelMode by remember { mutableStateOf("quick") }
+    var tunnelToken by remember { mutableStateOf("") }
+    var tunnelHostname by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(true) }
+    var optimizePrompt by remember { mutableStateOf(false) }
+    var offlineWebSummarize by remember { mutableStateOf(true) }
     var keyCount by remember { mutableStateOf(0) }
     var activeKeyLabel by remember { mutableStateOf("") }
 
-    // Tools state
+    // Tool count for display in nav button
     val toolSystem = remember { ToolSystem.getInstance(context) }
-    var toolStates by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var enabledToolCount by remember { mutableIntStateOf(0) }
+    val totalToolCount = remember { toolSystem.allTools().size }
 
     LaunchedEffect(Unit) {
-        // Load tool enabled states
-        val states = mutableMapOf<String, Boolean>()
-        for (tool in toolSystem.allTools()) {
-            states[tool.name] = toolSystem.isEnabled(tool.name)
-        }
-        toolStates = states
+        enabledToolCount = toolSystem.allTools().count { toolSystem.isEnabled(it.name) }
         settings.getAll().let { s ->
             zeroClawUrl = s.zeroClawUrl
             telegramToken = s.telegramToken
@@ -83,7 +86,12 @@ fun SettingsScreen(
             twitchConfig = s.twitchConfig
             lineToken = s.lineToken
             webChatEnabled = s.webChatEnabled
+            tunnelMode = s.tunnelMode
+            tunnelToken = s.tunnelToken
+            tunnelHostname = s.tunnelHostname
             autoStart = s.autoStart
+            optimizePrompt = s.optimizePrompt
+            offlineWebSummarize = s.offlineWebSummarize
         }
         val keys = keyManager.loadKeys()
         keyCount = keys.count { it.enabled }
@@ -107,7 +115,8 @@ fun SettingsScreen(
                                 zeroClawUrl, telegramToken, twilioSid,
                                 twilioToken, twilioFrom, "", "", autoStart, discordToken, signalApiUrl,
                                 slackToken, matrixConfig, ircConfig, teamsConfig, twitchConfig,
-                                lineToken, webChatEnabled
+                                lineToken, webChatEnabled, optimizePrompt, offlineWebSummarize,
+                                tunnelMode, tunnelToken, tunnelHostname
                             )
                             snackbarHostState.showSnackbar("Settings saved!")
                         }
@@ -127,84 +136,9 @@ fun SettingsScreen(
             }
             item { OfflineModelSourcesSection() }
             item { ApiKeyProvidersSection() }
-            // ── AI TOOLS SECTION ──────────────────────────────────────
+            // ── AI TOOLS NAV BUTTON ───────────────────────────────────
             item { SectionHeaderWithInfo("🔧 AI Tools", "tools") { onNavigateToInfo("tools") } }
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            "Tools the AI can use during conversations. When enabled, the LLM can call these tools to answer questions with real-time data.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 17.sp
-                        )
-                        Spacer(Modifier.height(12.dp))
-
-                        for (tool in toolSystem.allTools()) {
-                            val isEnabled = toolStates[tool.name] ?: true
-                            val toolEmoji = when (tool.name) {
-                                "web_search" -> "🔍"
-                                "web_fetch" -> "🌐"
-                                "memory" -> "🧠"
-                                "pdf_read" -> "📄"
-                                "image_analysis" -> "🖼️"
-                                "cron" -> "⏰"
-                                "notion" -> "📝"
-                                "email" -> "📧"
-                                else -> "🔧"
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(toolEmoji, fontSize = 20.sp)
-                                Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        tool.name.replace("_", " ")
-                                            .replaceFirstChar { it.uppercase() },
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        tool.description.take(80) +
-                                            if (tool.description.length > 80) "…" else "",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 15.sp,
-                                        maxLines = 2
-                                    )
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Switch(
-                                    checked = isEnabled,
-                                    onCheckedChange = { enabled ->
-                                        toolStates = toolStates + (tool.name to enabled)
-                                        scope.launch { toolSystem.setEnabled(tool.name, enabled) }
-                                    },
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = Color(0xFF00BCD4),
-                                        checkedThumbColor = Color.White
-                                    )
-                                )
-                            }
-                            if (tool != toolSystem.allTools().last()) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(start = 40.dp),
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            item { AiToolsNavButton(enabledCount = enabledToolCount, totalCount = totalToolCount, onClick = onNavigateToAiTools) }
 
             item { SectionHeader("⚙️ ZeroClaw Configuration") }
             item { SettingsTextField("ZeroClaw API URL", zeroClawUrl, false) { zeroClawUrl = it } }
@@ -261,6 +195,47 @@ fun SettingsScreen(
                     Switch(checked = webChatEnabled, onCheckedChange = { webChatEnabled = it })
                 }
             }
+            item { SectionHeader("☁️ Cloudflare Tunnel") }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Tunnel Mode", fontWeight = FontWeight.Medium)
+                    Text("Expose your local server to the internet via Cloudflare",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val modes = listOf("off" to "Off", "quick" to "Quick Tunnel (free)", "token" to "Named Tunnel (token)")
+                    modes.forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { tunnelMode = value }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = tunnelMode == value, onClick = { tunnelMode = value })
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(label, fontSize = 14.sp)
+                                when (value) {
+                                    "off" -> Text("No public URL — LAN access only", fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    "quick" -> Text("Free random URL (trycloudflare.com) — changes on restart", fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    "token" -> Text("Persistent URL — requires Cloudflare Zero Trust tunnel token", fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    if (tunnelMode == "token") {
+                        Spacer(Modifier.height(4.dp))
+                        SettingsTextField("Cloudflare Tunnel Token", tunnelToken, true) { tunnelToken = it }
+                        Spacer(Modifier.height(4.dp))
+                        SettingsTextField("Your Domain (e.g. api.yourdomain.com)", tunnelHostname, false) { tunnelHostname = it }
+                        Text("Setup: Cloudflare Zero Trust → Networks → Tunnels → Create a tunnel → Add your domain → Copy token",
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp))
+                    }
+                }
+            }
             item { SectionHeaderWithInfo("🔧 Behavior", "config_ux") { onNavigateToInfo("config_ux") } }
             item {
                 Row(modifier = Modifier.fillMaxWidth(),
@@ -272,6 +247,30 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = autoStart, onCheckedChange = { autoStart = it })
+                }
+            }
+            item {
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Optimize prompt before sending", fontWeight = FontWeight.Medium)
+                        Text("Summarize long messages before sending to offline model (default: off)", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = optimizePrompt, onCheckedChange = { optimizePrompt = it })
+                }
+            }
+            item {
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Summarize real-time data (offline)", fontWeight = FontWeight.Medium)
+                        Text("Fetch web data when offline model can't answer, then let the model summarize it (default: on)", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = offlineWebSummarize, onCheckedChange = { offlineWebSummarize = it })
                 }
             }
             item { SectionHeaderWithInfo("🚀 Advanced Features", "nullclaw") { onNavigateToInfo("nullclaw") } }
@@ -409,6 +408,52 @@ fun DropdownSetting(label: String, value: String, options: List<String>, onSelec
                 DropdownMenuItem(text = { Text(opt) },
                     onClick = { onSelect(opt); expanded = false })
             }
+        }
+    }
+}
+
+@Composable
+fun AiToolsNavButton(enabledCount: Int, totalCount: Int, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("🔧", fontSize = 26.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Manage AI Tools", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                if (enabledCount == 0) {
+                    Text(
+                        "All tools off — tap to enable tools and see the flow diagram",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        "$enabledCount / $totalCount tools active",
+                        fontSize = 12.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Text(
+                        "Tap to configure tools + view AI pipeline",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

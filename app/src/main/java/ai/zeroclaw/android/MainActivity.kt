@@ -15,10 +15,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ai.zeroclaw.android.data.ThemeManager
+import ai.zeroclaw.android.ui.AgentsScreen
+import ai.zeroclaw.android.ui.AiToolsScreen
 import ai.zeroclaw.android.ui.ApiKeysScreen
 import ai.zeroclaw.android.ui.HomeScreen
 import ai.zeroclaw.android.ui.InfoScreen
 import ai.zeroclaw.android.ui.SettingsScreen
+import ai.zeroclaw.android.ui.ToolPlaygroundScreen
 import ai.zeroclaw.android.ui.theme.ZeroClawTheme
 
 class MainActivity : ComponentActivity() {
@@ -47,8 +50,10 @@ fun ZeroClawNavHost() {
 
         composable("home") {
             HomeScreen(
-                onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToInfo     = { navController.navigate("info") }
+                onNavigateToSettings   = { navController.navigate("settings") },
+                onNavigateToInfo       = { navController.navigate("info") },
+                onNavigateToPlayground = { navController.navigate("tool_playground") },
+                onNavigateToAgents     = { navController.navigate("agents") }
             )
         }
 
@@ -56,7 +61,15 @@ fun ZeroClawNavHost() {
             SettingsScreen(
                 onBack              = { navController.popBackStack() },
                 onNavigateToApiKeys = { navController.navigate("api_keys") },
+                onNavigateToAiTools = { navController.navigate("ai_tools") },
                 onNavigateToInfo    = { sectionId -> navController.navigate("info/$sectionId") }
+            )
+        }
+
+        composable("ai_tools") {
+            AiToolsScreen(
+                onBack            = { navController.popBackStack() },
+                onNavigateToInfo  = { sectionId -> navController.navigate("info/$sectionId") }
             )
         }
 
@@ -73,6 +86,14 @@ fun ZeroClawNavHost() {
 
         composable("api_keys") {
             ApiKeysScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("tool_playground") {
+            ToolPlaygroundScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("agents") {
+            AgentsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

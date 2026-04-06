@@ -39,30 +39,53 @@ class WebSearchTool : Tool {
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
                 val url = "https://html.duckduckgo.com/html/?q=$encoded"
+                android.util.Log.d("ZeroClaw.DDG", "Searching: $url")
 
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Mozilla/5.0 (Android; ZeroClaw Bot)")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.5")
+                    .header("Accept-Encoding", "identity")
+                    .header("DNT", "1")
                     .get()
                     .build()
 
-                val response = client.newCall(request).execute()
-                val html = response.body?.string() ?: return@withContext ToolResult(false, "", "Empty response from DuckDuckGo")
+                client.newCall(request).execute().use { response ->
+                    android.util.Log.d("ZeroClaw.DDG", "HTTP status: ${response.code}")
 
-                val results = parseDDGResults(html)
-                if (results.isEmpty()) {
-                    return@withContext ToolResult(true, "No results found for: $query")
-                }
+                    if (response.code != 200) {
+                        android.util.Log.w("ZeroClaw.DDG", "Non-200 response: ${response.code}")
+                        return@withContext ToolResult(false, "", "DuckDuckGo returned HTTP ${response.code}")
+                    }
 
-                val sb = StringBuilder("Web search results for: \"$query\"\n\n")
-                for ((i, result) in results.withIndex()) {
-                    sb.appendLine("${i + 1}. ${result.title}")
-                    sb.appendLine("   ${result.snippet}")
-                    sb.appendLine("   URL: ${result.url}")
-                    sb.appendLine()
+                    val html = response.body?.string()
+                    if (html.isNullOrBlank()) {
+                        android.util.Log.w("ZeroClaw.DDG", "Empty body")
+                        return@withContext ToolResult(false, "", "Empty response from DuckDuckGo")
+                    }
+
+                    android.util.Log.d("ZeroClaw.DDG", "Response body: ${html.length} chars, preview: ${html.take(200)}")
+
+                    val results = parseDDGResults(html)
+                    android.util.Log.d("ZeroClaw.DDG", "Parsed ${results.size} results")
+
+                    if (results.isEmpty()) {
+                        android.util.Log.w("ZeroClaw.DDG", "No results parsed — HTML snippet: ${html.take(500)}")
+                        return@withContext ToolResult(false, "", "No results found for: $query")
+                    }
+
+                    val sb = StringBuilder("Web search results for: \"$query\"\n\n")
+                    for ((i, result) in results.withIndex()) {
+                        sb.appendLine("${i + 1}. ${result.title}")
+                        sb.appendLine("   ${result.snippet}")
+                        sb.appendLine("   URL: ${result.url}")
+                        sb.appendLine()
+                    }
+                    ToolResult(true, sb.toString().take(MAX_RESULT_LENGTH))
                 }
-                ToolResult(true, sb.toString().take(MAX_RESULT_LENGTH))
             } catch (e: Exception) {
+                android.util.Log.e("ZeroClaw.DDG", "Exception: ${e.javaClass.simpleName}: ${e.message}", e)
                 ToolResult(false, "", "Web search failed: ${e.message}")
             }
         }

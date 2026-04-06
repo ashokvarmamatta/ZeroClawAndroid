@@ -25,6 +25,8 @@ import ai.zeroclaw.android.webchat.WebChatServer
 import ai.zeroclaw.android.tunnel.TunnelManager
 import ai.zeroclaw.android.tools.CronTool
 import ai.zeroclaw.android.tools.ToolSystem
+import ai.zeroclaw.android.agents.AgentManager
+import ai.zeroclaw.android.agents.WebScraperAgent
 import kotlinx.coroutines.*
 
 class ZeroClawService : Service() {
@@ -64,6 +66,8 @@ class ZeroClawService : Service() {
         @Volatile var lineConnected     = false
         @Volatile var webChatRunning    = false
         val recentLogs = ArrayDeque<String>(50)
+        // Detailed per-conversation trace — cleared at start of each new user message
+        val conversationLogs = ArrayDeque<String>(200)
 
         /** Route a quick-reply from the notification shade to the correct channel. */
         @Volatile var instance: ZeroClawService? = null
@@ -78,10 +82,27 @@ class ZeroClawService : Service() {
 
         fun log(msg: String) {
             val entry = "[${timeStr()}] $msg"
+            android.util.Log.i("ZeroClaw", msg)
             synchronized(recentLogs) {
                 if (recentLogs.size >= 50) recentLogs.removeFirst()
                 recentLogs.addLast(entry)
             }
+        }
+
+        /** Append a detailed trace entry for the current conversation operation. */
+        fun logDetail(msg: String) {
+            val entry = "[${timeStr()}] $msg"
+            android.util.Log.d("ZeroClaw.Detail", msg)
+            synchronized(conversationLogs) {
+                if (conversationLogs.size >= 200) conversationLogs.removeFirst()
+                conversationLogs.addLast(entry)
+            }
+        }
+
+        /** Clear detailed log — called at start of each new user message. */
+        fun clearDetailLog() {
+            android.util.Log.d("ZeroClaw.Detail", "━━━ NEW CONVERSATION TURN — LOG CLEARED ━━━")
+            synchronized(conversationLogs) { conversationLogs.clear() }
         }
 
         private fun timeStr(): String {
@@ -98,6 +119,7 @@ class ZeroClawService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        TelegramBotManager.restoreLastChatId(this)
         telegramManager = TelegramBotManager(this)
         whatsappManager = TwilioWhatsAppManager(this)
         discordManager  = DiscordBotManager(this)
@@ -154,13 +176,21 @@ class ZeroClawService : Service() {
         serviceScope.launch {
             val settings = AppSettings(this@ZeroClawService).getAll()
 
-            // Tunnel
+            // Tunnel (Cloudflare / ngrok / local IP)
             launch {
-                tunnelManager.start { url ->
-                    tunnelUrl = url
-                    log("Tunnel: $url")
-                    updateNotification("Live: $url")
-                }
+                tunnelManager.start(
+                    mode = settings.tunnelMode,
+                    token = settings.tunnelToken,
+                    hostname = settings.tunnelHostname,
+                    onUrlReady = { url ->
+                        tunnelUrl = url
+                        log("Tunnel: $url")
+                        updateNotification("Live: $url")
+                    },
+                    onStatusChange = { statusMsg ->
+                        log("Tunnel: $statusMsg")
+                    }
+                )
             }
 
             // Telegram — only needs bot token now; LlmRouter handles AI
@@ -313,19 +343,15 @@ class ZeroClawService : Service() {
                 log("LINE: no token set — go to Settings")
             }
 
-            // Web Chat
-            if (settings.webChatEnabled) {
-                launch {
-                    try {
-                        webChatServer.start()
-                        webChatRunning = true
-                        log("WebChat: server started on :8088")
-                    } catch (e: Exception) {
-                        log("WebChat error: ${e.message}")
-                    }
+            // Web Chat — always start so external apps (e.g. AutomationVideoGen) can reach /api/chat
+            launch {
+                try {
+                    webChatServer.start()
+                    webChatRunning = true
+                    log("WebChat: server started on :8088")
+                } catch (e: Exception) {
+                    log("WebChat error: ${e.message}")
                 }
-            } else {
-                log("WebChat: disabled — enable in Settings")
             }
 
             // Cron task checker — runs every 60 seconds
@@ -348,6 +374,27 @@ class ZeroClawService : Service() {
                         }
                         delay(60_000L)
                     }
+                }
+            }
+
+            // Agent runner — checks due agents every 60 seconds
+            launch {
+                val agentManager = AgentManager.getInstance(this@ZeroClawService)
+                val scraper = WebScraperAgent(this@ZeroClawService)
+                while (isActive) {
+                    try {
+                        val dueAgents = agentManager.getDueAgents()
+                        for (agent in dueAgents) {
+                            log("AGENT: running '${agent.name}' [${agent.type}]")
+                            when (agent.type) {
+                                AgentManager.TYPE_WEB_SCRAPER -> scraper.run(agent)
+                                else -> log("AGENT: unknown type '${agent.type}' — skipping")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        log("AGENT: error — ${e.message}")
+                    }
+                    delay(60_000L)
                 }
             }
         }
@@ -395,7 +442,6 @@ class ZeroClawService : Service() {
         log("PROACTIVE: sending to $channel/$chatId — ${text.take(60)}")
         when (channel.lowercase()) {
             "telegram" -> {
-                // Delegate to telegram manager via direct API call using stored token
                 val settings = ai.zeroclaw.android.data.AppSettings(this).getAll()
                 if (settings.telegramToken.isBlank()) {
                     log("PROACTIVE: Telegram token not configured")
@@ -405,6 +451,13 @@ class ZeroClawService : Service() {
             }
             "discord" -> discordManager.sendProactiveMessage(chatId, text)
             "slack" -> slackManager.sendProactiveMessage(chatId, text)
+            "whatsapp" -> whatsappManager.sendProactiveMessage(chatId, text)
+            "signal" -> signalManager.sendProactiveMessage(chatId, text)
+            "matrix" -> matrixManager.sendProactiveMessage(chatId, text)
+            "irc" -> ircManager.sendProactiveMessage(chatId, text)
+            "teams" -> teamsManager.sendProactiveMessage(chatId, text)
+            "twitch" -> twitchManager.sendProactiveMessage(chatId, text)
+            "line" -> lineManager.sendProactiveMessage(chatId, text)
             else -> log("PROACTIVE: unknown channel $channel")
         }
     }

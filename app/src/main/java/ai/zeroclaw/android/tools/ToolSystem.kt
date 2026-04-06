@@ -62,26 +62,22 @@ class ToolSystem private constructor(private val context: Context) {
         const val MAX_TOOL_ROUNDS = 3
 
         /**
-         * Tools disabled by default — require API keys, special setup, or are
-         * advanced features the user should opt into consciously.
+         * All tools are disabled by default — users explicitly opt in via Settings.
          */
         val DISABLED_BY_DEFAULT = setOf(
-            "image_analysis",   // needs vision-capable LLM key
-            "image_gen",        // needs OpenAI key for DALL-E; Pollinations is free but heavy
-            "speech_to_text",   // needs OpenAI Whisper key
-            "spotify",          // needs Spotify developer app + OAuth
-            "smart_home",       // needs Hue bridge IP/token
-            "brave_search",     // needs Brave Search API key
-            "notion",           // needs Notion integration token
-            "email",            // needs SendGrid/Mailgun key
-            "composio",         // needs Composio API key
-            "mcp",              // needs MCP server configured
-            "delegate",         // advanced multi-agent — user opts in
-            "spawn",            // advanced multi-agent — user opts in
-            "message",          // proactive messaging — user opts in
-            "pushover",         // needs Pushover API key
-            "nostr",            // needs Nostr key pair
-            "a2a"               // needs web chat enabled + setup
+            // Core tools — opt in
+            "web_search", "web_fetch", "memory", "pdf_read", "summarize",
+            "translate", "calculator", "qr_code", "clipboard", "status",
+            // Device tools — opt in
+            "calendar", "contacts", "location", "text_to_speech", "file_manager",
+            "bookmark", "webview", "cron", "media_pipeline",
+            // External service tools — require API keys or setup
+            "weather", "github", "rss_feed",
+            "image_analysis", "image_gen", "speech_to_text",
+            "spotify", "smart_home", "brave_search",
+            "notion", "email", "composio", "mcp",
+            "delegate", "spawn", "message",
+            "pushover", "nostr", "a2a"
         )
 
         @Volatile private var INSTANCE: ToolSystem? = null
@@ -131,6 +127,8 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(MessageTool(context))
         // Phase 151: Pushover notifications
         registerTool(PushoverTool(context))
+        // Phase 175: Agent manager tool
+        registerTool(AgentTool(context))
     }
 
     fun registerTool(tool: Tool) {
@@ -359,6 +357,25 @@ class ToolSystem private constructor(private val context: Context) {
             result
         } catch (e: Exception) {
             ZeroClawService.log("TOOL: ✗ ${call.name} exception — ${e.message}")
+            ToolResult(false, "", e.message ?: "Tool execution failed")
+        }
+    }
+
+    /** Execute a tool directly, bypassing the enabled check. Used for internal auto-enrichment. */
+    suspend fun executeToolDirect(call: ToolCall): ToolResult {
+        val tool = tools[call.name]
+            ?: return ToolResult(false, "", "Unknown tool: ${call.name}")
+        ZeroClawService.log("TOOL: [direct] executing ${call.name}(${call.args})")
+        return try {
+            val result = tool.execute(call.args)
+            if (result.success) {
+                ZeroClawService.log("TOOL: ✓ [direct] ${call.name} returned ${result.content.length} chars")
+            } else {
+                ZeroClawService.log("TOOL: ✗ [direct] ${call.name} failed — ${result.error}")
+            }
+            result
+        } catch (e: Exception) {
+            ZeroClawService.log("TOOL: ✗ [direct] ${call.name} exception — ${e.message}")
             ToolResult(false, "", e.message ?: "Tool execution failed")
         }
     }

@@ -47,7 +47,8 @@
         android:roundIcon="@drawable/ic_zeroclaw"
         android:supportsRtl="true"
         android:theme="@style/Theme.ZeroClawAndroid"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:extractNativeLibs="true">
 
         <!-- Main Activity -->
         <activity
@@ -85,8 +86,8 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="ai.zeroclaw.WIDGET_START" />
-                <action android:name="ai.zeroclaw.WIDGET_STOP" />
+                <action android:name="${applicationId}.WIDGET_START" />
+                <action android:name="${applicationId}.WIDGET_STOP" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -99,7 +100,7 @@
             android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="ai.zeroclaw.QUICK_REPLY" />
+                <action android:name="${applicationId}.QUICK_REPLY" />
             </intent-filter>
         </receiver>
 

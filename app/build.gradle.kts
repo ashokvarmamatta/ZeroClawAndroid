@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "ai.zeroclaw.android"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ai.zeroclaw.android"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 36
+        versionCode = 2
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
@@ -33,9 +33,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.13" }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+        jniLibs {
+            // Force extraction of .so files to disk (needed for cloudflared execution)
+            useLegacyPackaging = true
+            keepDebugSymbols += "**/libcloudflared.so"
+        }
+    }
 }
 
 dependencies {

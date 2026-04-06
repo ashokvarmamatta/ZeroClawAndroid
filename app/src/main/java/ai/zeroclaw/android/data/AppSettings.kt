@@ -39,7 +39,12 @@ data class SettingsData(
     val pushoverToken: String = "",
     val pushoverUserKey: String = "",
     val mattermostConfig: String = "",
-    val dingtalkConfig: String = ""
+    val dingtalkConfig: String = "",
+    val optimizePrompt: Boolean = false,
+    val offlineWebSummarize: Boolean = true,   // fetch web data + ask model to summarize it
+    val tunnelMode: String = "quick",          // "off", "quick" (trycloudflare.com), "token" (named tunnel)
+    val tunnelToken: String = "",              // Cloudflare tunnel token (for named tunnels)
+    val tunnelHostname: String = ""            // Your domain (e.g. "api.yourdomain.com") — shown in UI for named tunnels
 )
 
 class AppSettings(private val context: Context) {
@@ -77,6 +82,12 @@ class AppSettings(private val context: Context) {
         val KEY_PUSHOVER_USER_KEY = stringPreferencesKey("pushover_user_key")
         val KEY_MATTERMOST_CONFIG = stringPreferencesKey("mattermost_config")
         val KEY_DINGTALK_CONFIG = stringPreferencesKey("dingtalk_config")
+        val KEY_BRAVE_API_KEY = stringPreferencesKey("brave_api_key")
+        val KEY_OPTIMIZE_PROMPT = booleanPreferencesKey("optimize_prompt")
+        val KEY_OFFLINE_WEB_SUMMARIZE = booleanPreferencesKey("offline_web_summarize")
+        val KEY_TUNNEL_MODE = stringPreferencesKey("tunnel_mode")
+        val KEY_TUNNEL_TOKEN = stringPreferencesKey("tunnel_token")
+        val KEY_TUNNEL_HOSTNAME = stringPreferencesKey("tunnel_hostname")
     }
 
     suspend fun getAll(): SettingsData {
@@ -110,7 +121,12 @@ class AppSettings(private val context: Context) {
             pushoverToken = prefs[KEY_PUSHOVER_TOKEN] ?: "",
             pushoverUserKey = prefs[KEY_PUSHOVER_USER_KEY] ?: "",
             mattermostConfig = prefs[KEY_MATTERMOST_CONFIG] ?: "",
-            dingtalkConfig = prefs[KEY_DINGTALK_CONFIG] ?: ""
+            dingtalkConfig = prefs[KEY_DINGTALK_CONFIG] ?: "",
+            optimizePrompt = prefs[KEY_OPTIMIZE_PROMPT] ?: false,
+            offlineWebSummarize = prefs[KEY_OFFLINE_WEB_SUMMARIZE] ?: true,
+            tunnelMode = prefs[KEY_TUNNEL_MODE] ?: "quick",
+            tunnelToken = prefs[KEY_TUNNEL_TOKEN] ?: "",
+            tunnelHostname = prefs[KEY_TUNNEL_HOSTNAME] ?: ""
         )
     }
 
@@ -121,7 +137,10 @@ class AppSettings(private val context: Context) {
         signalApiUrl: String = "", slackToken: String = "",
         matrixConfig: String = "", ircConfig: String = "",
         teamsConfig: String = "", twitchConfig: String = "",
-        lineToken: String = "", webChatEnabled: Boolean = false
+        lineToken: String = "", webChatEnabled: Boolean = false,
+        optimizePrompt: Boolean = false, offlineWebSummarize: Boolean = true,
+        tunnelMode: String = "quick", tunnelToken: String = "",
+        tunnelHostname: String = ""
     ) {
         context.appDataStore.edit { prefs ->
             prefs[KEY_ZEROCLAW_URL] = zeroClawUrl
@@ -141,6 +160,11 @@ class AppSettings(private val context: Context) {
             prefs[KEY_TWITCH_CONFIG] = twitchConfig
             prefs[KEY_LINE_TOKEN] = lineToken
             prefs[KEY_WEB_CHAT_ENABLED] = webChatEnabled
+            prefs[KEY_OPTIMIZE_PROMPT] = optimizePrompt
+            prefs[KEY_OFFLINE_WEB_SUMMARIZE] = offlineWebSummarize
+            prefs[KEY_TUNNEL_MODE] = tunnelMode
+            prefs[KEY_TUNNEL_TOKEN] = tunnelToken
+            prefs[KEY_TUNNEL_HOSTNAME] = tunnelHostname
         }
         // Also save auto_start to legacy SharedPreferences for BootReceiver
         context.getSharedPreferences("zeroclaw_prefs", Context.MODE_PRIVATE)

@@ -3,6 +3,7 @@ package ai.zeroclaw.android.data
 import android.content.Context
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import java.util.Collections
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,7 +22,7 @@ class LlmKeyManager(private val context: Context) {
     private val gson = GsonBuilder().serializeNulls().create()
 
     // ── In-memory failure tracking (resets on service restart) ───────────────
-    private val failedKeyIds = mutableSetOf<String>()
+    private val failedKeyIds: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
     // ── Observable state for UI ───────────────────────────────────────────────
     private val _keysFlow = MutableStateFlow<List<ApiKeyEntry>>(emptyList())

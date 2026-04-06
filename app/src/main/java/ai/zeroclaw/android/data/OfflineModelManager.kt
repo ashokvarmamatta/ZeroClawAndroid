@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -44,6 +46,10 @@ class OfflineModelManager private constructor(private val context: Context) {
             else "%.0f MB".format(mb)
         }
     }
+
+    // Mutex prevents concurrent JNI access — MediaPipe LlmInference is NOT thread-safe
+    // and will crash with "invalid global reference" if called from multiple coroutines
+    private val inferenceMutex = Mutex()
 
     private var llmInference: LlmInference? = null
     private var loadedModelPath: String? = null
@@ -145,7 +151,7 @@ class OfflineModelManager private constructor(private val context: Context) {
     }
 
     /** Initialize the LlmInference engine with the given model file */
-    suspend fun loadModel(modelPath: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun loadModel(modelPath: String): Result<Unit> = inferenceMutex.withLock { withContext(Dispatchers.IO) {
         try {
             _isLoading.value = true
             // Destroy previous engine if different model
@@ -179,17 +185,34 @@ class OfflineModelManager private constructor(private val context: Context) {
             ZeroClawService.log("Offline: ✗ failed to load model — ${e.message}")
             Result.failure(e)
         }
-    }
+    } }
 
     /** Generate a response from the loaded model */
-    suspend fun generateResponse(prompt: String): String = withContext(Dispatchers.IO) {
-        val inference = llmInference
-            ?: throw Exception("No offline model loaded — select one in Settings → API Keys")
-        try {
-            inference.generateResponse(prompt)
-        } catch (e: Exception) {
-            ZeroClawService.log("Offline: generation error — ${e.message}")
-            throw e
+    suspend fun generateResponse(prompt: String): String = inferenceMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val inference = llmInference
+                ?: throw Exception("No offline model loaded — select one in Settings → API Keys")
+
+            // Guard against JNI crash: MediaPipe ABORTS the process (not catchable!) if
+            // input_size >= maxTokens. Real-world ratio is ~1.7 chars/token for mixed
+            // English+URLs+markup, NOT 3:1. Use 1.4 chars/token with 10% safety margin.
+            val maxSafeChars = (MAX_TOKENS * 1.4 * 0.90).toInt()   // ≈ 1290 chars
+            val safePrompt = if (prompt.length > maxSafeChars) {
+                ZeroClawService.log("Offline: prompt truncated ${prompt.length} → $maxSafeChars chars (model limit)")
+                prompt.take(maxSafeChars)
+            } else prompt
+
+            try {
+                inference.generateResponse(safePrompt)
+            } catch (e: Exception) {
+                ZeroClawService.log("Offline: generation error — ${e.message}")
+                // If JNI state is corrupted, destroy and let next call reload
+                if (e.message?.contains("JNI") == true || e.message?.contains("global reference") == true) {
+                    ZeroClawService.log("Offline: JNI error detected — destroying engine to recover")
+                    destroyEngine()
+                }
+                throw e
+            }
         }
     }
 

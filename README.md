@@ -2,41 +2,64 @@
 
 <img src="screenshots/app_icon.png" width="120" alt="ZeroClaw Icon" />
 
-# ZeroClaw Android
+# 🦀 ZeroClaw Android
 
-**A 24/7 AI agent daemon for Android — 11 messaging channels, 35 built-in AI tools, advanced AI orchestration, vector memory, full infrastructure, polished configuration & UX, and NullClaw-inspired advanced features (Composio, MCP, A2A, MMR, hint routing, agent identity). Runs entirely on your phone.**
+### Your phone. Your AI. Always on.
 
-[![Android](https://img.shields.io/badge/Platform-Android%2026%2B-green?logo=android)](https://developer.android.com)
-[![Kotlin](https://img.shields.io/badge/Language-Kotlin-purple?logo=kotlin)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-blue?logo=jetpack-compose)](https://developer.android.com/compose)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=18&pause=1000&color=00D4AA&center=true&vCenter=true&width=500&lines=11+Messaging+Channels;30+AI+Tools+(all+opt-in);25%2B+Agent+Templates;OpenAI-Compatible+API+Server;Offline+On-Device+AI;Built+with+Kotlin+%2B+Jetpack+Compose" alt="Typing SVG" />
+
+<br/>
+
+[![Android](https://img.shields.io/badge/📱_Android_8.0+-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com)
+[![Kotlin](https://img.shields.io/badge/🟣_Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Compose](https://img.shields.io/badge/🎨_Jetpack_Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](https://developer.android.com/compose)
+[![License](https://img.shields.io/badge/📄_MIT_License-yellow?style=for-the-badge)](LICENSE)
 
 </div>
 
 ---
 
-## 📖 What is ZeroClaw?
+## 💡 Why This Project Exists
 
-ZeroClaw is an **Android-native AI agent daemon** that turns your phone into an always-on AI backend. It runs as a foreground service across **11 messaging channels**, with **35 built-in AI tools**, **advanced AI orchestration** (streaming, multi-agent, delegate/spawn, workflows, thinking mode), **vector memory with RAG + MMR diversity**, a **complete infrastructure platform** (hooks, plugins, biometric lock, MCP client, A2A protocol, audit log), and a **NullClaw-inspired advanced layer** — Composio 1000+ app integrations, hint-based provider routing, agent identity (AIEOS v1.1), semantic cache, memory hygiene, and Pushover notifications.
+This is a **personal project** built out of curiosity — to see how far I can push Android as a platform for running AI agents.
 
-No cloud subscription. No always-on PC. Just your Android device.
+> 🤔 **Can a phone run an AI service 24/7?** → Yes, with watchdog recovery and Doze awareness.
+>
+> 🤔 **Can it serve as an API server?** → Yes, on port 8088 — any OpenAI-compatible app can connect.
+>
+> 🤔 **Can it run AI offline?** → Yes, via MediaPipe — but JNI crashes needed Mutex serialization to fix.
+>
+> 🤔 **Can it talk to 11 different chat platforms?** → Yes, each with its own protocol quirks.
+>
+> 🤔 **Can agents auto-monitor websites and push updates?** → Yes, with change detection and scheduled delivery.
+
+Every feature started as a question like these. Many didn't work on the first try — the [BUGS.md](BUGS.md) has the full history.
+
+I use Claude as a coding tool the same way I'd use docs or Stack Overflow — to move faster on implementation so I can focus on **architecture, debugging real device behavior, and figuring out what Android actually allows**.
+
+---
+
+## 🦀 What is ZeroClaw?
+
+An Android app that runs AI **in the background 24/7**. It connects to your chat apps, gives you 30 AI tools, and lets you set up agents that automatically monitor things and send you updates. **Everything is modular** — you turn on only what you want.
 
 ```
-You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...)
-              ↓
-    ZeroClaw Service (background daemon)
-              ↓
-    NullClaw Layer: ProviderRouter (hints) → ComposioTool → McpClient → A2AServer
-              ↓
-    Config & UX: ThemeManager → RateLimiting → ApprovalSystem → ConversationLabels
-              ↓
-    Infrastructure: HooksSystem → PluginSystem → BiometricLock → AutoRecovery → AuditLog
-              ↓
-    Advanced AI: AgentIdentity → SystemPromptManager → MultiAgent+Delegate/Spawn → WorkflowEngine
-              ↓
-    Vector Memory: VectorMemory → HybridSearch+RRF → MMR Reranker → AdaptiveRetrieval → SemanticCache
-              ↓
-    Tool System (35 tools) → LLM Router → Reply
+📱 You → Pick your chat apps (Telegram / Discord / Slack / WhatsApp / ...)
+                ↓
+   🔧 ZeroClaw Service (runs in background)
+                ↓
+   🤖 AI Router → picks the best AI (Gemini, OpenAI, Anthropic, Ollama...)
+                ↓
+   🧰 Your enabled tools (web search, translate, image gen, RSS...)
+                ↓
+   ⚡ Optional add-ons:
+       ├── 🕷️ Agents — auto-monitor websites & APIs, send you updates
+       ├── 🧪 Playground — test any tool before using it
+       ├── 🧠 Memory — AI remembers your conversations
+       ├── 🔒 Security — biometric lock, audit log, rate limits
+       └── 🔌 Integrations — Composio, MCP servers, A2A protocol
+                ↓
+   💬 Reply → your chat apps
 ```
 
 ---
@@ -55,549 +78,395 @@ You → 11 messaging channels (Telegram / Slack / Matrix / Discord / Teams / ...
 
 ## ✨ Features
 
-### ⚙️ Configuration & UX (Phases 131-140)
+### 🕷️ Autonomous Agents ![](https://img.shields.io/badge/25%2B_Templates-00D4AA?style=flat-square) ![](https://img.shields.io/badge/21_Free_APIs-4CAF50?style=flat-square) ![](https://img.shields.io/badge/Opt--In-blue?style=flat-square)
 
-#### Phase 131 — ExportImportConfig
-- **Full config backup** — export all API keys, channel credentials, system prompts, agent profiles, tool settings, and app preferences to a single encrypted JSON file
-- **One-tap restore** — import the config file on a new device or after reinstall to instantly restore the full setup
-- **Selective export** — choose which categories to include (keys only, channels only, full backup)
-- Config files are AES-256 encrypted with a user-set passphrase before being written to storage
-- Export shares via Android share sheet (save to Drive, send via email, etc.)
+> Set up agents that monitor things for you and send updates to your chat apps automatically.
 
-#### Phase 132 — ThemeManager
-- **Custom color themes** — choose from 10 built-in Material You palettes or create a fully custom theme with your own primary/secondary/background colors
-- **Dynamic color** — optionally follow Android 12+ wallpaper-based dynamic color
-- **Dark / Light / System theme** — manual override independent of system setting
-- Per-theme typography scale (compact, standard, large for accessibility)
-- Theme preferences persist across app restarts; export/import includes theme config
+| What | Details |
+|------|---------|
+| 📦 **25+ templates** | Crypto, gold, stocks, weather, news, sports, GitHub trending, YouTube, IPO, earthquakes... |
+| ⚡ **21 free APIs** | CoinGecko, AlphaVantage, Metals.live, wttr.in, USGS, and more — no API keys needed |
+| 🕸️ **Web scraping** | Monitor any URL, AI extracts what you want |
+| 📢 **Delivery** | Telegram, Discord, Slack, WhatsApp, Email |
+| ⏱️ **Schedule** | Every 5 min to 24 hours |
+| 🔄 **Smart updates** | Only sends when content actually changes |
+| ▶️ **Run Now** | Test any agent instantly |
+| 🔗 **Multi-channel** | Same agent can push to multiple chat apps |
+| 🔌 **Results API** | `GET /api/agents/results` — query agent data from any app (JS, Python, cURL) |
+| 📖 **Built-in API Guide** | Edit any agent → see copy-paste code for your language + live tunnel URL |
 
-#### Phase 133 — PerChannelPrompts UI
-- **Dedicated UI** for configuring per-channel and per-user system prompts (exposes the Phase 110 SystemPromptManager through a first-class Settings screen)
-- **Prompt editor** with syntax highlighting, variable picker (`{{username}}`, `{{channel}}`, `{{date}}`), and live character count
-- **Template gallery** — browse and apply built-in prompt templates (Assistant, Coder, Analyst, Translator, Creative Writer)
-- Per-channel prompts shown on the main Settings screen for quick discovery
+### 🧪 Tool Playground ![](https://img.shields.io/badge/Interactive-FF6B6B?style=flat-square) ![](https://img.shields.io/badge/Live_Testing-orange?style=flat-square)
 
-#### Phase 134 — RateLimiting
-- **Per-user rate limits** — configure maximum messages per user per time window (e.g., 10 messages/hour)
-- **Per-channel limits** — set channel-wide throughput caps to prevent overload
-- **Soft limits** — warn users when approaching their limit, hard-block when exceeded
-- Rate limit state persists in Room DB; resets automatically at window expiry
-- Admin users (configurable by user ID) are exempt from rate limits
-- `/ratelimit status` command lets users check their remaining quota
+> Test any tool live before using it in real conversations.
 
-#### Phase 135 — UsageTracking
-- **Per-key usage stats** — tracks call count, token count, success rate, average latency, and last-used timestamp for every API key
-- **Per-user stats** — message count and tool invocation count per user per channel
-- **Usage dashboard** — new Settings screen showing charts for daily/weekly usage, top users, most-used tools
-- Token cost estimation based on per-provider pricing tables (configurable)
-- Data exported as CSV in the ExportImportConfig backup
+- 🎛️ Enable/disable each tool individually
+- 🧩 Pick which AI model to use for testing
+- 📋 All test results logged on Home Screen
 
-#### Phase 136 — ApprovalSystem
-- **Human-in-the-loop** — flag specific tool calls or LLM actions for manual approval before execution
-- Configurable approval triggers: tools with side effects (Email, Calendar write, SmartHome), messages above a token threshold, or all actions in a high-security mode
-- **Approval notifications** — pending approvals appear as Android notifications with Approve/Deny actions directly in the shade
-- Approval decisions are logged with timestamp and approver identity
-- Timeout behavior: auto-approve, auto-deny, or hold indefinitely (configurable)
+### 💬 11 Messaging Channels ![](https://img.shields.io/badge/11_Channels-26A5E4?style=flat-square) ![](https://img.shields.io/badge/All_Opt--In-blue?style=flat-square) ![](https://img.shields.io/badge/Group_Chat_Support-9C27B0?style=flat-square)
 
-#### Phase 137 — HomeWidget
-- **Android home screen widget** — place on any launcher home screen
-- Shows: service status (Running/Stopped), active channel count, last message timestamp, and total messages today
-- **Quick actions** — Start/Stop service directly from the widget without opening the app
-- Resizable: 2×1 (compact status only) and 4×2 (full stats + quick actions)
-- Widget updates every 60 seconds via WorkManager
+> All opt-in — enable only what you use.
 
-#### Phase 138 — VoiceInput
-- **Voice-to-text input** in the WebChat channel — users can hold a microphone button and speak; message is transcribed via SpeechToText (Whisper) and sent as text
-- **TTS playback toggle** — users can request AI responses to be read aloud via TextToSpeech in any channel that supports audio output
-- Wake word detection (optional) — "Hey ZeroClaw" activates voice input in WebChat without pressing a button
-- Voice input settings: language selection, Whisper model size, silence detection threshold
+| | Channel | | Channel |
+|---|---------|---|---------|
+| ✈️ | **Telegram** (+ groups) | 🎮 | **Discord** (+ servers) |
+| 💼 | **Slack** (+ channels) | 💬 | **WhatsApp** (Twilio) |
+| 🔗 | **Matrix** (federated) | 💻 | **IRC** (TCP socket) |
+| 🏢 | **Microsoft Teams** | 🎬 | **Twitch** (!commands) |
+| 🟢 | **LINE** | 📡 | **Signal** (bridge) |
+| 🌐 | **WebChat** (voice + TTS) | | |
 
-#### Phase 139 — ConversationLabels
-- **Label any conversation** — tag conversations with colored labels (Work, Personal, Project X, Urgent, etc.)
-- Labels stored per channel+userId; visible in a conversations list view in the app
-- **Filter by label** — view all conversations with a specific label across channels
-- **Auto-label rules** — keyword-triggered auto-labeling (e.g., messages containing "invoice" → label "Finance")
-- Labels included in session summaries and searchable via the Memory tool
+### 🧰 30 AI Tools ![](https://img.shields.io/badge/30_Tools-7F52FF?style=flat-square) ![](https://img.shields.io/badge/All_Disabled_by_Default-gray?style=flat-square) ![](https://img.shields.io/badge/Enable_What_You_Need-00D4AA?style=flat-square)
 
-#### Phase 140 — GroupChatSupport
-- **Telegram group support** — bot can be added to group chats and responds to @mentions or configured trigger words
-- **Discord server channels** — responds to messages in any text channel the bot has access to, with optional `@ZeroClaw` mention requirement
-- **Slack channel posting** — responds to messages in channels as well as DMs
-- **Group context isolation** — per-group conversation history separate from private chat history
-- **Admin commands** in groups: `/group prompt <text>` to set a group-specific system prompt; `/group ratelimit <n>` to set group-wide message limits
-- **Thread awareness** — in Discord and Slack, replies are posted in-thread to keep group chats clean
+<table>
+<tr>
+<td>
 
-### 🏗️ Infrastructure & Platform (Phases 123-130)
-- **HooksSystem** — pre/post-message hook pipeline (filter, transform, notify, log)
-- **PluginSystem** — user-installable sandboxed plugin packages (.zip import)
-- **WebViewTool + MediaPipelineTool** — headless WebView scraping + media transcoding
-- **RichNotifications + QuickReply** — rich Android notifications with reply-from-shade
-- **BiometricLock** — fingerprint/face authentication guard with configurable timeout
-- **DevicePairing** — multi-device mDNS discovery + encrypted config sync
-- **AutoRecovery** — watchdog, crash reporter, circuit breaker, dead-letter queue
-- **Platform hardening** — Doze awareness, exponential backoff, metrics endpoint
+**🔵 Core (10)**
+- 🔍 Web Search
+- 🌐 Web Fetch
+- 🧠 Memory
+- 📄 PDF Reader
+- 👁️ Image Analysis
+- ⏰ Cron Tasks
+- 📊 Status
+- 🐙 GitHub
+- 📝 Notion
+- ✉️ Email
 
-### 🔮 Vector Memory & RAG (Phases 118-122)
-- **VectorMemory** — embedding-based semantic memory (OpenAI or local sentence-transformer)
-- **HybridSearch + RRF** — BM25 + cosine similarity fused with Reciprocal Rank Fusion
-- **QueryExpansion** — LLM query variants + HyDE for higher precision recall
-- **TemporalDecay** — exponential memory freshness scoring with reinforcement
-- **SessionManager** — session tracking, summaries, cross-session recall
+</td>
+<td>
 
-### 🧠 Advanced AI Systems (Phases 110-117)
-- **SystemPromptManager** — per-channel/user prompts with templates
-- **StreamingResponse** — token-level streaming with typing indicators
-- **MultiAgent** — pipeline orchestration (linear, fan-out, fan-in, conditional)
-- **AgentProfiles** — named personas with per-profile tool/model config
-- **WorkflowEngine** — visual multi-step workflow composer
-- **ToolLoopDetector** — infinite loop prevention with auto-recovery
-- **ThinkingMode** — extended reasoning (Claude extended thinking, OpenAI o1/o3)
-- **ConversationSummarizer** — automatic context compression
+**🟢 Extended (14)**
+- 📝 Summarize
+- 🌍 Translate (50+ langs)
+- 🎨 Image Gen
+- 🎤 Speech-to-Text
+- 🔊 Text-to-Speech
+- 📅 Calendar
+- 👤 Contacts
+- 📍 Location
+- 🔢 Calculator
+- 📰 RSS Feed
+- 📱 QR Code
+- 📁 File Manager
+- 📋 Clipboard
+- 🔖 Bookmark
 
-### 💬 11 Messaging Channels (Phases 103-109)
-- **Telegram** (+ group chat support via Phase 140)
-- **WhatsApp** (Twilio)
-- **Discord** (+ server channel support via Phase 140)
-- **Signal**
-- **Slack** (+ channel posting via Phase 140)
-- **Matrix** — federated Matrix protocol client
-- **IRC** — classic IRC bot via TCP socket
-- **Microsoft Teams** — Bot Framework integration
-- **Twitch** — Twitch Chat bot with !command support
-- **LINE** — LINE Messaging API
-- **WebChat** — built-in browser-accessible WebSocket chat (+ voice input via Phase 138)
+</td>
+<td>
 
-### 🔧 AI Tools — 30 Built-in Tools
+**🟣 Advanced (6)**
+- 🔌 Composio (1000+ apps)
+- 🤝 Delegate Tool
+- 🚀 Spawn Tool
+- 📨 Message Tool
+- 🔧 MCP Client
+- 🔔 Pushover
 
-#### Core Tools (10)
-Web Search (DuckDuckGo), Web Fetch, Memory (vector-backed), PDF Reader, Image Analysis, Cron/Scheduled Tasks, Status/Diagnostics, GitHub, Notion, Email
+</td>
+</tr>
+</table>
 
-#### Extended Toolbox (18 — Phases 85-102)
-Summarize, Translate (50+ languages), ImageGen (Pollinations + DALL-E), SpeechToText (Whisper), TextToSpeech (Android TTS), Calendar, Contacts, Location/Geocoding, Calculator, RSS, QR Code, FileManager, Clipboard, Spotify, SmartHome (Home Assistant), BraveTool, Bookmark
+### 🤖 Multi-Provider AI Support ![](https://img.shields.io/badge/7_Providers-412991?style=flat-square) ![](https://img.shields.io/badge/Auto_Failover-4CAF50?style=flat-square) ![](https://img.shields.io/badge/Unlimited_Keys-FF9800?style=flat-square)
 
-#### Infrastructure Tools (2 — Phase 125)
-WebViewTool (headless JS-rendered scraping), MediaPipelineTool (media download + transcode)
+> Add unlimited API keys. If one fails, it automatically tries the next.
 
-### 🔑 Multi-Provider API Key Manager
-- Unlimited keys, cURL import, live key testing, Gemini model picker
-- Priority reordering, per-model selection, Set Active key, auto failover
-- **Usage stats** per key (Phase 135) — call count, token usage, success rate
+| Provider | What you get |
+|----------|-------------|
+| 🔵 **Google Gemini** | Streaming, search grounding, model picker |
+| 🟢 **OpenAI** | GPT-4o, o1, o3-mini, Whisper, DALL-E |
+| 🟠 **Anthropic** | Claude with extended thinking |
+| 🌐 **OpenRouter** | 400+ models from all providers |
+| 🏠 **Ollama** | Run local models on your device |
+| 📴 **Offline** | MediaPipe models — no internet needed |
+| ⚙️ **Custom** | Any OpenAI-compatible API endpoint |
 
-### 📱 Native Android UI (Material Design 3)
-- Custom themes (Phase 132), export/import config (Phase 131)
-- Home screen widget (Phase 137), biometric lock (Phase 127)
-- Rich notifications with quick-reply (Phase 126)
-- Usage dashboard, approval system, conversation labels
+- 🔑 **Unlimited API keys** with priority ordering
+- 📋 **cURL import** — paste a cURL to add a key
+- 🧪 **Test any key** with one tap
+- 📊 **Usage stats** per key
+- 🎯 **Smart routing** — use `hint:reasoning`, `hint:fast`, `hint:code` etc. to pick the best AI
+
+### ☁️ Cloudflare Tunnel ![](https://img.shields.io/badge/Free-4CAF50?style=flat-square) ![](https://img.shields.io/badge/No_Account_Needed-00BCD4?style=flat-square) ![](https://img.shields.io/badge/Public_HTTPS_URL-FF6B6B?style=flat-square)
+
+> Access your ZeroClaw from anywhere in the world — not just your local network.
+
+| Feature | Details |
+|---------|---------|
+| ☁️ **Quick Tunnel** | Free `trycloudflare.com` URL — no account needed |
+| 🔑 **Named Tunnel** | Persistent URL with your own domain (needs Cloudflare token) |
+| 📦 **Bundled Binary** | `cloudflared` ARM64 ships inside the APK — zero setup |
+| 🔧 **Auto DNS Fix** | Handles Android's broken Go DNS transparently |
+| 🔄 **Auto-connect** | Tunnel starts with the service, URL shown in Live Logs |
+
+**Settings → Cloudflare Tunnel → Quick Tunnel (default)**
+Your public URL appears in **Live Logs → Server Address** dialog.
+
+> 📖 See our [Cloudflare Tunnel on Android Guide](https://gist.github.com/ashokvarmamatta/1bba0d91a839039428bd942b8fdcc968) for the full technical story — every problem we hit and how we solved it.
+
+### 🌐 API Server ![](https://img.shields.io/badge/Port_8088-009688?style=flat-square) ![](https://img.shields.io/badge/OpenAI_Compatible-412991?style=flat-square) ![](https://img.shields.io/badge/Zero_Code_Changes-00D4AA?style=flat-square)
+
+> Any app that works with OpenAI can connect to ZeroClaw with zero code changes.
+
+| Setting | Value |
+|---------|-------|
+| 🔗 **Base URL** | `http://<your-phone-ip>:8088/v1` |
+| 🔑 **API Key** | `zc-no-key-needed` |
+| 🤖 **Model** | `zeroclaw` |
+
+**Works with:** Continue.dev, Cursor, Open WebUI, LangChain, AutoGen, CrewAI, Aider, and any OpenAI SDK app.
+
+<details>
+<summary>📡 All Endpoints</summary>
+
+| Method | Endpoint | What it does |
+|--------|----------|-------------|
+| `POST` | `/v1/chat/completions` | 🤖 Full AI pipeline — tools, memory, thinking mode |
+| `GET` | `/v1/models` | 📋 List available models |
+| `POST` | `/api/chat` | 💬 Simple chat with session memory |
+| `POST` | `/api/generate` | ⚡ Raw AI generation (no tools). Supports `json_mode` |
+| `GET` | `/api/agents/results` | 🕷️ Query agent run results (filter by agent, paginate) |
+| `DELETE` | `/api/agents/results` | 🗑️ Delete agent results (by ID, agent, or age) |
+| `GET` | `/api/discover` | 🔍 Service discovery |
+| `GET` | `/` or `/chat` | 🌐 Web chat UI in browser |
+
+</details>
+
+<details>
+<summary>💻 Code Examples (Python, JavaScript)</summary>
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://<DEVICE_IP>:8088/v1",
+    api_key="zc-no-key-needed"
+)
+
+response = client.chat.completions.create(
+    model="zeroclaw",
+    messages=[{"role": "user", "content": "Search the web for today's top tech news"}]
+)
+print(response.choices[0].message.content)
+```
+
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://<DEVICE_IP>:8088/v1',
+  apiKey: 'zc-no-key-needed'
+});
+
+const response = await client.chat.completions.create({
+  model: 'zeroclaw',
+  messages: [{ role: 'user', content: 'Translate "hello" to Japanese, Spanish, and French' }]
+});
+console.log(response.choices[0].message.content);
+```
+
+</details>
+
+### 🧠 Memory & Smart Search ![](https://img.shields.io/badge/Vector_Search-E91E63?style=flat-square) ![](https://img.shields.io/badge/Auto_Cleanup-FF9800?style=flat-square) ![](https://img.shields.io/badge/Response_Cache-00BCD4?style=flat-square)
+
+| Feature | What it does |
+|---------|-------------|
+| 💾 **Vector Memory** | AI remembers your conversations using embeddings |
+| 🔎 **Smart Search** | Combines keyword + meaning-based search for best results |
+| 🎯 **Diverse Results** | Filters out repetitive answers automatically |
+| ⚡ **Response Cache** | Skips AI call if a similar question was asked recently |
+| 🧹 **Auto Cleanup** | Archives old memories (7d), deletes archived (30d) |
+| 📝 **Session Tracking** | Per-session history with auto-summarization |
+
+### 🤖 Advanced AI ![](https://img.shields.io/badge/Multi--Agent-9C27B0?style=flat-square) ![](https://img.shields.io/badge/Workflows-FF5722?style=flat-square) ![](https://img.shields.io/badge/Thinking_Mode-2196F3?style=flat-square)
+
+| Feature | What it does |
+|---------|-------------|
+| 👥 **Multi-Agent** | Multiple AI agents working together in a pipeline |
+| 🎭 **Agent Profiles** | Named personas (coder, analyst, creative, tutor) |
+| 🤝 **Delegate & Spawn** | Hand off tasks to other agents or run them in background |
+| 📋 **Workflows** | Multi-step pipelines with conditions |
+| 💭 **Thinking Mode** | Extended reasoning (Claude, OpenAI o1/o3) |
+| 🛡️ **Loop Detection** | Prevents AI from getting stuck in infinite loops |
+
+### 🔒 Infrastructure ![](https://img.shields.io/badge/Security-F44336?style=flat-square) ![](https://img.shields.io/badge/Plugins-795548?style=flat-square) ![](https://img.shields.io/badge/Auto--Recovery-4CAF50?style=flat-square)
+
+| Feature | What it does |
+|---------|-------------|
+| 🪝 **Hooks** | Run custom logic before/after any AI action |
+| 🔌 **Plugins** | Install .zip plugin packages to add new features |
+| 🔐 **Biometric Lock** | Fingerprint/face unlock to protect the app |
+| 📜 **Audit Log** | Logs every tool action with tamper detection |
+| ⏱️ **Rate Limits** | Control how many messages each user can send |
+| ✅ **Approval System** | Require your OK before dangerous actions run |
+| 🔄 **Auto-Recovery** | Watchdog that restarts if something crashes |
+| 📱 **Device Sync** | Pair multiple devices and sync settings |
+
+### 🎨 Configuration & UX ![](https://img.shields.io/badge/10%2B_Themes-E91E63?style=flat-square) ![](https://img.shields.io/badge/Encrypted_Backup-FF9800?style=flat-square) ![](https://img.shields.io/badge/Home_Widget-3DDC84?style=flat-square)
+
+| Feature | What it does |
+|---------|-------------|
+| 🎨 **Themes** | 10+ color palettes, dark/light/system mode |
+| 💾 **Backup/Restore** | Export everything encrypted, restore on new device |
+| 📝 **Custom Prompts** | Different AI personality per chat channel |
+| 📊 **Usage Dashboard** | Charts showing AI usage, costs, top tools |
+| 🏷️ **Labels** | Tag conversations with colors, auto-label by keywords |
+| 📱 **Home Widget** | Quick status + start/stop from your home screen |
+| 🎙️ **Voice Input** | Talk to AI in WebChat, hear responses read aloud |
+| 👥 **Group Chats** | Works in Telegram/Discord/Slack groups with @mention |
+| 🔔 **Smart Notifications** | Reply from notification shade without opening app |
+
+### 🔌 Integrations ![](https://img.shields.io/badge/1000%2B_Apps-00BCD4?style=flat-square) ![](https://img.shields.io/badge/MCP_Protocol-795548?style=flat-square) ![](https://img.shields.io/badge/All_Disabled_by_Default-gray?style=flat-square)
+
+| Integration | What it does |
+|-------------|-------------|
+| 🔗 **Composio** | Connect to 1000+ apps (GitHub, Gmail, Jira, Notion...) |
+| 🔧 **MCP Client** | Connect to any MCP server and use its tools |
+| 🤝 **A2A Protocol** | Other AI agents can discover and talk to ZeroClaw |
+| 🔔 **Pushover** | Send push notifications to any device |
+
+> 💡 All integrations are **disabled by default** — enable only what you need.
+
+### 📴 Offline AI ![](https://img.shields.io/badge/No_Internet_Needed-4CAF50?style=flat-square) ![](https://img.shields.io/badge/MediaPipe-FF6F00?style=flat-square) ![](https://img.shields.io/badge/Crash_Safe-F44336?style=flat-square)
+
+| Feature | What it does |
+|---------|-------------|
+| 🧠 **On-Device Models** | Run AI with zero internet via MediaPipe |
+| 🔧 **Smart Fallback** | Detects bad offline replies and retries with web data |
+| 🛡️ **Crash Prevention** | Prevents JNI crashes when multiple things use the model |
 
 ---
 
 ## 🏗️ Architecture
 
+<details>
+<summary>📂 Project Structure</summary>
+
 ```
 app/src/main/java/ai/zeroclaw/android/
 │
-├── MainActivity.kt
-│
-├── ui/
-│   ├── HomeScreen.kt                    # Dashboard + usage stats + widget data
-│   ├── ApiKeysScreen.kt                 # Key manager + per-key usage stats
-│   ├── SettingsScreen.kt                # All settings inc. themes, prompts, rate limits
-│   ├── InfoScreen.kt + InfoData.kt
-│   ├── UsageDashboardScreen.kt          # Phase 135 — charts and stats
-│   ├── ApprovalScreen.kt               # Phase 136 — pending approvals queue
-│   ├── ConversationLabelsScreen.kt      # Phase 139 — label management
-│   ├── PluginManagerScreen.kt           # Phase 124 — installed plugins
-│   ├── DevicePairingScreen.kt           # Phase 128 — paired devices
-│   └── theme/
-│       └── ThemeManager.kt              # Phase 132 — custom color themes
-│
-├── data/
-│   ├── ApiKeyEntry.kt, LlmKeyManager.kt, LlmRouter.kt
-│   ├── OfflineModelManager.kt, AppSettings.kt
-│   ├── MessageDatabase.kt, MemoryDatabase.kt
-│   ├── UsageDatabase.kt                 # Phase 135 — per-key and per-user stats
-│   └── LabelDatabase.kt                 # Phase 139 — conversation label store
-│
-├── config/                              # Phase 131-140
-│   ├── ExportImportConfig.kt            # AES-encrypted full config backup/restore
-│   ├── RateLimiter.kt                   # Per-user and per-channel rate limiting
-│   ├── UsageTracker.kt                  # API call tracking and cost estimation
-│   ├── ApprovalSystem.kt                # Human-in-the-loop action approval
-│   ├── ConversationLabels.kt            # Label CRUD and auto-label rules
-│   ├── HomeWidget.kt                    # Android AppWidgetProvider (2×1 + 4×2)
-│   ├── VoiceInput.kt                    # WebChat voice-to-text + TTS playback
-│   └── GroupChatSupport.kt              # Group context, @mention, admin commands
-│
-├── infra/                               # Phase 123-130
-│   ├── HooksSystem.kt, PluginSystem.kt
-│   ├── RichNotifications.kt, BiometricLock.kt
-│   ├── DevicePairing.kt, AutoRecovery.kt
-│   └── PlatformHardening.kt
-│
-├── memory/                              # Phase 118-122
-│   ├── VectorMemory.kt, HybridSearch.kt
-│   ├── QueryExpansion.kt, TemporalDecay.kt
-│   └── SessionManager.kt
-│
-├── intelligence/                        # Phase 110-117
-│   ├── SystemPromptManager.kt, StreamingResponse.kt
-│   ├── MultiAgent.kt, AgentProfiles.kt
-│   ├── WorkflowEngine.kt, ToolLoopDetector.kt
-│   ├── ThinkingMode.kt, ConversationSummarizer.kt
-│
-├── tools/
-│   ├── ToolSystem.kt
-│   ├── [30 tool files — WebSearch through MediaPipelineTool]
-│
-├── service/
-│   ├── ZeroClawService.kt
-│   └── BootReceiver.kt
-│
-├── telegram/, whatsapp/, discord/, signal/
-├── slack/, matrix/, irc/, teams/, twitch/, line/, webchat/
-└── tunnel/
-    └── TunnelManager.kt
+├── 📱 ui/                  → Screens (Home, Agents, Playground, Settings...)
+├── 🕷️ agents/              → Agent system + 21 free API sources
+├── 🧰 tools/               → 30 AI tools
+├── 🤖 data/                → LLM routing, API keys, settings
+├── 🧠 ai/                  → Multi-agent, workflows, thinking mode
+├── 💾 memory/              → Vector search, cache, session tracking
+├── 🔒 infra/               → Hooks, plugins, security, recovery
+├── 💬 channels/            → 11 messaging channel implementations
+├── ⚙️ service/             → Background daemon + boot receiver
+└── 🌐 webchat/             → HTTP API server (port 8088)
 ```
+
+</details>
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
-- Android Studio Hedgehog or newer
-- Android device or emulator running **Android 8.0 (API 26)+**
-- At least one LLM API key (OpenAI, Gemini, Anthropic, etc.)
-- (Recommended) Android 12+ for Dynamic Color theming
-- (Optional) OpenAI API key for high-quality embeddings
+### What You Need
+- 📱 Android 8.0+ device (or emulator)
+- 🔧 Android Studio
+- 🔑 At least one AI API key (Gemini, OpenAI, etc.)
 
 ### Build & Run
 
 ```bash
 git clone https://github.com/ashokvarmamatta/ZeroClawAndroid.git
 cd ZeroClawAndroid
-# Open in Android Studio → File → Open → ZeroClawAndroid
-# Wait for Gradle sync, then click ▶ Run
+# Open in Android Studio → Run
 ```
 
 ### First-Time Setup
 
-1. Tap **ℹ️** on the home screen for the full setup walkthrough
-2. Go to **Settings → Manage API Keys** → **+ Add Online Key**
-3. Add your LLM key and tap **Test Key**, then **Check All Models**
-4. Select which models to use and optionally enable Google Search Grounding
-5. Set your preferred **Theme** in Settings → Appearance
-6. Configure **Per-Channel Prompts** for each messaging platform
-7. Add channel credentials (Telegram token, Slack token, etc.)
-8. (Optional) Enable **BiometricLock**, **Device Pairing**, and **Rate Limiting**
-9. Add the **Home Screen Widget** from your launcher's widget picker
-10. Tap **▶ Start** — the full ZeroClaw platform is now running
-
-### Export / Restore Config
-
-```bash
-# In-app: Settings → Export Config → choose categories → set passphrase → share
-# Restore: Settings → Import Config → select file → enter passphrase
-```
-
-### Using Group Chats
-
-```
-# Telegram group: add your bot, then:
-@YourBot what's the weather today?
-
-# Discord server: invite bot, then in any channel:
-@ZeroClaw summarize this thread
-
-# Admin commands (group admins only):
-/group prompt You are a concise technical assistant for our engineering team.
-/group ratelimit 20
-```
+1. 📖 Tap **info** on home screen for the setup guide
+2. 🔑 Go to **Settings → Manage API Keys** → add your key
+3. 🧪 Tap **Test Key** → **Check All Models**
+4. 💬 Add your chat app tokens (Telegram, Slack, etc.)
+5. 🧰 Enable tools you want in **Settings → AI Tools**
+6. ▶️ Tap **Start** — done!
 
 ---
 
-## 🔑 Supported LLM Providers
+## 🛠️ Tech Stack
 
-| Provider | Auth | Default Base URL | Notes |
-|---|---|---|---|
-| **OpenAI** | Bearer | `https://api.openai.com/v1` | GPT-4o, o1, o3-mini; Whisper; DALL-E; embeddings |
-| **Google Gemini** | API key | `https://generativelanguage.googleapis.com/v1beta` | Streaming, Google Search grounding, model picker |
-| **Anthropic Claude** | x-api-key | `https://api.anthropic.com/v1` | Extended thinking (claude-3-7-sonnet) |
-| **OpenRouter** | Bearer | `https://openrouter.ai/api/v1` | 400+ models from all providers |
-| **Ollama** | None | `http://127.0.0.1:11434` | Local models on device |
-| **Offline** | None | On-device | MediaPipe `.bin` models, no internet needed |
-| **Custom endpoint** | Bearer | *(your Base URL)* | Modal, LiteLLM, vLLM, any OpenAI-compatible API |
-
----
-
-## 📦 Tech Stack
+<p>
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white" />
+  <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white" />
+  <img src="https://img.shields.io/badge/Material_3-00897B?style=flat-square&logo=materialdesign&logoColor=white" />
+  <img src="https://img.shields.io/badge/Room_DB-003B57?style=flat-square&logo=sqlite&logoColor=white" />
+  <img src="https://img.shields.io/badge/OkHttp-009688?style=flat-square&logo=square&logoColor=white" />
+  <img src="https://img.shields.io/badge/MediaPipe-FF6F00?style=flat-square&logo=tensorflow&logoColor=white" />
+  <img src="https://img.shields.io/badge/WorkManager-3DDC84?style=flat-square&logo=android&logoColor=white" />
+  <img src="https://img.shields.io/badge/Coroutines-7F52FF?style=flat-square&logo=kotlin&logoColor=white" />
+</p>
 
 | Layer | Technology |
 |---|---|
-| Language | Kotlin |
-| UI | Jetpack Compose + Material Design 3 + Dynamic Color |
-| Background | Android Foreground Service + WorkManager (watchdog + widget updates) |
-| HTTP | OkHttp + Retrofit + SSE streaming |
-| WebView | Android WebView (headless) |
-| Storage | Room (messages + vectors + sessions + usage + labels) + DataStore |
-| Vector Search | BM25 + cosine similarity + RRF (on-device) |
-| Embeddings | OpenAI `text-embedding-3-small` / local sentence-transformer |
-| Security | BiometricPrompt + AES-256-GCM (config export + device pairing) |
-| Notifications | NotificationCompat + RemoteInput (quick-reply) |
-| Widget | AppWidgetProvider + RemoteViews |
-| Plugins | Custom ClassLoader sandbox |
-| Serialization | Gson |
-| Navigation | Jetpack Navigation Compose |
-| Offline AI | MediaPipe LlmInference |
-| Image Gen | Pollinations.ai (free) / DALL-E 3 |
-| Speech | OpenAI Whisper (STT) + Android TTS + wake word detection |
-| Messaging | 11 channel integrations |
-| Tunnel | Cloudflare Tunnel / ngrok |
+| 🟣 Language | Kotlin |
+| 🎨 UI | Jetpack Compose + Material Design 3 |
+| ⚙️ Background | Foreground Service + WorkManager |
+| 🌐 HTTP | OkHttp + Retrofit + SSE streaming |
+| 💾 Storage | Room + DataStore |
+| 🔍 Search | BM25 + cosine similarity + RRF |
+| 🔐 Security | BiometricPrompt + AES-256-GCM |
+| 🧠 Offline AI | MediaPipe LlmInference |
+| 🎨 Image Gen | Pollinations.ai / DALL-E 3 |
+| 🎤 Speech | Whisper (STT) + Android TTS |
 
 ---
 
-## 🛣️ Roadmap — Complete Feature Set
+## ⚠️ Work in Progress
 
-All phases are implemented on this branch.
+> **This project is actively being developed.** Some features may not work perfectly yet. I'm continuously fixing bugs and adding improvements.
 
-### ✅ Core Foundation
-- [x] Multi-provider API key manager with unlimited keys ✅
-- [x] cURL import mode ✅
-- [x] Live key testing + Gemini model picker ✅
-- [x] Per-model testing and selection ✅
-- [x] Priority reordering and Set Active key ✅
-- [x] Auto failover (waterfall) ✅
-- [x] Google Search grounding (Gemini) ✅
-- [x] Offline mode (MediaPipe `.bin` models) ✅
-- [x] Live log viewer ✅
-- [x] Cloudflare Tunnel / ngrok integration ✅
-- [x] Starts on device reboot (BootReceiver) ✅
-- [x] Native Material Design 3 UI ✅
+| Status | What it means |
+|--------|--------------|
+| ![](https://img.shields.io/badge/✅_Stable-4CAF50?style=flat-square) | Working and tested |
+| ![](https://img.shields.io/badge/🔧_In_Progress-FF9800?style=flat-square) | Being worked on — may have issues |
+| ![](https://img.shields.io/badge/🐛_Known_Bugs-F44336?style=flat-square) | Has known issues tracked in [BUGS.md](BUGS.md) |
 
-### ✅ Core AI Tools (10 tools)
-- [x] Web Search (DuckDuckGo) ✅
-- [x] Web Fetch (URL + HTML extraction) ✅
-- [x] Memory (persistent per-user, Room/SQLite) ✅
-- [x] PDF Reader (local, URI, remote URL) ✅
-- [x] Image Analysis (vision models) ✅
-- [x] Cron / Scheduled Tasks ✅
-- [x] Status / Diagnostics ✅
-- [x] GitHub (search, READMEs, issues) ✅
-- [x] Notion (search, read, create, append) ✅
-- [x] Email (SendGrid / Mailgun) ✅
+**Found a bug?** Check [BUGS.md](BUGS.md) first — it might already be tracked. If not, [open an issue](https://github.com/ashokvarmamatta/ZeroClawAndroid/issues) and I'll look into it.
 
-### ✅ Extended Toolbox — Phases 85-102 (18 tools)
-- [x] SummarizeTool — extractive summarization ✅
-- [x] TranslateTool — 50+ languages, MyMemory API ✅
-- [x] ImageGenTool — Pollinations.ai + DALL-E 3 ✅
-- [x] SpeechToTextTool — OpenAI Whisper transcription ✅
-- [x] TextToSpeechTool — Android TTS engine ✅
-- [x] CalendarTool — Android calendar events ✅
-- [x] ContactsTool — Android contacts lookup ✅
-- [x] LocationTool — GPS + reverse geocoding ✅
-- [x] CalculatorTool — math expression evaluator ✅
-- [x] RssTool — RSS/Atom feed fetcher ✅
-- [x] QrCodeTool — QR generate + decode ✅
-- [x] FileManagerTool — app storage file ops ✅
-- [x] ClipboardTool — Android clipboard ✅
-- [x] SpotifyTool — Spotify playback control ✅
-- [x] SmartHomeTool — Home Assistant integration ✅
-- [x] BraveTool — Brave Search API ✅
-- [x] BookmarkTool — URL bookmark manager ✅
-
-### ✅ Messaging Channels — Phases 103-109
-- [x] Slack Bot (Events API) ✅
-- [x] Matrix Bot (federated protocol) ✅
-- [x] IRC Bot (TCP socket) ✅
-- [x] Microsoft Teams Bot (Bot Framework) ✅
-- [x] Twitch Chat Bot (IRC/TMI) ✅
-- [x] LINE Bot (Messaging API) ✅
-- [x] WebChat (built-in WebSocket server) ✅
-
-### ✅ Advanced AI Systems — Phases 110-117
-- [x] SystemPromptManager — per-channel/user prompts + templates ✅
-- [x] StreamingResponse — token-level streaming + typing indicators ✅
-- [x] MultiAgent — pipeline orchestration with handoff protocol ✅
-- [x] AgentProfiles — named personas with tool/model config ✅
-- [x] WorkflowEngine — visual multi-step workflow composer ✅
-- [x] ToolLoopDetector — infinite loop prevention ✅
-- [x] ThinkingMode — extended reasoning (Claude + o1/o3) ✅
-- [x] ConversationSummarizer — auto context compression ✅
-
-### ✅ Vector Memory & RAG — Phases 118-122
-- [x] VectorMemory — embedding-based semantic store ✅
-- [x] HybridSearch + RRF — BM25 + vector fusion ✅
-- [x] QueryExpansion — LLM variants + HyDE ✅
-- [x] TemporalDecay — exponential memory freshness ✅
-- [x] SessionManager — session tracking + cross-session recall ✅
-
-### ✅ Infrastructure & Platform — Phases 123-130
-- [x] HooksSystem — pre/post-message pipeline ✅
-- [x] PluginSystem — user-installable sandboxed plugins ✅
-- [x] WebViewTool + MediaPipelineTool ✅
-- [x] RichNotifications + QuickReply ✅
-- [x] BiometricLock ✅
-- [x] DevicePairing — multi-device mDNS + encrypted sync ✅
-- [x] AutoRecovery — watchdog + crash reporter + circuit breaker ✅
-- [x] Platform hardening — Doze, backoff, metrics endpoint ✅
-
-### ✅ Configuration & UX — Phases 131-140
-- [x] ExportImportConfig — AES-encrypted full config backup/restore ✅
-- [x] ThemeManager — 10+ palettes, dark/light/system, dynamic color ✅
-- [x] PerChannelPrompts UI — first-class prompt editor with template gallery ✅
-- [x] RateLimiting — per-user and per-channel message rate limits ✅
-- [x] UsageTracking — token usage, call stats, cost estimation, dashboard ✅
-- [x] ApprovalSystem — human-in-the-loop with notification approve/deny ✅
-- [x] ConversationLabels — colored labels, auto-label rules, cross-channel filter ✅
-- [x] HomeWidget — launcher widget with service status + quick start/stop ✅
-- [x] VoiceInput — WebChat mic input + TTS playback + wake word ✅
-- [x] GroupChatSupport — Telegram/Discord/Slack groups with @mention + admin commands ✅
-
----
-
-## 🚀 NullClaw-Inspired Advanced Features (Phases 141-157)
-
-### Phase 141 — ComposioTool
-- **1000+ OAuth app integrations** via Composio API v3/v2 — GitHub, Gmail, Jira, Notion, Salesforce, Slack, and 250+ more
-- No per-app OAuth setup — Composio handles all authentication server-side
-- Actions: `list_apps`, `list_actions` per app, `execute` any action with parameters
-- Free tier: 100 actions/month. Disabled by default (requires Composio API key)
-
-### Phase 142 — DelegateTool + SpawnTool
-- **DelegateTool** — delegate a task to a named AI persona (coder, analyst, creative, tutor, brief) and wait for the result. Integrates with existing AgentProfileManager profiles
-- **SpawnTool** — fire-off background agents asynchronously, get a `task_id` immediately. Collect results later with `spawn collect task_id=agent_1`
-- Both restricted to depth=1 to prevent infinite agent chains
-- Disabled by default — enable in Settings → AI Tools
-
-### Phase 143 — MessageTool
-- **Proactive messaging** — send messages to Telegram/Discord/Slack channels from cron jobs or agents without waiting for user input
-- Perfect for: morning news digests, price alerts, scheduled summaries
-- Uses `ZeroClawService.sendProactive()` to route through the connected channel manager
-- Disabled by default — enable when you want agents to initiate conversations
-
-### Phase 144 — McpClient (Model Context Protocol)
-- **MCP JSON-RPC 2.0 HTTP client** — connect to any MCP server and auto-discover its tools
-- Discovered tools appear as `mcp_{server}_{tool_name}` in the tool list
-- Compatible with any MCP server: GitHub, filesystem, databases, APIs
-- Disabled by default — requires MCP server URL in Settings → Advanced
-
-### Phase 145 — MMR Reranker + Adaptive Retrieval
-- **MmrReranker** — Maximal Marginal Relevance post-processing after RRF fusion. Filters redundant results using Jaccard token similarity so you get diverse, non-repetitive memory results
-- **AdaptiveRetrieval** — auto-selects keyword-only (technical/short queries), vector-only (long natural language questions), or hybrid (default) based on query analysis
-- No user action needed — both run automatically on every memory search
-
-### Phase 146 — SemanticCache + MemoryHygiene
-- **SemanticCache** — LRU response cache with 80% cosine similarity threshold. Avoids re-calling the LLM for semantically similar questions. Up to 100 entries, 30-minute TTL
-- **MemoryHygiene** — WorkManager 12-hour periodic cycle: archives memories >7 days old, permanently purges archived memories >30 days old. Pinned memories are never deleted
-
-### Phase 147 — Context Compaction (enhanced)
-- Existing ConversationSummarizer enhanced with three modes: auto (75% threshold), force (drops messages, no LLM), trim (hard cap at 50 messages)
-
-### Phase 148 — A2AServer (Agent-to-Agent Protocol)
-- **Google A2A spec** implementation — exposes `GET /a2a/agent-card.json` (capabilities) and `POST /a2a` (JSON-RPC 2.0 task endpoint)
-- Task state machine: `SUBMITTED → WORKING → COMPLETED/FAILED`
-- Other AI agents can discover and delegate tasks to your ZeroClaw agent
-- Disabled by default — requires Web Chat enabled
-
-### Phase 149 — ProviderRouter (Hint-Based Routing)
-- **Hint prefixes** route messages to the best provider for that task:
-  - `hint:reasoning` → Claude Sonnet/Opus or o1
-  - `hint:vision` → GPT-4o or Gemini Vision
-  - `hint:fast` → Haiku or GPT-4o-mini
-  - `hint:code` → Claude or GPT-4
-  - `hint:creative` → GPT-4o or Claude Sonnet
-  - `hint:long` → Gemini (long context)
-- Per-model fallback chains (GPT-4o → GPT-4o-mini → GPT-3.5 etc.)
-
-### Phase 150 — AgentIdentity (AIEOS v1.1)
-- **Structured agent identity**: MBTI personality type, OCEAN big-five trait scores (0-100), catchphrases, forbidden words, core values, communication style
-- Default: INTJ Mastermind — strategic, direct, precise
-- Identity compiled into system prompt prefix for every LLM call
-
-### Phase 151 — PushoverTool
-- **Push notifications to any device** via Pushover API (iOS, Android, desktop)
-- Priority levels: quiet (−1), normal (0), high (1), emergency (2, requires acknowledgment)
-- Optional URL attachment, custom title
-- Free tier: 10,000 messages/month. Disabled by default (requires Pushover token + user key)
-
-### Phase 156 — AuditLog
-- **Tamper-evident JSONL log** of every tool execution: timestamp, tool name, args, result summary, duration, and hash chain
-- Daily log rotation, 30 days retained
-- Enabled by default (passive, negligible overhead)
-
-### Settings Redirect Buttons
-- Every Settings section now has an **ⓘ info button** that opens the relevant Info guide tab
-- No more guessing what a feature does — tap ⓘ to read a plain-language explanation before enabling
-
----
-
-## ✅ NullClaw Features Checklist
-
-- [x] ComposioTool — 1000+ app integrations ✅
-- [x] DelegateTool — named agent delegation ✅
-- [x] SpawnTool — async background agents ✅
-- [x] MessageTool — proactive cross-channel messaging ✅
-- [x] McpClient — MCP JSON-RPC 2.0 HTTP client ✅
-- [x] MmrReranker — Jaccard diversity reranking ✅
-- [x] AdaptiveRetrieval — auto keyword/vector/hybrid ✅
-- [x] SemanticCache — LRU cosine similarity cache ✅
-- [x] MemoryHygiene — 12h archive/purge WorkManager ✅
-- [x] A2AServer — Google A2A agent protocol ✅
-- [x] ProviderRouter — hint-based model routing ✅
-- [x] AgentIdentity — AIEOS v1.1 MBTI/OCEAN ✅
-- [x] PushoverTool — push notifications ✅
-- [x] AuditLog — tamper-evident JSONL log ✅
-- [x] Settings ⓘ redirect buttons to Info guide ✅
+**Feature not working?** Some features depend on specific API keys or device capabilities. Check the in-app **Info Guide** (tap ℹ️ on any Settings section) for setup instructions.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how to get started:
-
-1. Fork the repo
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Commit your changes: `git commit -m 'Add my feature'`
-4. Push: `git push origin feature/my-feature`
-5. Open a Pull Request
-
-Please open an issue first for large changes so we can discuss the approach.
+Contributions welcome! Fork the repo, create a feature branch, and open a Pull Request.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
 ## 🙏 Acknowledgements
 
-### Built on ZeroClaw
-This Android app is built on top of the [**ZeroClaw**](https://github.com/zeroclaw-labs/zeroclaw) project by [ZeroClaw Labs](https://github.com/zeroclaw-labs). ZeroClaw Android extends it into a production-grade, fully self-hosted AI agent platform — 11 messaging channels, 30 AI tools, advanced AI orchestration, vector memory with RAG, complete infrastructure platform, and polished configuration & UX. All running on your Android device.
-
-### Libraries & Services
-- [Telegram Bot API](https://core.telegram.org/bots/api) — [Twilio](https://www.twilio.com) — [Discord Gateway](https://discord.com/developers/docs/topics/gateway)
-- [Slack API](https://api.slack.com) — [Matrix Spec](https://spec.matrix.org) — [Microsoft Bot Framework](https://dev.botframework.com)
-- [Twitch TMI](https://dev.twitch.tv) — [LINE Messaging API](https://developers.line.biz)
-- [OpenAI API](https://platform.openai.com) (GPT + Whisper + DALL-E + Embeddings)
-- [Google Gemini API](https://ai.google.dev) — [Anthropic API](https://docs.anthropic.com)
-- [OpenRouter](https://openrouter.ai) — [Ollama](https://ollama.com)
-- [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference)
-- [Pollinations.ai](https://pollinations.ai) — free AI image generation
-- [Brave Search API](https://brave.com/search/api/) — [MyMemory Translation](https://mymemory.translated.net)
-- [Composio](https://composio.dev) — 1000+ OAuth app integrations
-- [Pushover](https://pushover.net) — push notifications API
-- [Model Context Protocol](https://modelcontextprotocol.io) — MCP tool server standard
-- [NullClaw](https://github.com/nullclaw/nullclaw) — advanced agent patterns (MMR, A2A, AIEOS, hint routing)
-- [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
-- [Android BiometricPrompt](https://developer.android.com/training/sign-in/biometric-auth)
-- [WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager)
-- [Jetpack Compose](https://developer.android.com/compose) — [Material Design 3](https://m3.material.io)
-- [Room](https://developer.android.com/training/data-storage/room) — [DataStore](https://developer.android.com/topic/libraries/architecture/datastore)
-- [OkHttp](https://square.github.io/okhttp/) — [Retrofit](https://square.github.io/retrofit/)
+Built on [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) by ZeroClaw Labs. Advanced features inspired by [NullClaw](https://github.com/nullclaw/nullclaw) and [OpenClaw](https://github.com/openclaw/openclaw).
 
 ---
 
 <div align="center">
-Made with ❤️ — built to run on your pocket supercomputer
+
+**🦀 Built to run on your pocket supercomputer**
+
+<br/>
+
+### Built by [Ashok Varma Matta](https://github.com/ashokvarmamatta)
+
+<p align="center">
+  <a href="https://github.com/ashokvarmamatta"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" /></a>&nbsp;
+  <a href="https://www.linkedin.com/in/ashokvarmamatta"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn" /></a>&nbsp;
+  <a href="https://ashokvarmamatta.github.io/portfolio/"><img src="https://img.shields.io/badge/Portfolio-00D4AA?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Portfolio" /></a>&nbsp;
+  <a href="mailto:mashokvarma1997@gmail.com"><img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email" /></a>
+</p>
+
+<br/>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:00D4AA,100:7C5CFC&height=80&section=footer" width="100%"/>
+
 </div>

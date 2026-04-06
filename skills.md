@@ -2,11 +2,15 @@
 
 ## 🦀 What We're Building
 A native Android app that:
-1. Runs ZeroClaw AI agent as a persistent background service
-2. Exposes ZeroClaw via a tunnel (Cloudflare/ngrok) for webhook access
-3. Connects to Telegram Bot API (send/receive messages via AI)
-4. Connects to WhatsApp via Twilio API
-5. Has a dashboard UI to monitor agent status, logs, message history
+1. Runs ZeroClaw AI agent as a persistent background service (24/7 daemon)
+2. Connects to **11 messaging channels** (Telegram, Discord, Slack, WhatsApp, Matrix, Teams, Twitch, LINE, IRC, Signal, Email)
+3. Provides **36 built-in AI tools** (web search, fetch, RSS, image gen, translate, etc.)
+4. Runs **autonomous agents** — 25+ templates + 21 free API data sources + web scraping with AI extraction
+5. Serves an **API for external apps** — `/api/generate`, `/api/chat`, OpenAI-compatible `/v1/chat/completions`
+6. Has a full dashboard UI with agents screen, tool playground, live logs, multi-key management
+7. Supports offline models via MediaPipe LLM Inference
+
+**Active branch:** `feat/curl-api-generator` (Phases 1-169)
 
 ---
 
@@ -113,5 +117,9 @@ MVVM + Clean Architecture
 ---
 
 ## 🔗 Resumption Tip
-When resuming in a new chat, always reference plan.md for current status.
-Then reference this SKILL.md for technology decisions.
+When resuming in a new chat, read files in this order:
+1. `plan.md` — current state, what's done, what's pending
+2. `blueprint.md` — full architecture, components, DB schema, navigation
+3. `skills.md` (this file) — technology decisions
+4. `permissions.md` — Android permissions & Play Store compliance
+5. `bugs.md` — all past bugs and fixes

@@ -143,6 +143,9 @@ class MatrixBotManager(private val context: Context) {
         }
     }
 
+    /** Public API for proactive messaging from agents/crons. */
+    fun sendProactiveMessage(roomId: String, text: String) = sendMessage(roomId, text)
+
     private fun sendMessage(roomId: String, text: String) {
         val txnId = "zclaw_${System.currentTimeMillis()}"
         val json = JSONObject().apply {
