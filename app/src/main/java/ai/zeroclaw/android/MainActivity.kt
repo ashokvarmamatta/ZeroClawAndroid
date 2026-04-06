@@ -21,6 +21,7 @@ import ai.zeroclaw.android.ui.ApiKeysScreen
 import ai.zeroclaw.android.ui.HomeScreen
 import ai.zeroclaw.android.ui.InfoScreen
 import ai.zeroclaw.android.ui.SettingsScreen
+import ai.zeroclaw.android.ui.ChatScreen
 import ai.zeroclaw.android.ui.ToolPlaygroundScreen
 import ai.zeroclaw.android.ui.theme.ZeroClawTheme
 
@@ -73,7 +74,8 @@ fun ZeroClawNavHost(initialRoute: String? = null) {
                 onNavigateToSettings   = { navController.navigate("settings") },
                 onNavigateToInfo       = { navController.navigate("info") },
                 onNavigateToPlayground = { navController.navigate("tool_playground") },
-                onNavigateToAgents     = { navController.navigate("agents") }
+                onNavigateToAgents     = { navController.navigate("agents") },
+                onNavigateToChat       = { navController.navigate("chat") }
             )
         }
 
@@ -114,6 +116,13 @@ fun ZeroClawNavHost(initialRoute: String? = null) {
 
         composable("agents") {
             AgentsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable("chat") {
+            ChatScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToAgents = { navController.navigate("agents") }
+            )
         }
     }
 }

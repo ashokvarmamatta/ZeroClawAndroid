@@ -212,30 +212,42 @@ class HomeWidget : AppWidgetProvider() {
             views.setViewVisibility(R.id.widget_last_activity, View.GONE)
         }
 
-        // ═══ Quick action buttons ═══
-        // Agents button
-        val agentsIntent = Intent(context, HomeWidget::class.java).apply { action = ACTION_WIDGET_OPEN_AGENTS }
-        val agentsPending = PendingIntent.getBroadcast(
-            context, widgetId + 1000, agentsIntent,
+        // ═══ Quick action buttons — use PendingIntent.getActivity directly ═══
+        // Agents button → opens Agents screen
+        val agentsActivityIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("navigate_to", "agents")
+        }
+        val agentsPending = PendingIntent.getActivity(
+            context, widgetId + 1000, agentsActivityIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         views.setOnClickPendingIntent(R.id.widget_btn_agents, agentsPending)
 
-        // Chat button
-        val chatIntent = Intent(context, HomeWidget::class.java).apply { action = ACTION_WIDGET_OPEN_CHAT }
-        val chatPending = PendingIntent.getBroadcast(
-            context, widgetId + 2000, chatIntent,
+        // Chat button → opens Chat screen
+        val chatActivityIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("navigate_to", "chat")
+        }
+        val chatPending = PendingIntent.getActivity(
+            context, widgetId + 2000, chatActivityIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         views.setOnClickPendingIntent(R.id.widget_btn_chat, chatPending)
 
-        // ═══ Tap root to open app ═══
+        // ═══ Tap title area to open app (NOT root — root swallows child clicks) ═══
         val openIntent = PendingIntent.getActivity(
-            context, 0,
-            Intent(context, MainActivity::class.java),
+            context, widgetId + 3000,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        views.setOnClickPendingIntent(R.id.widget_root, openIntent)
+        views.setOnClickPendingIntent(R.id.widget_title, openIntent)
+        views.setOnClickPendingIntent(R.id.widget_status_pill, openIntent)
+        views.setOnClickPendingIntent(R.id.widget_bots_row, openIntent)
+        views.setOnClickPendingIntent(R.id.widget_agents_info, openIntent)
+        views.setOnClickPendingIntent(R.id.widget_last_activity, openIntent)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

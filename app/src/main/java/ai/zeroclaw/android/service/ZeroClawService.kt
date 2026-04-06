@@ -194,6 +194,7 @@ class ZeroClawService : Service() {
                         tunnelUrl = url
                         log("Tunnel: $url")
                         updateNotification("Live: $url")
+                        HomeWidget.broadcastUpdate(this@ZeroClawService)
                     },
                     onStatusChange = { statusMsg ->
                         log("Tunnel: $statusMsg")
@@ -359,6 +360,17 @@ class ZeroClawService : Service() {
                     log("WebChat: server started on :8088")
                 } catch (e: Exception) {
                     log("WebChat error: ${e.message}")
+                }
+            }
+
+            // Widget update — refresh after bots have connected (5s delay)
+            launch {
+                delay(5000L)
+                HomeWidget.broadcastUpdate(this@ZeroClawService)
+                // Then refresh every 30s for live activity state
+                while (isActive) {
+                    delay(30_000L)
+                    HomeWidget.broadcastUpdate(this@ZeroClawService)
                 }
             }
 
