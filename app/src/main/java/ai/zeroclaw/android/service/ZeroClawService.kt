@@ -65,6 +65,14 @@ class ZeroClawService : Service() {
         @Volatile var twitchConnected   = false
         @Volatile var lineConnected     = false
         @Volatile var webChatRunning    = false
+
+        // ── Activity state for widget ─────────────────────────────────
+        // Possible values: "idle", "processing", "sending", "fetching", "agent_run"
+        @Volatile var activityState: String = "idle"
+        @Volatile var lastActivityDetail: String = ""   // e.g. "Telegram: user123"
+        @Volatile var totalMessagesHandled: Long = 0
+        @Volatile var lastAgentRun: String = ""         // e.g. "Gold Prices — success"
+        @Volatile var activeAgentCount: Int = 0
         val recentLogs = ArrayDeque<String>(50)
         // Detailed per-conversation trace — cleared at start of each new user message
         val conversationLogs = ArrayDeque<String>(200)

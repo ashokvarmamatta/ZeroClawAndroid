@@ -367,8 +367,13 @@ class LlmRouter(private val context: Context) {
     // ── Main entry point — waterfall failover ─────────────────────────────────
 
     suspend fun call(userMessage: String, chatId: String = "default"): String {
+        ai.zeroclaw.android.service.ZeroClawService.activityState = "processing"
+        ai.zeroclaw.android.service.ZeroClawService.lastActivityDetail = chatId.take(20)
+        ai.zeroclaw.android.service.ZeroClawService.totalMessagesHandled++
+        try {
         val allKeys = keyManager.loadKeys().filter { it.enabled }
         if (allKeys.isEmpty()) {
+            ai.zeroclaw.android.service.ZeroClawService.activityState = "idle"
             return "⚠️ No API keys configured. Open Settings → Manage API Keys to add one."
         }
 
@@ -727,6 +732,10 @@ class LlmRouter(private val context: Context) {
         } else {
             "⚠️ All $failedCount/$totalCount API keys failed (online + offline). " +
             "Check your keys in Settings → Manage API Keys, then restart the service."
+        }
+        } finally {
+            ai.zeroclaw.android.service.ZeroClawService.activityState = "idle"
+            ai.zeroclaw.android.service.ZeroClawService.lastActivityDetail = ""
         }
     }
 

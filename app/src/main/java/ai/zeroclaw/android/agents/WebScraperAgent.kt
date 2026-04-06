@@ -5,6 +5,7 @@ import ai.zeroclaw.android.agents.api.FreeApiRegistry
 import ai.zeroclaw.android.data.AgentResultDatabase
 import ai.zeroclaw.android.data.AgentResultEntity
 import ai.zeroclaw.android.data.LlmRouter
+import ai.zeroclaw.android.service.HomeWidget
 import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolSystem
 import ai.zeroclaw.android.telegram.TelegramBotManager
@@ -30,6 +31,8 @@ class WebScraperAgent(private val context: Context) {
     suspend fun run(agent: AgentConfig) {
         val runId = UUID.randomUUID().toString()
         ZeroClawService.log("AGENT[${agent.name}]: starting run → ${agent.url}")
+        ZeroClawService.activityState = "agent_run"
+        ZeroClawService.lastActivityDetail = agent.name
 
         // ── Step 1: Try direct free API first (Phase 166) ────────────────────
         val apiParams = buildApiParams(agent)
@@ -427,6 +430,11 @@ OUTPUT (start directly with the extracted data, following the reference format a
         deliveredTo: List<String>, errorMessage: String,
         usedApi: Boolean, contentHash: Int
     ) {
+        // Update widget activity state
+        ZeroClawService.lastAgentRun = "${agent.name} — $status"
+        ZeroClawService.activityState = "idle"
+        ZeroClawService.lastActivityDetail = ""
+        HomeWidget.broadcastUpdate(context)
         try {
             val deliveredJson = org.json.JSONArray(deliveredTo).toString()
             resultDb.insert(AgentResultEntity(

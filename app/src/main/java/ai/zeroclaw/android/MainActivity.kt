@@ -28,6 +28,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Widget deep-link: navigate_to = "agents" | "home"
+        val navigateTo = intent?.getStringExtra("navigate_to")
+
         setContent {
             val themeMode by ThemeManager.themeFlow(this)
                 .collectAsState(initial = ThemeManager.ThemeMode.SYSTEM)
@@ -36,16 +40,32 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ZeroClawNavHost()
+                    ZeroClawNavHost(initialRoute = navigateTo)
                 }
             }
         }
     }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        // Handle widget taps when activity is already running
+        // The NavHost startDestination is set on create; subsequent intents
+        // would need navController access. For simplicity, re-create works fine
+        // since FLAG_ACTIVITY_CLEAR_TOP restarts the activity.
+    }
 }
 
 @Composable
-fun ZeroClawNavHost() {
+fun ZeroClawNavHost(initialRoute: String? = null) {
     val navController = rememberNavController()
+
+    // Deep-link from widget: navigate after NavHost is ready
+    androidx.compose.runtime.LaunchedEffect(initialRoute) {
+        if (initialRoute != null && initialRoute != "home") {
+            navController.navigate(initialRoute)
+        }
+    }
+
     NavHost(navController = navController, startDestination = "home") {
 
         composable("home") {

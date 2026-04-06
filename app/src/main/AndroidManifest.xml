@@ -88,6 +88,8 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="${applicationId}.WIDGET_START" />
                 <action android:name="${applicationId}.WIDGET_STOP" />
+                <action android:name="${applicationId}.WIDGET_OPEN_AGENTS" />
+                <action android:name="${applicationId}.WIDGET_OPEN_CHAT" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
