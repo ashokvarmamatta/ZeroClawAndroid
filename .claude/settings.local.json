@@ -155,7 +155,13 @@
       "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew kaptDebugKotlin --stacktrace)",
       "Bash(grep:*)",
       "Bash(gh gist:*)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(mkdir:*)",
+      "Bash(wc -l /tmp/zeroclaw-docs/ZeroClawAndroid/*)",
+      "Bash(rm:*)",
+      "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew installDebug)",
+      "Bash(adb pull:*)",
+      "Bash(rm:*take chant screen screenshot again)"
     ]
   }
 }
