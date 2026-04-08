@@ -42,3 +42,7 @@ test_screenshots/
 
 # ProGuard
 /proguard/
+
+# Private dev docs — local only, never pushed
+PLAN_FULL.md
+GOOGLE_AI_EDGE_GALLERY_ANALYSIS.md

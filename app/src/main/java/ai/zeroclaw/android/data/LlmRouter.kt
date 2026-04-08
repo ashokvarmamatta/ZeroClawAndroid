@@ -2872,7 +2872,7 @@ class LlmRouter(private val context: Context) {
         }
     }
 
-    // ── Offline model (MediaPipe LlmInference) ──────────────────────────────
+    // ── Offline model (LiteRT LM Engine+Conversation) ──────────────────────
 
     private suspend fun callOffline(message: String, preferredModel: String, history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT, prefill: String = ""): String {
         val manager = OfflineModelManager.getInstance(context)
@@ -2880,36 +2880,39 @@ class LlmRouter(private val context: Context) {
             val models = manager.listAppModels()
             val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
             if (match != null && manager.getLoadedModelPath() != match.path) {
-                manager.loadModel(match.path).getOrThrow()
+                // LiteRT LM models get larger context; legacy .bin models stay at 1024
+                val maxTokens = if (match.isLiteRtFormat) 4096 else 1024
+                manager.loadModel(match.path, maxTokens = maxTokens, systemInstruction = systemPrompt).getOrThrow()
             }
         }
         if (!manager.isModelLoaded()) {
             throw Exception("No offline model loaded — import one in Settings → API Keys")
         }
-        // Build prompt with conversation history
-        val historyText = if (history.isNotEmpty()) {
-            history.joinToString("\n") { msg ->
+
+        // LiteRT LM Conversation maintains history automatically via sendMessageAsync().
+        // For the first call or when conversation context doesn't include history yet,
+        // we send just the user message — the Conversation object handles multi-turn.
+        // For legacy compatibility with the Pass 2 pipeline that sends synthetic prompts
+        // with history baked in, we detect if history is provided and format accordingly.
+        val prompt = if (history.isNotEmpty() && history.size > 1) {
+            // Pass 2 / summarizer calls: send the full context as a single message
+            // since these are one-shot calls, not multi-turn conversations
+            val historyText = history.joinToString("\n") { msg ->
                 if (msg.role == "user") "User: ${msg.content}" else "Assistant: ${msg.content}"
-            } + "\n"
-        } else ""
-        // Offline models have a hard token limit (1024 tokens). MediaPipe ABORTS (not
-        // catchable!) if input_size >= maxTokens. Real ratio is ~1.7 chars/token for
-        // mixed content, NOT 3:1. Budget: 1024 tokens * 1.4 chars/token * 0.90 = ~1290 chars total.
-        val totalBudget = 1290
-        val overhead = systemPrompt.length + historyText.length + 40 // "User: \nAssistant:" etc.
-        val maxMsgChars = (totalBudget - overhead).coerceAtLeast(200)
-        val safeMessage = if (message.length > maxMsgChars) {
-            ZeroClawService.log("Offline: message truncated ${message.length} → $maxMsgChars chars")
-            message.take(maxMsgChars) + "…"
-        } else message
-        val fullPrompt = "$systemPrompt\n\n${historyText}User: $safeMessage\nAssistant:$prefill"
-        val raw = manager.generateResponse(fullPrompt)
-        // Offline models sometimes keep generating past their response into a fake user turn.
-        // Strip everything from the first "\nUser:" or "\nHuman:" onwards.
+            }
+            "$historyText\nUser: $message"
+        } else {
+            // Normal chat: just send the user message, Conversation handles history
+            if (prefill.isNotBlank()) "$message\n$prefill" else message
+        }
+
+        val raw = manager.generateResponse(prompt)
+
+        // Strip leaked user-turn continuations (model keeps generating past its response)
         val trimmed = raw
             .split(Regex("\n+(?:User|Human)\\s*:", RegexOption.IGNORE_CASE)).first()
             .trim()
-        return if (prefill.isNotBlank()) "$prefill$trimmed" else trimmed
+        return if (prefill.isNotBlank() && !trimmed.startsWith(prefill)) "$prefill$trimmed" else trimmed
     }
 
     private suspend fun validateOffline(preferredModel: String): ValidationResult {
@@ -2918,7 +2921,7 @@ class LlmRouter(private val context: Context) {
 
         if (models.isEmpty()) {
             return ValidationResult(false,
-                "❌ No models imported. Use the file picker in Settings → API Keys to import a .bin model.")
+                "❌ No models imported. Use the file picker in Settings → API Keys to import a .bin or .litertlm model.")
         }
 
         val modelNames = models.map { m -> m.name }
@@ -2927,7 +2930,8 @@ class LlmRouter(private val context: Context) {
         if (preferredModel.isNotBlank()) {
             val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
             if (match != null) {
-                val loadResult = manager.loadModel(match.path)
+                val maxTokens = if (match.isLiteRtFormat) 4096 else 1024
+                val loadResult = manager.loadModel(match.path, maxTokens = maxTokens)
                 if (loadResult.isFailure) {
                     return ValidationResult(false,
                         "❌ Failed to load ${match.name}: ${loadResult.exceptionOrNull()?.message}",
@@ -2935,15 +2939,15 @@ class LlmRouter(private val context: Context) {
                 }
                 // Send test prompt
                 val testResponse = try {
-                    val prompt = "Say hello in one word.\nAssistant:"
-                    manager.generateResponse(prompt)
+                    manager.generateResponse("Say hello in one word.")
                 } catch (e: Exception) {
                     return ValidationResult(false,
                         "⚠️ Model loaded but test prompt failed: ${e.message}",
                         modelNames, "")
                 }
+                val engineLabel = if (match.isLiteRtFormat) "LiteRT LM" else "legacy"
                 return ValidationResult(true,
-                    "✅ Offline model loaded: ${match.name} (${match.sizeMB})",
+                    "✅ Offline model loaded: ${match.name} (${match.sizeMB}, $engineLabel)",
                     modelNames, testResponse)
             }
         }

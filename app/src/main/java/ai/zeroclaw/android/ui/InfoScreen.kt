@@ -356,7 +356,7 @@ fun AboutTabContent() {
                     ArchRow("Background", "Foreground Service + Boot Receiver")
                     ArchRow("Networking", "OkHttp + Retrofit")
                     ArchRow("Storage", "Room DB + DataStore Preferences")
-                    ArchRow("Offline AI", "MediaPipe GenAI")
+                    ArchRow("Offline AI", "LiteRT LM (Gemma 4)")
                     ArchRow("Tunneling", "Cloudflare Tunnel / ngrok")
                 }
             }

@@ -7,6 +7,24 @@
 
 ---
 
+## BUG-35 — LiteRT LM SDK requires Kotlin 2.2.0+ and Room 2.7+ (build failure)
+- **Phase:** 178 (LiteRT LM Migration)
+- **Status:** ✅ Fixed
+- **Severity:** Build-blocking
+- **Symptom:** After replacing `com.google.mediapipe:tasks-genai` with `com.google.ai.edge.litertlm:litertlm-android:0.10.0`, build fails with two sequential errors:
+  1. `Provided Metadata instance has version 2.2.0, while maximum supported version is 2.0.0` — Room 2.6.1's kapt annotation processor can't read Kotlin 2.2.0 metadata.
+  2. `Argument type mismatch: actual type is 'Map<String, String>?', but 'Map<String, Any>' was expected` — LiteRT LM's `sendMessageAsync` expects `Map<String, Any>`, not nullable `Map<String, String>?`.
+- **Root Cause:** LiteRT LM SDK 0.10.0 is compiled with Kotlin 2.3.0 metadata, requiring Kotlin 2.2.0+ in the host project. This cascades: Kotlin 2.2.0 requires Room 2.7+ (or switch from kapt to KSP), and the old `composeOptions { kotlinCompilerExtensionVersion }` must be replaced with the `kotlin-compose` Gradle plugin.
+- **Fix:**
+  1. Upgraded Kotlin 1.9.23 → 2.2.0
+  2. Upgraded Room 2.6.1 → 2.7.1
+  3. Switched from `kapt` to `ksp` for Room compiler
+  4. Added `kotlin-compose` plugin, removed `composeOptions` block
+  5. Changed `extraContext` type from `Map<String, String>?` to `Map<String, Any>`
+- **Lesson:** When adopting a new Google SDK, always check its Kotlin metadata version first. LiteRT LM requires a modern Kotlin toolchain. Plan for cascading dependency upgrades (Kotlin → Room → kapt→KSP → Compose plugin).
+
+---
+
 ## BUG-33 — Chat image analysis fails with "Missing source parameter"
 - **Phase:** 177 (Chat Screen)
 - **Status:** ✅ Fixed

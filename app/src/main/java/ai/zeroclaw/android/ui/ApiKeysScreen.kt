@@ -27,16 +27,25 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import ai.zeroclaw.android.data.ApiKeyEntry
+import ai.zeroclaw.android.data.CatalogModel
 import ai.zeroclaw.android.data.LlmKeyManager
 import ai.zeroclaw.android.data.LlmProvider
 import ai.zeroclaw.android.data.LlmRouter
+import ai.zeroclaw.android.data.ModelCatalog
+import ai.zeroclaw.android.data.ModelDownloadProgress
+import ai.zeroclaw.android.data.ModelDownloadState
+import ai.zeroclaw.android.data.ModelDownloadWorker
 import ai.zeroclaw.android.data.OfflineModelManager
 import kotlinx.coroutines.launch
 
@@ -524,6 +533,56 @@ fun OfflineModeSection(
 ) {
     val isActive = offlineKey?.enabled == true
     val loadedModel = offlineManager.loadedModelName.collectAsState().value
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+
+    // Track download progress for catalog models
+    val downloadProgress = remember { mutableStateMapOf<String, ModelDownloadProgress>() }
+    // Check files on disk directly — appModels may be stale after download
+    val modelsDir = remember { java.io.File(context.filesDir, "offline_models") }
+    // Refresh trigger: changes when appModels changes OR when a download completes
+    val downloadedCount = downloadProgress.values.count { it.state == ModelDownloadState.DOWNLOADED }
+    val existingFiles = remember(appModels, downloadedCount) {
+        (modelsDir.listFiles()?.map { it.name }?.toSet() ?: emptySet())
+    }
+
+    // Observe WorkManager for active downloads
+    LaunchedEffect(Unit) {
+        ModelCatalog.models.forEach { catalogModel ->
+            val workName = "download_${catalogModel.id}"
+            WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkLiveData(workName)
+                .observeForever { workInfos ->
+                    val info = workInfos?.firstOrNull() ?: return@observeForever
+                    when (info.state) {
+                        WorkInfo.State.RUNNING -> {
+                            val p = info.progress.getFloat(ModelDownloadWorker.KEY_PROGRESS, 0f)
+                            val recv = info.progress.getLong(ModelDownloadWorker.KEY_RECEIVED_BYTES, 0L)
+                            val speed = info.progress.getLong(ModelDownloadWorker.KEY_SPEED, 0L)
+                            downloadProgress[catalogModel.id] = ModelDownloadProgress(
+                                state = ModelDownloadState.DOWNLOADING, progress = p,
+                                bytesDownloaded = recv, speedBytesPerSec = speed
+                            )
+                        }
+                        WorkInfo.State.SUCCEEDED -> {
+                            downloadProgress[catalogModel.id] = ModelDownloadProgress(
+                                state = ModelDownloadState.DOWNLOADED, progress = 1f
+                            )
+                        }
+                        WorkInfo.State.FAILED -> {
+                            downloadProgress[catalogModel.id] = ModelDownloadProgress(
+                                state = ModelDownloadState.FAILED,
+                                error = info.outputData.getString("error")
+                            )
+                        }
+                        WorkInfo.State.CANCELLED -> {
+                            downloadProgress.remove(catalogModel.id)
+                        }
+                        else -> {}
+                    }
+                }
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -576,7 +635,7 @@ fun OfflineModeSection(
                 }
             }
 
-            // ── Loading indicator ────────────────────────────────────────
+            // ── Loading / Importing indicators ───────────────────────────
             if (isLoading) {
                 Surface(shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primaryContainer) {
@@ -584,12 +643,10 @@ fun OfflineModeSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Text("Loading model… this may take a moment", fontSize = 12.sp)
+                        Text("Loading model... this may take a moment", fontSize = 12.sp)
                     }
                 }
             }
-
-            // ── Importing indicator ──────────────────────────────────────
             if (isImporting) {
                 Surface(shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primaryContainer) {
@@ -597,7 +654,7 @@ fun OfflineModeSection(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                        Text("Importing model to app storage…", fontSize = 11.sp)
+                        Text("Importing model to app storage...", fontSize = 11.sp)
                     }
                 }
             }
@@ -607,9 +664,9 @@ fun OfflineModeSection(
                 ValidationCard(validation)
             }
 
-            // ── App Storage Models ───────────────────────────────────────
+            // ── Downloaded Models (in App Storage) ───────────────────────
             if (appModels.isNotEmpty()) {
-                Text("📦 Models in App Storage", fontSize = 12.sp,
+                Text("📦 My Models", fontSize = 13.sp,
                     fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
                 appModels.forEach { model ->
                     OfflineModelRow(
@@ -621,29 +678,414 @@ fun OfflineModeSection(
                         loadingThis = isLoading && offlineKey?.safePreferredModel != model.name
                     )
                 }
+                Spacer(Modifier.height(4.dp))
             }
 
-            // ── Import Model button ──────────────────────────────────────
-            Button(
+            // ── Model Catalog (Available for Download) ──────────────────
+            Text("🌐 Available Models", fontSize = 13.sp,
+                fontWeight = FontWeight.Bold, color = Color(0xFF1976D2))
+            Text("Tap Download to get a model. One-time download, then works offline forever.",
+                fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 14.sp)
+
+            ModelCatalog.models.forEach { catalogModel ->
+                val fileOnDisk = existingFiles.contains(catalogModel.fileName)
+                val progress = downloadProgress[catalogModel.id]
+                val isDownloading = progress?.state == ModelDownloadState.DOWNLOADING
+                val isLoaded2 = loadedModel == catalogModel.fileName
+
+                CatalogModelCard(
+                    model = catalogModel,
+                    isDownloaded = fileOnDisk,
+                    isDownloading = isDownloading,
+                    isActive = isLoaded2,
+                    progress = progress,
+                    onDownload = {
+                        downloadProgress[catalogModel.id] = ModelDownloadProgress(
+                            state = ModelDownloadState.DOWNLOADING
+                        )
+                        ModelDownloadWorker.enqueue(context, catalogModel)
+                    },
+                    onCancel = {
+                        ModelDownloadWorker.cancel(context, catalogModel.id)
+                        downloadProgress.remove(catalogModel.id)
+                    },
+                    onOpenLink = { uriHandler.openUri(catalogModel.learnMoreUrl) },
+                    onActivate = {
+                        // Load from disk — build ModelFile and call onLoadModel
+                        val file = java.io.File(modelsDir, catalogModel.fileName)
+                        if (file.exists()) {
+                            val mf = OfflineModelManager.ModelFile(
+                                file.name, file.absolutePath, file.length(), true
+                            )
+                            onLoadModel(mf)
+                        }
+                    }
+                )
+            }
+
+            // ── Manual Import (legacy) ───────────────────────────────────
+            Spacer(Modifier.height(2.dp))
+            OutlinedButton(
                 onClick = onPickModel,
                 enabled = !isImporting,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF795548)
-                ),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF795548).copy(alpha = 0.5f))
             ) {
-                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(16.dp),
+                    tint = Color(0xFF795548))
                 Spacer(Modifier.width(8.dp))
-                Text(if (appModels.isEmpty()) "Import Model File (.bin)" else "Import Another Model",
-                    fontSize = 13.sp)
+                Text("Import Model from File", fontSize = 12.sp, color = Color(0xFF795548))
+            }
+            Text("Have a .bin or .litertlm file already? Import it directly.",
+                fontSize = 10.sp, lineHeight = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp))
+        }
+    }
+}
+
+// ── Catalog Model Card ──────────────────────────────────────────────────────
+
+@Composable
+fun CatalogModelCard(
+    model: CatalogModel,
+    isDownloaded: Boolean,
+    isDownloading: Boolean,
+    isActive: Boolean,
+    progress: ModelDownloadProgress?,
+    onDownload: () -> Unit,
+    onCancel: () -> Unit,
+    onOpenLink: () -> Unit,
+    onActivate: () -> Unit
+) {
+    var showSettings by remember { mutableStateOf(false) }
+    // Edge Gallery-style config state
+    var selectedAccelerator by remember { mutableStateOf("CPU") }
+    var temperature by remember { mutableFloatStateOf(model.defaultTemperature) }
+    var topK by remember { mutableIntStateOf(model.defaultTopK) }
+    var maxTokens by remember { mutableIntStateOf(model.defaultMaxTokens) }
+    val badgeColor = when (model.badge) {
+        "BEST" -> Color(0xFF4CAF50)
+        "PRO" -> Color(0xFF1976D2)
+        "TINY" -> Color(0xFFFF9800)
+        "NEW" -> Color(0xFFE91E63)
+        else -> null
+    }
+
+    // Clean state-based colors
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val cardBg = when {
+        isActive -> surfaceColor  // clean white/dark, border does the work
+        isDownloaded -> surfaceColor
+        isDownloading -> surfaceColor
+        else -> surfaceColor
+    }
+    val borderColor = when {
+        isActive -> Color(0xFF4CAF50)
+        isDownloaded -> Color(0xFF78909C).copy(alpha = 0.3f)
+        isDownloading -> Color(0xFF1976D2).copy(alpha = 0.4f)
+        else -> Color.Transparent
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
+        border = CardDefaults.outlinedCardBorder().copy(
+            brush = androidx.compose.ui.graphics.SolidColor(borderColor),
+            width = if (isActive) 2.dp else 1.dp
+        ),
+        elevation = CardDefaults.cardElevation(if (isActive) 3.dp else 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+
+            // Row 1: Name + badges + size
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(model.name, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+                if (model.badge != null && badgeColor != null) {
+                    Surface(shape = RoundedCornerShape(4.dp),
+                        color = badgeColor.copy(alpha = 0.12f)) {
+                        Text(model.badge,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 9.sp, fontWeight = FontWeight.ExtraBold,
+                            color = badgeColor)
+                    }
+                }
+
+                // Status badge
+                when {
+                    isActive -> Surface(shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFF4CAF50)) {
+                        Text("ACTIVE",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                            color = Color.White)
+                    }
+                    isDownloaded -> Surface(shape = RoundedCornerShape(4.dp),
+                        color = Color(0xFF78909C).copy(alpha = 0.15f)) {
+                        Text("READY",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                            color = Color(0xFF546E7A))
+                    }
+                }
+
+                Text(model.sizeLabel, fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            if (appModels.isEmpty()) {
-                Text("Download a .bin model file, then tap above to import it into the app.",
-                    fontSize = 11.sp, lineHeight = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp))
+            // Row 2: Description
+            Text(model.description, fontSize = 11.sp, lineHeight = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2)
+
+            // Row 3: Feature tags
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                model.featureTags.forEach { tag ->
+                    val tagColor = when (tag) {
+                        "Thinking" -> Color(0xFF9C27B0)
+                        "Vision" -> Color(0xFF1976D2)
+                        "Audio" -> Color(0xFFFF5722)
+                        else -> Color(0xFF607D8B)
+                    }
+                    Surface(shape = RoundedCornerShape(4.dp),
+                        color = tagColor.copy(alpha = 0.08f)) {
+                        Text(tag,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 9.sp, color = tagColor, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
+            // Row 4: Settings panel (Edge Gallery style) — shown when downloaded
+            if (isDownloaded) {
+                // Settings toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { showSettings = !showSettings }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        if (showSettings) Icons.Default.ExpandLess else Icons.Default.Settings,
+                        null, modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        if (showSettings) "Hide settings" else "Model settings",
+                        fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                AnimatedVisibility(visible = showSettings) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Accelerator selector
+                        Text("Accelerator", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val accOptions = model.accelerators.split(",").map { it.trim().uppercase() }
+                            accOptions.forEach { acc ->
+                                val selected = selectedAccelerator == acc
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { selectedAccelerator = acc },
+                                    label = { Text(acc, fontSize = 10.sp) },
+                                    modifier = Modifier.height(28.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF1976D2).copy(alpha = 0.15f)
+                                    )
+                                )
+                            }
+                        }
+                        if (selectedAccelerator == "GPU") {
+                            Text("Warning: GPU loads full model into VRAM. May crash on phones with < 12GB RAM.",
+                                fontSize = 9.sp, color = Color(0xFFE65100), lineHeight = 13.sp)
+                        }
+
+                        // Temperature
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Temperature", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.width(85.dp))
+                            Slider(
+                                value = temperature,
+                                onValueChange = { temperature = it },
+                                valueRange = 0f..2f,
+                                modifier = Modifier.weight(1f).height(20.dp)
+                            )
+                            Text("${"%.1f".format(temperature)}", fontSize = 10.sp,
+                                modifier = Modifier.width(30.dp))
+                        }
+
+                        // Top-K
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Top-K", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.width(85.dp))
+                            Slider(
+                                value = topK.toFloat(),
+                                onValueChange = { topK = it.toInt() },
+                                valueRange = 1f..100f,
+                                modifier = Modifier.weight(1f).height(20.dp)
+                            )
+                            Text("$topK", fontSize = 10.sp,
+                                modifier = Modifier.width(30.dp))
+                        }
+
+                        // Max Tokens
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Max Tokens", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.width(85.dp))
+                            Slider(
+                                value = maxTokens.toFloat(),
+                                onValueChange = { maxTokens = it.toInt() },
+                                valueRange = 256f..model.maxContext.toFloat(),
+                                modifier = Modifier.weight(1f).height(20.dp)
+                            )
+                            Text("$maxTokens", fontSize = 10.sp,
+                                modifier = Modifier.width(40.dp))
+                        }
+                    }
+                }
+            }
+
+            // Row 5: Download progress bar
+            if (isDownloading && progress != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    LinearProgressIndicator(
+                        progress = { progress.progress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = Color(0xFF1976D2),
+                        trackColor = Color(0xFF1976D2).copy(alpha = 0.12f)
+                    )
+                    Row(horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()) {
+                        val pct = (progress.progress * 100).toInt()
+                        val recvMb = "%.0f".format(progress.bytesDownloaded / (1024.0 * 1024.0))
+                        val totalMb = "%.0f".format(model.sizeBytes / (1024.0 * 1024.0))
+                        Text("$pct% — $recvMb / $totalMb MB",
+                            fontSize = 9.sp, color = Color(0xFF1976D2))
+                        if (progress.speedBytesPerSec > 0) {
+                            Text("${"%.1f".format(progress.speedBytesPerSec / (1024.0 * 1024.0))} MB/s",
+                                fontSize = 9.sp, color = Color(0xFF1976D2))
+                        }
+                    }
+                }
+            }
+
+            // Row 5: Error with retry
+            if (progress?.state == ModelDownloadState.FAILED && progress.error != null) {
+                Surface(shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFD32F2F).copy(alpha = 0.08f)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Failed: ${progress.error?.take(60)}",
+                            fontSize = 10.sp, color = Color(0xFFD32F2F),
+                            modifier = Modifier.weight(1f), maxLines = 2)
+                        TextButton(onClick = onDownload,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                            Text("Retry", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD32F2F))
+                        }
+                    }
+                }
+            }
+
+            // Row 6: Action buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()) {
+
+                // HuggingFace link
+                TextButton(
+                    onClick = onOpenLink,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                ) {
+                    Text("View on HuggingFace", fontSize = 10.sp,
+                        color = Color(0xFFFFB300))
+                    Spacer(Modifier.width(2.dp))
+                    Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(11.dp),
+                        tint = Color(0xFFFFB300))
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                when {
+                    isActive -> {
+                        // Already active — show checkmark
+                        Surface(shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.1f)) {
+                            Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Default.CheckCircle, null,
+                                    modifier = Modifier.size(14.dp), tint = Color(0xFF4CAF50))
+                                Text("Active", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4CAF50))
+                            }
+                        }
+                    }
+                    isDownloaded -> {
+                        // Downloaded but not active — activate button
+                        Button(
+                            onClick = onActivate,
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF4CAF50)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Activate", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    isDownloading -> {
+                        // Downloading — cancel button
+                        OutlinedButton(
+                            onClick = onCancel,
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD32F2F).copy(alpha = 0.5f))
+                        ) {
+                            Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp),
+                                tint = Color(0xFFD32F2F))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Cancel", fontSize = 11.sp, color = Color(0xFFD32F2F))
+                        }
+                    }
+                    else -> {
+                        // Not downloaded — download button
+                        Button(
+                            onClick = onDownload,
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF1976D2)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Download, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Download", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
     }

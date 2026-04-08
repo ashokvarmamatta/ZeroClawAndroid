@@ -1,7 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -34,7 +35,6 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.13" }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         jniLibs {
@@ -63,12 +63,12 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    kapt(libs.room.compiler)
+    ksp(libs.room.compiler)
     implementation(libs.datastore.preferences)
     implementation(libs.workmanager)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
-    implementation(libs.mediapipe.genai)
+    implementation(libs.litertlm)
     implementation(libs.biometric)
     implementation(libs.webkit)
     debugImplementation(libs.androidx.ui.tooling)

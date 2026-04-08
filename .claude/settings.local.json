@@ -144,7 +144,18 @@
       "Bash(JAVA_HOME=/c/Users/DELL/.gradle/jdks/eclipse_adoptium-17-amd64-windows.2 ./gradlew compileDebugKotlin)",
       "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew assembleDebug)",
       "Bash([ -d \"D:/Ashok/olama/projects/ZeroClawAndroid/app/src/main/java/ai/zeroclaw/android/$dir\" ])",
-      "Bash(grep -E \"\\\\.kt$\")"
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(curl:*)",
+      "Read(//d/tmp/**)",
+      "Bash(timeout 60 bash -c 'while [ ! -d gallery/.git ]; do sleep 1; done')",
+      "Bash(python -c \"import sys,json; [print\\(x['name'], x['type']\\) for x in json.loads\\(sys.stdin.read\\(\\)\\)]\")",
+      "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew assembleDebug --stacktrace)",
+      "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew kaptDebugKotlin --info)",
+      "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew kaptDebugKotlin)",
+      "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew kaptDebugKotlin --stacktrace)",
+      "Bash(grep:*)",
+      "Bash(gh gist:*)",
+      "Bash(gh api:*)"
     ]
   }
 }

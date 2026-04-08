@@ -65,8 +65,8 @@ val APP_FEATURES = listOf(
         "Telegram, WhatsApp, Discord, Signal, Slack, Matrix, IRC, Microsoft Teams, Twitch, LINE, and built-in Web Chat — all native, all with per-user AI history."),
     FeatureItem("🌐", "Cloudflare / ngrok Tunnel",
         "Expose your phone to the internet with one tap. Supports Cloudflare Tunnel (free, no account) and ngrok."),
-    FeatureItem("📱", "Offline AI Models",
-        "Run AI models directly on your device using MediaPipe GenAI — no internet or API key needed. Load .bin models from storage."),
+    FeatureItem("📱", "Offline AI Models (LiteRT LM)",
+        "Run AI models directly on your device using LiteRT LM — supports Gemma 4 with 32K context, streaming, thinking mode. Load .litertlm or .bin models from storage. No internet needed."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
     FeatureItem("🔧", "AI Tools (35 built-in)",
@@ -93,7 +93,7 @@ val SUPPORTED_PROVIDERS = listOf(
     ProviderInfo("🔵", "Google Gemini", "Gemini Pro, Flash, Ultra"),
     ProviderInfo("🟣", "OpenRouter", "400+ models from all providers"),
     ProviderInfo("⚫", "Ollama", "Local models, no API key needed"),
-    ProviderInfo("📱", "Offline (MediaPipe)", "On-device .bin models, no internet")
+    ProviderInfo("📱", "Offline (LiteRT LM)", "On-device .litertlm/.bin models, Gemma 4 support")
 )
 
 // ─── How It Works ─────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ val HOW_IT_WORKS = GuideSection(
         ),
         GuideStep(2, "🧠", "AI Brain (LLM Provider)",
             "Every message your bot receives is sent to an LLM to generate a smart reply. Supports waterfall failover across multiple keys and providers.",
-            "You supply your own API keys — ZeroClaw never stores or proxies your keys anywhere outside your device. Supported providers:\n• OpenAI (GPT-4o, GPT-4o-mini)\n• Anthropic (Claude Haiku, Sonnet, Opus)\n• Google Gemini (Pro, Flash)\n• OpenRouter (400+ models)\n• Ollama (local, no API key needed)\n• Offline MediaPipe (on-device, no internet)",
+            "You supply your own API keys — ZeroClaw never stores or proxies your keys anywhere outside your device. Supported providers:\n• OpenAI (GPT-4o, GPT-4o-mini)\n• Anthropic (Claude Haiku, Sonnet, Opus)\n• Google Gemini (Pro, Flash)\n• OpenRouter (400+ models)\n• Ollama (local, no API key needed)\n• Offline LiteRT LM (on-device Gemma 4, no internet)",
             badgeColor = Color(0xFFE53935)
         ),
         GuideStep(3, "🌐", "Public Tunnel",

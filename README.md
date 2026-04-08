@@ -6,7 +6,7 @@
 
 ### Your phone. Your AI. Always on.
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=18&pause=1000&color=00D4AA&center=true&vCenter=true&width=500&lines=11+Messaging+Channels;30+AI+Tools+(all+opt-in);25%2B+Agent+Templates;OpenAI-Compatible+API+Server;Offline+On-Device+AI;Built+with+Kotlin+%2B+Jetpack+Compose" alt="Typing SVG" />
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=500&size=18&pause=1000&color=00D4AA&center=true&vCenter=true&width=500&lines=Gemma+4+On-Device+(32K+context);11+Messaging+Channels;30+AI+Tools+(all+opt-in);25%2B+Agent+Templates;OpenAI-Compatible+API+Server;LiteRT+LM+%2B+Streaming+%2B+Thinking;Built+with+Kotlin+%2B+Jetpack+Compose" alt="Typing SVG" />
 
 <br/>
 
@@ -27,7 +27,7 @@ This is a **personal project** built out of curiosity — to see how far I can p
 >
 > 🤔 **Can it serve as an API server?** → Yes, on port 8088 — any OpenAI-compatible app can connect.
 >
-> 🤔 **Can it run AI offline?** → Yes, via MediaPipe — but JNI crashes needed Mutex serialization to fix.
+> 🤔 **Can it run AI offline?** → Yes, via LiteRT LM — Gemma 4 with 32K context, streaming, and thinking mode.
 >
 > 🤔 **Can it talk to 11 different chat platforms?** → Yes, each with its own protocol quirks.
 >
@@ -179,7 +179,7 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 | 🟠 **Anthropic** | Claude with extended thinking |
 | 🌐 **OpenRouter** | 400+ models from all providers |
 | 🏠 **Ollama** | Run local models on your device |
-| 📴 **Offline** | MediaPipe models — no internet needed |
+| 📴 **Offline (Gemma 4)** | LiteRT LM — Gemma 4/3, 32K context, streaming, thinking mode |
 | ⚙️ **Custom** | Any OpenAI-compatible API endpoint |
 
 - 🔑 **Unlimited API keys** with priority ordering
@@ -328,13 +328,32 @@ console.log(response.choices[0].message.content);
 
 > 💡 All integrations are **disabled by default** — enable only what you need.
 
-### 📴 Offline AI ![](https://img.shields.io/badge/No_Internet_Needed-4CAF50?style=flat-square) ![](https://img.shields.io/badge/MediaPipe-FF6F00?style=flat-square) ![](https://img.shields.io/badge/Crash_Safe-F44336?style=flat-square)
+### 📴 Offline AI — Gemma 4 On-Device ![](https://img.shields.io/badge/Gemma_4-4285F4?style=flat-square) ![](https://img.shields.io/badge/No_Internet-4CAF50?style=flat-square) ![](https://img.shields.io/badge/32K_Context-9C27B0?style=flat-square) ![](https://img.shields.io/badge/LiteRT_LM-FF6F00?style=flat-square)
+
+> Run Google Gemma 4 and other models **100% on your phone**. No internet, no cloud, no data leaves your device.
 
 | Feature | What it does |
 |---------|-------------|
-| 🧠 **On-Device Models** | Run AI with zero internet via MediaPipe |
+| 🧠 **LiteRT LM Engine** | Google's next-gen on-device LLM runtime (replaces MediaPipe) |
+| 📥 **One-Tap Download** | Browse model catalog in Settings, tap Download — auto-fetches from HuggingFace |
+| ⏸️ **Resume Downloads** | Connection drops? Resumes from where it stopped (5 retries, HTTP Range) |
+| 🔄 **Streaming** | Token-by-token output — see the response appear word by word |
+| 💭 **Thinking Mode** | Chain-of-thought reasoning visible in chat (Gemma 4 only) |
+| 📊 **Token Stats** | Every reply shows: tokens, speed (tok/s), latency, provider badge |
+| ⚙️ **Model Settings** | Temperature, Top-K, Max Tokens sliders per model (Edge Gallery style) |
 | 🔧 **Smart Fallback** | Detects bad offline replies and retries with web data |
-| 🛡️ **Crash Prevention** | Prevents JNI crashes when multiple things use the model |
+
+**Available models (one-tap download):**
+
+| Model | Size | Context | Features |
+|-------|------|---------|----------|
+| **Gemma 4 E2B** | 2.6 GB | 32K | Vision, Audio, Thinking — **recommended** |
+| **Gemma 4 E4B** | 3.7 GB | 32K | Larger, smarter (needs 12GB RAM) |
+| **Gemma 3n E2B** | 3.7 GB | 4K | Vision, Audio |
+| **Gemma 3 1B** | 584 MB | 1K | Tiny, fast, text-only |
+| **DeepSeek R1 1.5B** | 1.8 GB | 4K | Reasoning model, text-only |
+
+> 💡 You can also import your own `.bin` or `.litertlm` model files via the file picker.
 
 ---
 

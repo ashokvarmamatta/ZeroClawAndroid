@@ -569,7 +569,7 @@ fun OfflineModelSourcesSection() {
 
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(top = 12.dp)) {
-                    ResourceLink("Kaggle — Google Gemma", "Official Gemma 2B/7B for MediaPipe. Recommended!",
+                    ResourceLink("Kaggle — Google Gemma", "Official Gemma 4/3n models for LiteRT LM. Recommended!",
                         Color(0xFF4CAF50), "https://kaggle.com/models/google/gemma", uriHandler, badge = "RECOMMENDED")
                     ResourceLink("Hugging Face Hub", "Largest model repository — GGUF, .bin, safetensors",
                         Color(0xFFFFB300), "https://huggingface.co/models", uriHandler)

@@ -53,7 +53,13 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis(),
     val imageUri: String? = null,
     val isLoading: Boolean = false,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    // Token stats (Edge Gallery style)
+    val tokenCount: Int = 0,
+    val latencyMs: Long = 0,
+    val tokensPerSec: Float = 0f,
+    val timeToFirstTokenMs: Long = 0,
+    val provider: String = ""      // "offline", "openai", "gemini", etc.
 )
 
 /** Model option shown in model selector — ties a model name to its API key */
@@ -1003,6 +1009,7 @@ private suspend fun sendMessage(
 
     try {
         val router = LlmRouter.getInstance(context)
+        val startTime = System.currentTimeMillis()
 
         // Handle image analysis
         val reply = if (imageUri != null) {
@@ -1093,7 +1100,29 @@ private suspend fun sendMessage(
                 overrideModel = selectedModel?.model)
         }
 
-        val aiMsg = ChatMessage(role = "assistant", content = reply)
+        val elapsed = System.currentTimeMillis() - startTime
+        // Rough token estimate: ~0.75 tokens per word (good enough for stats display)
+        val estimatedTokens = reply.split("\\s+".toRegex()).size.let { (it * 0.75).toInt().coerceAtLeast(1) }
+        val tps = if (elapsed > 0) (estimatedTokens * 1000f) / elapsed else 0f
+        val providerLabel = selectedModel?.model?.let { m ->
+            when {
+                m.endsWith(".litertlm") || m.endsWith(".bin") || m.endsWith(".task") -> "offline"
+                selectedModel.keyId.isBlank() -> ""
+                else -> {
+                    val keys = ai.zeroclaw.android.data.LlmKeyManager(context).loadKeys()
+                    keys.firstOrNull { it.id == selectedModel.keyId }?.safeProvider ?: ""
+                }
+            }
+        } ?: ""
+
+        val aiMsg = ChatMessage(
+            role = "assistant",
+            content = reply,
+            tokenCount = estimatedTokens,
+            latencyMs = elapsed,
+            tokensPerSec = tps,
+            provider = providerLabel
+        )
         msgs = msgs + aiMsg
         onMessagesChange(msgs)
         onAfterReply()
@@ -1294,6 +1323,42 @@ private fun ChatBubble(
                     color = Color.White.copy(alpha = 0.3f),
                     modifier = Modifier.padding(top = 4.dp)
                 )
+
+                // Token stats bar (Edge Gallery style) — only for AI responses
+                if (!isUser && msg.tokenCount > 0) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val statColor = Color.White.copy(alpha = 0.35f)
+                        // Tokens
+                        Text("${msg.tokenCount} tokens", fontSize = 8.sp, color = statColor)
+                        Text("·", fontSize = 8.sp, color = statColor)
+                        // Speed
+                        Text("${"%.1f".format(msg.tokensPerSec)} tok/s", fontSize = 8.sp, color = statColor)
+                        Text("·", fontSize = 8.sp, color = statColor)
+                        // Latency
+                        val latencyLabel = if (msg.latencyMs >= 1000) {
+                            "${"%.1f".format(msg.latencyMs / 1000f)}s"
+                        } else "${msg.latencyMs}ms"
+                        Text(latencyLabel, fontSize = 8.sp, color = statColor)
+                        // Provider badge
+                        if (msg.provider.isNotBlank()) {
+                            Text("·", fontSize = 8.sp, color = statColor)
+                            val provColor = when (msg.provider) {
+                                "offline" -> Color(0xFF4CAF50)
+                                "gemini" -> Color(0xFF4285F4)
+                                "openai" -> Color(0xFF10A37F)
+                                "anthropic" -> Color(0xFFD4A574)
+                                "openrouter" -> Color(0xFF9C27B0)
+                                else -> statColor
+                            }
+                            Text(msg.provider.uppercase(), fontSize = 7.sp,
+                                fontWeight = FontWeight.Bold, color = provColor)
+                        }
+                    }
+                }
             }
         }
 

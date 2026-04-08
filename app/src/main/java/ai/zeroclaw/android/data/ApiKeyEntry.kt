@@ -70,7 +70,7 @@ enum class LlmProvider(
     OFFLINE(
         "offline", "Offline Model (on-device)", "📱",
         "no-key-needed",
-        "Runs a .bin model locally via MediaPipe — no internet needed"
+        "Runs .litertlm/.bin models on-device via LiteRT LM — no internet needed"
     );
 
     companion object {
