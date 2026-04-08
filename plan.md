@@ -2,21 +2,22 @@
 
 > **Before writing ANY code, read the full plan first.**
 
-## Full Plan (Private)
+## Full Plan (Private Repo)
 
-The complete master build plan (179 phases, architecture, bugs, all details) is maintained privately:
+The complete master build plan (180+ phases, architecture, bugs, all details) is in a **private repo**:
 
-**https://gist.github.com/ashokvarmamatta/e9269852ef4d29f820919cd4bf8b3aff**
+**https://github.com/ashokvarmamatta/zeroclaw-docs/blob/main/ZeroClawAndroid/plan.md**
 
-> This is a **secret gist** — only accessible with the direct link.
-> If you're an AI assistant, fetch and read `plan.md` from that gist before starting work.
+> This is a **private repository** — only accessible when logged in as the owner.
+> If you're an AI assistant, read `PLAN_FULL.md` in this directory (gitignored local copy).
 
 ### Local copy
 
-If `PLAN_FULL.md` exists in this directory, read that instead (it's the same content, gitignored).
-To fetch/refresh it:
+If `PLAN_FULL.md` exists in this directory, read that (it's the same content, gitignored).
+To fetch/refresh from the private repo:
 ```bash
-gh gist view e9269852ef4d29f820919cd4bf8b3aff -f PLAN_FULL.md > PLAN_FULL.md
+cd /tmp && git clone https://github.com/ashokvarmamatta/zeroclaw-docs.git
+cp zeroclaw-docs/ZeroClawAndroid/plan.md PLAN_FULL.md
 ```
 
 ## Quick Reference
@@ -30,12 +31,12 @@ gh gist view e9269852ef4d29f820919cd4bf8b3aff -f PLAN_FULL.md > PLAN_FULL.md
 
 ## Session Rules
 
-1. Read `PLAN_FULL.md` (local) or fetch from gist link above
-2. Read `BUGS.md` — avoid re-introducing fixed bugs
-3. Follow the Dev Workflow Rules in the full plan
+1. Read `PLAN_FULL.md` (local) or clone from private repo above
+2. Read `RULES.md` in the private repo for full dev workflow rules
+3. Read `BUGS.md` — avoid re-introducing fixed bugs
 4. Mark phases done after implementation
-5. Update both local and gist after changes:
+5. Sync plan back to private repo after changes:
    ```bash
-   # Save local changes back to gist
-   gh gist edit e9269852ef4d29f820919cd4bf8b3aff -f PLAN_FULL.md PLAN_FULL.md
+   cp PLAN_FULL.md /tmp/zeroclaw-docs/ZeroClawAndroid/plan.md
+   cd /tmp/zeroclaw-docs && git add -A && git commit -m "sync plan" && git push
    ```
