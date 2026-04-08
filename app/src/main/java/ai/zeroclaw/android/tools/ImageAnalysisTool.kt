@@ -131,8 +131,8 @@ class ImageAnalysisTool(private val context: Context) : Tool {
      */
     private fun callVisionModel(base64: String, mimeType: String, prompt: String): String? {
         // Get keys from SharedPreferences (same format as LlmKeyManager)
-        val prefs = context.getSharedPreferences("zeroclaw_api_keys", Context.MODE_PRIVATE)
-        val keysJson = prefs.getString("api_keys", null) ?: return null
+        val prefs = context.getSharedPreferences("llm_keys", Context.MODE_PRIVATE)
+        val keysJson = prefs.getString("api_key_list", null) ?: return null
 
         val gson = com.google.gson.GsonBuilder().serializeNulls().create()
         val type = object : com.google.gson.reflect.TypeToken<List<ai.zeroclaw.android.data.ApiKeyEntry>>() {}.type

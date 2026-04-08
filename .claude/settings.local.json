@@ -138,7 +138,13 @@
       "Bash(adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp logcat -d 2>&1 | grep -i \"fatal\\\\|crash\\\\|died\\\\|killed\" | tail -30)",
       "Bash(adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp shell am start -n ai.zeroclaw.android.debug/ai.zeroclaw.android.MainActivity)",
       "Bash(adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp logcat -c && echo \"logcat cleared\")",
-      "Bash(adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp logcat -c && adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp shell am start -n ai.zeroclaw.android.debug/ai.zeroclaw.android.MainActivity && echo \"App launched, logcat cleared\")"
+      "Bash(adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp logcat -c && adb -s adb-JNOJ8HQCQ8U4DUUS-Ty2EBE._adb-tls-connect._tcp shell am start -n ai.zeroclaw.android.debug/ai.zeroclaw.android.MainActivity && echo \"App launched, logcat cleared\")",
+      "Bash(gh repo:*)",
+      "Bash(ls:*)",
+      "Bash(JAVA_HOME=/c/Users/DELL/.gradle/jdks/eclipse_adoptium-17-amd64-windows.2 ./gradlew compileDebugKotlin)",
+      "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew assembleDebug)",
+      "Bash([ -d \"D:/Ashok/olama/projects/ZeroClawAndroid/app/src/main/java/ai/zeroclaw/android/$dir\" ])",
+      "Bash(grep -E \"\\\\.kt$\")"
     ]
   }
 }

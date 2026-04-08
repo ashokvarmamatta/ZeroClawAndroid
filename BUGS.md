@@ -18,6 +18,17 @@
 
 ---
 
+## BUG-34 — Image analysis says "no vision-capable API key" even with Gemini connected
+- **Phase:** 177 (Chat Screen)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** User has Gemini key configured and working, attaches image in Chat screen, gets error: "No vision-capable API key available. Add an OpenAI (GPT-4o), Gemini, or Claude key."
+- **Root Cause:** `ImageAnalysisTool.callVisionModel()` reads API keys from the wrong SharedPreferences. It used `getSharedPreferences("zeroclaw_api_keys")` with key `"api_keys"`, but `LlmKeyManager` stores keys in `getSharedPreferences("llm_keys")` with key `"api_key_list"`. The tool was reading from a non-existent file, always getting `null`, and concluding no vision-capable keys exist.
+- **Fix:** Changed SharedPreferences name from `"zeroclaw_api_keys"` to `"llm_keys"` and key from `"api_keys"` to `"api_key_list"` in ImageAnalysisTool.kt line 134-135.
+- **Lesson:** When accessing shared data (like API keys), always import from or reference the actual data manager class constants — don't hardcode storage names separately. A single source of truth for SharedPreferences names prevents this class of bug entirely.
+
+---
+
 ## BUG-32 — Widget buttons all open Home screen instead of navigating
 - **Phase:** 177 (Super Widget)
 - **Status:** ✅ Fixed

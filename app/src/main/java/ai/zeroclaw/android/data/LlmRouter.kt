@@ -366,12 +366,22 @@ class LlmRouter(private val context: Context) {
 
     // ── Main entry point — waterfall failover ─────────────────────────────────
 
-    suspend fun call(userMessage: String, chatId: String = "default"): String {
+    suspend fun call(userMessage: String, chatId: String = "default", overrideKeyId: String? = null, overrideModel: String? = null): String {
         ai.zeroclaw.android.service.ZeroClawService.activityState = "processing"
         ai.zeroclaw.android.service.ZeroClawService.lastActivityDetail = chatId.take(20)
         ai.zeroclaw.android.service.ZeroClawService.totalMessagesHandled++
         try {
-        val allKeys = keyManager.loadKeys().filter { it.enabled }
+        val allKeys = if (overrideKeyId != null) {
+            // When caller specifies a key+model, use only that key
+            val specific = keyManager.loadKeys().filter { it.enabled && it.id == overrideKeyId }
+            if (specific.isEmpty()) {
+                ai.zeroclaw.android.service.ZeroClawService.activityState = "idle"
+                return "⚠️ Selected API key not found or disabled."
+            }
+            specific
+        } else {
+            keyManager.loadKeys().filter { it.enabled }
+        }
         if (allKeys.isEmpty()) {
             ai.zeroclaw.android.service.ZeroClawService.activityState = "idle"
             return "⚠️ No API keys configured. Open Settings → Manage API Keys to add one."
@@ -512,7 +522,9 @@ class LlmRouter(private val context: Context) {
             if (keyManager.getFailedKeyIds().contains(entry.id)) continue
 
             val hasCheckedModels = entry.safeCheckedModels.isNotEmpty()
-            val modelsToTry = if (entry.safeSelectedModels.isNotEmpty()) {
+            val modelsToTry = if (overrideModel != null) {
+                listOf(overrideModel)
+            } else if (entry.safeSelectedModels.isNotEmpty()) {
                 entry.safeSelectedModels
             } else if (hasCheckedModels) {
                 val skipProvider = LlmProvider.fromId(entry.safeProvider).displayName

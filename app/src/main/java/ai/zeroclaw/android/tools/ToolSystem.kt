@@ -77,7 +77,8 @@ class ToolSystem private constructor(private val context: Context) {
             "spotify", "smart_home", "brave_search",
             "notion", "email", "composio", "mcp",
             "delegate", "spawn", "message",
-            "pushover", "nostr", "a2a"
+            "pushover", "nostr", "a2a",
+            "doc_read"
         )
 
         @Volatile private var INSTANCE: ToolSystem? = null
@@ -129,6 +130,8 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(PushoverTool(context))
         // Phase 175: Agent manager tool
         registerTool(AgentTool(context))
+        // Phase 178: Document reader (docx, xlsx, doc, txt)
+        registerTool(DocReadTool(context))
     }
 
     fun registerTool(tool: Tool) {
