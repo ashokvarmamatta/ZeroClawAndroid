@@ -66,13 +66,17 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 
 ## 📸 Screenshots
 
-| Home | Settings | AI Configuration |
-|------|----------|------------------|
-| ![Home](screenshots/01_home.png) | ![Settings](screenshots/02_settings.png) | ![AI Config](screenshots/03_ai_config.png) |
+| Home | Settings | API Keys |
+|------|----------|----------|
+| ![Home](screenshots/01_home.png) | ![Settings](screenshots/02_settings.png) | ![API Keys](screenshots/03_api_keys.png) |
 
-| AI Config (Model Selection) | Info & Setup Guide |
-|-----------------------------|-------------------|
-| ![AI Config Scrolled](screenshots/04_ai_config_scrolled.png) | ![Info Guide](screenshots/05_info_guide.png) |
+| Model Catalog (Gemma 4) | All Models | Chat + Token Stats |
+|--------------------------|------------|-------------------|
+| ![Model Catalog](screenshots/04_model_catalog.png) | ![All Models](screenshots/05_model_catalog_2.png) | ![Chat](screenshots/06_chat_stats.png) |
+
+| Agents | Info & Setup Guide |
+|--------|-------------------|
+| ![Agents](screenshots/07_agents.png) | ![Info Guide](screenshots/05_info_guide.png) |
 
 ---
 
