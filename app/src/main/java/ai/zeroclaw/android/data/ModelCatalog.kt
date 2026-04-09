@@ -44,6 +44,8 @@ data class CatalogModel(
         add("${maxContext / 1024}K ctx")
         add("${minRamGb}GB+ RAM")
     }
+
+    val supportsGpu: Boolean get() = accelerators.contains("gpu")
 }
 
 /** Download state for a catalog model */
@@ -144,4 +146,5 @@ object ModelCatalog {
     )
 
     fun findById(id: String): CatalogModel? = models.firstOrNull { it.id == id }
+    fun findByFileName(name: String): CatalogModel? = models.firstOrNull { it.fileName == name }
 }

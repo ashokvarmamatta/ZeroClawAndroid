@@ -109,6 +109,7 @@ fun ChatScreen(
     // ── Model selector state ─────────────────────────────────────────────────
     var showModelSelector by remember { mutableStateOf(false) }
     var selectedModel by remember { mutableStateOf<ModelOption?>(null) } // null = auto (default failover)
+    var showConfigDialog by remember { mutableStateOf(false) }
     val modelOptions = remember { mutableStateOf(listOf<ModelOption>()) }
 
     // Load model options from all API keys
@@ -253,6 +254,12 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // Config (only for offline models)
+                    if (selectedModel?.model?.let { it.endsWith(".litertlm") || it.endsWith(".bin") || it.endsWith(".task") } == true) {
+                        IconButton(onClick = { showConfigDialog = true }) {
+                            Icon(Icons.Default.Settings, "Config", tint = Color(0xFFFFB74D))
+                        }
+                    }
                     // Tools
                     IconButton(onClick = { showToolsSheet = true }) {
                         Icon(Icons.Default.Build, "Tools", tint = Color(0xFF4ADE80))
@@ -589,6 +596,89 @@ fun ChatScreen(
                 }
             }
         }
+    }
+
+    // ═══ Model Configuration Dialog ═══
+    if (showConfigDialog) {
+        val manager = remember { ai.zeroclaw.android.data.OfflineModelManager.getInstance(context) }
+        val catalogModel = selectedModel?.model?.let { m ->
+            ai.zeroclaw.android.data.ModelCatalog.models.firstOrNull { it.fileName == m || m.contains(it.id) }
+        }
+        val supportsGpu = catalogModel?.supportsGpu ?: false
+        val supportsThinking = catalogModel?.supportsThinking ?: false
+
+        var cfgMaxTokens by remember { mutableStateOf(manager.getMaxTokens().toFloat()) }
+        var cfgTopK by remember { mutableStateOf(manager.topK.toFloat()) }
+        var cfgTopP by remember { mutableStateOf(manager.topP.toFloat()) }
+        var cfgTemperature by remember { mutableStateOf(manager.temperature.toFloat()) }
+        var cfgThinking by remember { mutableStateOf(manager.enableThinking) }
+
+        AlertDialog(
+            onDismissRequest = { showConfigDialog = false },
+            containerColor = Color(0xFF161b22),
+            title = { Text("Configurations", fontWeight = FontWeight.Bold, color = Color.White) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Max tokens", fontWeight = FontWeight.SemiBold, color = Color(0xFFC9D1D9), fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${cfgMaxTokens.toInt()}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                        Slider(value = cfgMaxTokens, onValueChange = { cfgMaxTokens = it }, valueRange = 256f..8192f, steps = 15, modifier = Modifier.weight(1f))
+                        Text("${cfgMaxTokens.toInt()}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("TopK", fontWeight = FontWeight.SemiBold, color = Color(0xFFC9D1D9), fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${cfgTopK.toInt()}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                        Slider(value = cfgTopK, onValueChange = { cfgTopK = it }, valueRange = 1f..128f, steps = 126, modifier = Modifier.weight(1f))
+                        Text("${cfgTopK.toInt()}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("TopP", fontWeight = FontWeight.SemiBold, color = Color(0xFFC9D1D9), fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${"%.2f".format(cfgTopP)}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                        Slider(value = cfgTopP, onValueChange = { cfgTopP = it }, valueRange = 0f..1f, modifier = Modifier.weight(1f))
+                        Text("${"%.2f".format(cfgTopP)}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("Temperature", fontWeight = FontWeight.SemiBold, color = Color(0xFFC9D1D9), fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${"%.2f".format(cfgTemperature)}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                        Slider(value = cfgTemperature, onValueChange = { cfgTemperature = it }, valueRange = 0f..2f, modifier = Modifier.weight(1f))
+                        Text("${"%.2f".format(cfgTemperature)}", fontSize = 12.sp, color = Color(0xFF8B949E), modifier = Modifier.width(40.dp))
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Enable thinking", fontWeight = FontWeight.SemiBold, color = Color(0xFFC9D1D9), fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(checked = cfgThinking, onCheckedChange = { if (supportsThinking) cfgThinking = it }, enabled = supportsThinking)
+                    }
+                    if (!supportsThinking) {
+                        Text("Not available for this model", fontSize = 11.sp, color = Color(0xFF8B949E))
+                    }
+                }
+            },
+            dismissButton = { TextButton(onClick = { showConfigDialog = false }) { Text("Cancel", color = Color(0xFF8B949E)) } },
+            confirmButton = {
+                TextButton(onClick = {
+                    manager.topK = cfgTopK.toInt()
+                    manager.topP = cfgTopP.toDouble()
+                    manager.temperature = cfgTemperature.toDouble()
+                    manager.enableThinking = cfgThinking
+                    // Reload engine with new config
+                    scope.launch(Dispatchers.IO) {
+                        val path = manager.getLoadedModelPath()
+                        if (path != null) {
+                            manager.destroyEngine()
+                            manager.loadModel(path, maxTokens = cfgMaxTokens.toInt())
+                        }
+                    }
+                    showConfigDialog = false
+                }) { Text("OK", color = Color(0xFF58A6FF)) }
+            }
+        )
     }
 
     // ═══ History Bottom Sheet ═══
@@ -1014,15 +1104,48 @@ private suspend fun sendMessage(
         // Handle image analysis
         val reply = if (imageUri != null) {
             val prompt = text.ifBlank { "Describe this image in detail" }
-            try {
-                val imageTool = ImageAnalysisTool(context)
-                val result = imageTool.execute(mapOf(
-                    "source" to imageUri.toString(),
-                    "prompt" to prompt
-                ))
-                if (result.success) result.content else "Image analysis failed: ${result.error}"
-            } catch (e: Exception) {
-                "Image analysis error: ${e.message}"
+            val isOfflineModel = selectedModel?.model?.let { m ->
+                m.endsWith(".litertlm") || m.endsWith(".bin") || m.endsWith(".task")
+            } ?: false
+
+            if (isOfflineModel) {
+                // Route to offline Gemma 4 vision (visionBackend=GPU)
+                try {
+                    val manager = ai.zeroclaw.android.data.OfflineModelManager.getInstance(context)
+                    val inputStream = context.contentResolver.openInputStream(imageUri)
+                    val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    if (bitmap != null) {
+                        // Downscale to max 512px, encode as PNG
+                        val maxDim = 512
+                        val scaled = if (maxOf(bitmap.width, bitmap.height) > maxDim) {
+                            val scale = maxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
+                            android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+                        } else bitmap
+                        val stream = java.io.ByteArrayOutputStream()
+                        scaled.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+                        val imageBytes = stream.toByteArray()
+                        if (scaled !== bitmap) scaled.recycle()
+                        bitmap.recycle()
+                        manager.generateResponseWithImage(imageBytes, prompt)
+                    } else {
+                        "Failed to load image"
+                    }
+                } catch (e: Exception) {
+                    "Offline image analysis error: ${e.message}"
+                }
+            } else {
+                // Route to online vision API
+                try {
+                    val imageTool = ImageAnalysisTool(context)
+                    val result = imageTool.execute(mapOf(
+                        "source" to imageUri.toString(),
+                        "prompt" to prompt
+                    ))
+                    if (result.success) result.content else "Image analysis failed: ${result.error}"
+                } catch (e: Exception) {
+                    "Image analysis error: ${e.message}"
+                }
             }
         } else if (fileUri != null) {
             val lowerName = fileName?.lowercase() ?: ""

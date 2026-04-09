@@ -78,6 +78,12 @@ class OfflineModelManager private constructor(private val context: Context) {
     private var loadedModelPath: String? = null
     private var currentMaxTokens: Int = DEFAULT_MAX_TOKENS
 
+    // Configurable inference parameters
+    var topK: Int = 64
+    var topP: Double = 0.95
+    var temperature: Double = 1.0
+    var enableThinking: Boolean = false
+
     private val _loadedModelName = MutableStateFlow<String?>(null)
     val loadedModelName: StateFlow<String?> = _loadedModelName.asStateFlow()
 
@@ -207,20 +213,34 @@ class OfflineModelManager private constructor(private val context: Context) {
 
             val backend = if (useGpu) Backend.GPU() else Backend.CPU()
 
+            // Detect vision/audio from catalog
+            val catalogModel = ModelCatalog.findByFileName(file.name)
+            val hasVision = catalogModel?.supportsImage == true
+            val hasAudio = catalogModel?.supportsAudio == true
+
             val engineConfig = EngineConfig(
                 modelPath = modelPath,
                 backend = backend,
+                visionBackend = if (hasVision) Backend.GPU() else null,
+                audioBackend = if (hasAudio) Backend.CPU() else null,
                 maxNumTokens = maxTokens
             )
+
+            val features = buildList {
+                add(backendLabel)
+                if (hasVision) add("Vision(GPU)")
+                if (hasAudio) add("Audio")
+            }.joinToString(", ")
+            ZeroClawService.log("Offline: engine config: $features")
 
             val engine = Engine(engineConfig)
             engine.initialize()
 
-            // Create conversation with sampling config
+            // Create conversation with configurable sampling
             val samplerConfig = SamplerConfig(
-                topK = 64,
-                topP = 0.95,
-                temperature = 1.0
+                topK = topK,
+                topP = topP,
+                temperature = temperature
             )
 
             val convConfig = if (systemInstruction != null) {
@@ -259,7 +279,7 @@ class OfflineModelManager private constructor(private val context: Context) {
             instance.conversation.close()
         } catch (_: Exception) {}
 
-        val samplerConfig = SamplerConfig(topK = 64, topP = 0.95, temperature = 1.0)
+        val samplerConfig = SamplerConfig(topK = topK, topP = topP, temperature = temperature)
         val convConfig = if (systemInstruction != null) {
             ConversationConfig(
                 samplerConfig = samplerConfig,
@@ -352,6 +372,55 @@ class OfflineModelManager private constructor(private val context: Context) {
                     instance.conversation.cancelProcess()
                 } catch (_: Exception) {}
             }
+        }
+    }
+
+    /**
+     * Generate a response with an image using Gemma 4 vision (visionBackend=GPU).
+     * Image is sent as PNG bytes via Content.ImageBytes.
+     */
+    suspend fun generateResponseWithImage(
+        imageBytes: ByteArray,
+        prompt: String,
+        onPartialResult: ((partialText: String, thinkingText: String?) -> Unit)? = null
+    ): String = withContext(Dispatchers.IO) {
+        val instance = modelInstance
+            ?: throw Exception("No offline model loaded")
+
+        ZeroClawService.log("Offline: generating vision response (${imageBytes.size / 1024}KB image)")
+
+        val contents = Contents.of(listOf(
+            Content.ImageBytes(imageBytes),
+            Content.Text(prompt)
+        ))
+
+        val extraContext: Map<String, Any> = if (enableThinking) {
+            mapOf("enable_thinking" to "true")
+        } else emptyMap()
+
+        suspendCancellableCoroutine { cont ->
+            val fullResponse = StringBuilder()
+            val callback = object : MessageCallback {
+                override fun onMessage(message: Message) {
+                    val text = message.toString()
+                    if (text.isNotEmpty()) fullResponse.append(text)
+                    val thought = try { message.channels["thought"]?.toString() } catch (_: Exception) { null }
+                    onPartialResult?.invoke(text, if (thought.isNullOrEmpty()) null else thought)
+                }
+                override fun onDone() { if (cont.isActive) cont.resume(fullResponse.toString()) }
+                override fun onError(throwable: Throwable) {
+                    if (cont.isActive) {
+                        if (throwable is kotlinx.coroutines.CancellationException) cont.resume(fullResponse.toString())
+                        else cont.resumeWithException(throwable)
+                    }
+                }
+            }
+            try {
+                instance.conversation.sendMessageAsync(contents, callback, extraContext)
+            } catch (e: Exception) {
+                if (cont.isActive) cont.resumeWithException(e)
+            }
+            cont.invokeOnCancellation { try { instance.conversation.cancelProcess() } catch (_: Exception) {} }
         }
     }
 
