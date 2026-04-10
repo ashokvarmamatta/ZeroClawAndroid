@@ -623,7 +623,11 @@ class LlmRouter(private val context: Context) {
                             ZeroClawService.logDetail("Reply (${reply.length} chars): ${reply.take(500)}")
 
                             // ── Offline two-pass: real-time refusal OR known real-time query OR garbage reply → fetch → re-ask ──
+                            // Only trigger if user has web tools enabled — respect user's tool settings
+                            val enabledForPass2 = toolSystem.enabledTools().map { it.name }.toSet()
+                            val hasAnyWebTool = "web_search" in enabledForPass2 || "web_fetch" in enabledForPass2 || "brave_search" in enabledForPass2
                             val needsWebData = entry.safeProvider == "offline" &&
+                                hasAnyWebTool &&
                                 (isRealTimeRefusal(reply) || isRealTimeQuery(effectiveMessage) || isGarbageOfflineReply(reply, effectiveMessage))
                             if (needsWebData) {
                                 val reason = when {
