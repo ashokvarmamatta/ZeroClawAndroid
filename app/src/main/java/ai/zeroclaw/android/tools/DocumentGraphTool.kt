@@ -185,13 +185,31 @@ class DocumentGraphTool(private val context: Context) : Tool {
         val topK = args["top_k"]?.toIntOrNull() ?: 5
         val docId = args["doc_id"]?.trim()
 
-        // Find relevant chunks via semantic search
-        val relevantChunks = findRelevantChunks(question, docId, topK)
+        // Detect summarize-type questions — need full document, not partial chunks
+        val isSummaryRequest = question.lowercase().let {
+            it.contains("summar") || it.contains("overview") || it.contains("what is this") ||
+            it.contains("tell me about") || it.contains("explain this") || it == "tldr" ||
+            it.contains("what does this") || it.contains("full content") || it.contains("everything")
+        }
 
-        // Find relevant graph nodes
-        val relevantNodes = dao.searchNodes(question)
+        // For summaries: get ALL chunks. For specific questions: semantic search top-K
+        val relevantChunks = if (isSummaryRequest && docId != null) {
+            dao.getChunks(docId) // all chunks, ordered by index
+        } else {
+            findRelevantChunks(question, docId, topK)
+        }
+
+        // Find relevant graph nodes — for summaries, get top nodes from the doc
+        val relevantNodes = if (isSummaryRequest && docId != null) {
+            dao.getTopNodes(docId, 15)
+        } else {
+            dao.searchNodes(question).let { nodes ->
+                if (docId != null) nodes.filter { it.docId == docId } else nodes
+            }
+        }
+
         val nodeContext = if (relevantNodes.isNotEmpty()) {
-            val nodeInfo = relevantNodes.take(5).map { node ->
+            val nodeInfo = relevantNodes.take(10).map { node ->
                 val edges = dao.getEdgesForNode(node.nodeId)
                 val connections = edges.take(5).map { edge ->
                     val otherNodeId = if (edge.sourceId == node.nodeId) edge.targetId else edge.sourceId
@@ -201,22 +219,30 @@ class DocumentGraphTool(private val context: Context) : Tool {
                 "${node.label} (${node.nodeType}): ${node.description}" +
                     if (connections.isNotEmpty()) "\n  Connections: ${connections.joinToString("; ")}" else ""
             }
-            "\n\nKnowledge Graph Context:\n${nodeInfo.joinToString("\n")}"
+            "\n\nKnowledge Graph (${relevantNodes.size} entities):\n${nodeInfo.joinToString("\n")}"
         } else ""
 
         if (relevantChunks.isEmpty() && relevantNodes.isEmpty()) {
             return@withContext ToolResult(true, "No relevant content found for: $question. Try a different question or check the document was ingested.")
         }
 
-        // Build RAG context
+        // Build RAG context — for summaries, use more text
+        val contextLimit = if (isSummaryRequest) MAX_SUMMARY_CONTEXT else MAX_CONTEXT_LENGTH
         val chunkContext = relevantChunks.joinToString("\n\n---\n\n") { it.text }
 
+        val promptInstruction = if (isSummaryRequest) {
+            "You are summarizing a document. The FULL content of the document is provided below along with its knowledge graph. " +
+            "Give a comprehensive summary covering all key points, people, technologies, and important details."
+        } else {
+            "You are answering a question about a document using retrieved context. " +
+            "Answer ONLY based on the provided context. If the context doesn't contain enough info, say so."
+        }
+
         val prompt = buildString {
-            appendLine("You are answering a question about a document using retrieved context.")
-            appendLine("Answer ONLY based on the provided context. If the context doesn't contain enough info, say so.")
+            appendLine(promptInstruction)
             appendLine()
-            appendLine("=== Document Context ===")
-            appendLine(chunkContext.take(MAX_CONTEXT_LENGTH))
+            appendLine("=== Document Content ===")
+            appendLine(chunkContext.take(contextLimit))
             if (nodeContext.isNotEmpty()) {
                 appendLine()
                 appendLine("=== $nodeContext ===")
@@ -545,6 +571,7 @@ class DocumentGraphTool(private val context: Context) : Tool {
         private const val MIN_CHUNK_SIZE = 30
         private const val MAX_EXTRACTION_TEXT = 12000
         private const val MAX_CONTEXT_LENGTH = 6000
+        private const val MAX_SUMMARY_CONTEXT = 15000  // more context for full-doc summaries
         private const val MAX_RESULT_LENGTH = 5000
     }
 }
