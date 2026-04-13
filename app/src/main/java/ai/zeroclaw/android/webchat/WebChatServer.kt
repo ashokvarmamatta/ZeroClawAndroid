@@ -220,7 +220,7 @@ class WebChatServer(private val context: Context) {
             if (publishToIotlAnime && text.isNotBlank()) {
                 try {
                     val dao = IotlAnimeDatabase.getInstance(context).iotlAnimeDao()
-                    val entryTitle = iotlanimeTitle.ifBlank { prompt.take(200) }
+                    val entryTitle = iotlanimeTitle.ifBlank { extractUserTopic(prompt) }
                     dao.insert(IotlAnimeEntity(
                         title = entryTitle,
                         jsonContent = text
@@ -936,6 +936,34 @@ function timeAgo(ts){
         .put("delivered_to", try { JSONArray(r.deliveredTo) } catch (_: Exception) { JSONArray() })
         .put("error_message", r.errorMessage)
         .put("content_hash", r.contentHash)
+
+    /**
+     * Extract the user's actual topic from a full LLM prompt.
+     * Prompts from autom look like: 'You are an anime expert. List exactly 10 anime titles for: "ACTUAL TOPIC". Rules: ...'
+     * We want just "ACTUAL TOPIC".
+     */
+    private fun extractUserTopic(prompt: String): String {
+        // Try to extract quoted topic after "for:" or "about:" or "titled:"
+        val patterns = listOf(
+            Regex("""(?:for|about|titled|topic)[:\s]+[""](.+?)[""]""", RegexOption.IGNORE_CASE),
+            Regex("""[""]([^""]{10,})[""]"""),  // first long quoted string
+            Regex("""List exactly \d+ .+ for: [""]?(.+?)[""]?\.?\s*Rules""", RegexOption.IGNORE_CASE),
+        )
+        for (pat in patterns) {
+            val match = pat.find(prompt)
+            if (match != null) return match.groupValues[1].trim().take(200)
+        }
+        // Fallback: if prompt starts with system instruction, take first line that looks like user content
+        val lines = prompt.lines().map { it.trim() }.filter { it.isNotBlank() }
+        // Skip lines that look like system instructions
+        val userLine = lines.firstOrNull { line ->
+            !line.startsWith("You are") && !line.startsWith("Rules:") &&
+            !line.startsWith("Return") && !line.startsWith("Format:") &&
+            !line.startsWith("{") && !line.startsWith("[") &&
+            line.length > 5
+        }
+        return userLine?.take(200) ?: prompt.take(200)
+    }
 
     private fun parseQueryParams(requestLine: String): Map<String, String> {
         val qIdx = requestLine.indexOf('?')
