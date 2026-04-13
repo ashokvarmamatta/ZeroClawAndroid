@@ -167,6 +167,37 @@ fun ChatScreen(
         }
     }
 
+    // ── Graph ingest picker ────────────────────────────────────────────────
+    val graphIngestLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            val fName = cursor?.use {
+                if (it.moveToFirst()) {
+                    val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0) it.getString(idx) else uri.lastPathSegment
+                } else uri.lastPathSegment
+            } ?: uri.lastPathSegment ?: "document"
+            // Add user message showing ingest action
+            val userMsg = ChatMessage(role = "user", content = "\uD83D\uDCCA Ingest to Knowledge Graph: $fName")
+            messages = messages + userMsg
+            isGenerating = true
+            scope.launch {
+                val result = try {
+                    val tool = ai.zeroclaw.android.tools.DocumentGraphTool(context)
+                    tool.execute(mapOf("action" to "ingest", "source" to uri.toString()))
+                } catch (e: Exception) {
+                    ai.zeroclaw.android.tools.ToolResult(false, "", "Ingest failed: ${e.message}")
+                }
+                val reply = if (result.success) result.content else "Error: ${result.error}"
+                val aiMsg = ChatMessage(role = "assistant", content = reply)
+                messages = messages + aiMsg
+                isGenerating = false
+            }
+        }
+    }
+
     // Auto-scroll to bottom on new messages
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -516,6 +547,14 @@ fun ChatScreen(
                                 onClick = {
                                     showAttachMenu = false
                                     filePickerLauncher.launch("application/pdf")
+                                }
+                            )
+                            androidx.compose.material3.HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("\uD83D\uDCCA Ingest to Graph") },
+                                onClick = {
+                                    showAttachMenu = false
+                                    graphIngestLauncher.launch("*/*")
                                 }
                             )
                         }

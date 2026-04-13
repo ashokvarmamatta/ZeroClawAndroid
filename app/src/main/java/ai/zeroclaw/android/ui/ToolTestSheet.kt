@@ -1469,11 +1469,21 @@ private fun ContactsTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
 
 @Composable
 private fun GenericTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val params = tool.parameters
     val argState = remember { mutableStateMapOf<String, String>() }
     var result by remember { mutableStateOf<ToolResult?>(null) }
     var loading by remember { mutableStateOf(false) }
+
+    // File picker for "source" parameters
+    val filePickLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            argState["source"] = uri.toString()
+        }
+    }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -1487,7 +1497,23 @@ private fun GenericTestUI(tool: Tool, accent: Color, isEnabled: Boolean) {
                         Text("optional", modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), fontSize = 9.sp, color = Color.White.copy(0.5f))
                     }
                 }
-                SheetInput(argState[param.name] ?: "", { argState[param.name] = it }, param.description.take(60), accent)
+                if (param.name == "source") {
+                    // Show file picker button + text field for source parameters
+                    SheetInput(argState[param.name] ?: "", { argState[param.name] = it }, param.description.take(60), accent)
+                    Surface(
+                        onClick = { filePickLauncher.launch("*/*") },
+                        shape = RoundedCornerShape(10.dp),
+                        color = accent.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, accent.copy(alpha = 0.3f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("\uD83D\uDCC2 Browse Files", modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            fontSize = 12.sp, color = accent, fontWeight = FontWeight.Medium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                } else {
+                    SheetInput(argState[param.name] ?: "", { argState[param.name] = it }, param.description.take(60), accent)
+                }
             }
         }
         item {
