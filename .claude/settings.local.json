@@ -161,7 +161,23 @@
       "Bash(rm:*)",
       "Bash(JAVA_HOME=\"C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr\" ./gradlew installDebug)",
       "Bash(adb pull:*)",
-      "Bash(rm:*take chant screen screenshot again)"
+      "Bash(adb install:*)",
+      "Bash(python:*)",
+      "Bash(graphify hook:*)",
+      "WebSearch",
+      "Bash(where code-review-graph:*)",
+      "Bash(code-review-graph --help)",
+      "Bash(code-review-graph status:*)",
+      "Bash(code-review-graph build:*)",
+      "Bash(graphify --help)",
+      "Bash(graphify install:*)",
+      "Bash(cygpath:*)",
+      "Bash(code-review-graph register:*)",
+      "Bash(code-review-graph repos:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "code-review-graph",
+    "graphify"
+  ]
 }

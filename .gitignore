@@ -46,3 +46,6 @@ test_screenshots/
 # Private dev docs — local only, never pushed
 PLAN_FULL.md
 GOOGLE_AI_EDGE_GALLERY_ANALYSIS.md
+
+# graphify knowledge graph outputs
+graphify-out/
