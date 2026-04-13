@@ -97,6 +97,10 @@ fun ChatScreen(
     var attachedFileName by remember { mutableStateOf<String?>(null) }
     var showAttachMenu by remember { mutableStateOf(false) }
 
+    // ── Document graph Q&A mode ─────────────────────────────────────────────
+    var activeDocId by remember { mutableStateOf<String?>(null) }
+    var activeDocName by remember { mutableStateOf<String?>(null) }
+
     // ── Session tracking ─────────────────────────────────────────────────────
     var currentSessionId by remember { mutableStateOf("chat_${System.currentTimeMillis()}") }
     val chatId = currentSessionId  // used as LlmRouter chatId
@@ -179,10 +183,16 @@ fun ChatScreen(
                     if (idx >= 0) it.getString(idx) else uri.lastPathSegment
                 } else uri.lastPathSegment
             } ?: uri.lastPathSegment ?: "document"
-            // Add user message showing ingest action
-            val userMsg = ChatMessage(role = "user", content = "\uD83D\uDCCA Ingest to Knowledge Graph: $fName")
-            messages = messages + userMsg
+
+            // Start a fresh chat for this document
+            messages = emptyList()
+            activeDocId = null
+            activeDocName = fName
+
+            val userMsg = ChatMessage(role = "user", content = "\uD83D\uDCCA Ingesting: $fName")
+            messages = listOf(userMsg)
             isGenerating = true
+
             scope.launch {
                 val result = try {
                     val tool = ai.zeroclaw.android.tools.DocumentGraphTool(context)
@@ -190,9 +200,31 @@ fun ChatScreen(
                 } catch (e: Exception) {
                     ai.zeroclaw.android.tools.ToolResult(false, "", "Ingest failed: ${e.message}")
                 }
-                val reply = if (result.success) result.content else "Error: ${result.error}"
-                val aiMsg = ChatMessage(role = "assistant", content = reply)
-                messages = messages + aiMsg
+
+                if (result.success) {
+                    // Extract doc_id from result
+                    val docIdMatch = Regex("Document ID:\\s*([a-f0-9]+)").find(result.content)
+                    val docId = docIdMatch?.groupValues?.get(1)
+                    activeDocId = docId
+                    activeDocName = fName
+
+                    val aiMsg = ChatMessage(role = "assistant", content = buildString {
+                        appendLine(result.content)
+                        appendLine()
+                        appendLine("\u2500".repeat(40))
+                        appendLine("\uD83D\uDCDA **Document Q&A mode active**")
+                        appendLine("Ask me anything about this document!")
+                        appendLine()
+                        appendLine("Examples:")
+                        appendLine("  \u2022 \"Summarize this document\"")
+                        appendLine("  \u2022 \"What skills are listed?\"")
+                        appendLine("  \u2022 \"What are the key technologies?\"")
+                    })
+                    messages = messages + aiMsg
+                } else {
+                    val aiMsg = ChatMessage(role = "assistant", content = "Error: ${result.error}")
+                    messages = messages + aiMsg
+                }
                 isGenerating = false
             }
         }
@@ -433,6 +465,47 @@ fun ChatScreen(
                 }
             }
 
+            // ═══ Document Q&A banner ═══
+            if (activeDocId != null) {
+                Surface(
+                    color = Color(0xFF0D2137),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("\uD83D\uDCDA", fontSize = 16.sp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Document Q&A: ${activeDocName ?: "document"}", fontSize = 12.sp,
+                                color = Color(0xFF4FC3F7), fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                            Text("ID: ${activeDocId!!.take(12)}...", fontSize = 10.sp, color = Color.White.copy(0.4f),
+                                modifier = Modifier.clickable {
+                                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(activeDocId!!))
+                                })
+                        }
+                        // Copy ID button
+                        Surface(
+                            onClick = { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(activeDocId!!)) },
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF4FC3F7).copy(alpha = 0.15f),
+                            modifier = Modifier.height(24.dp)
+                        ) {
+                            Text("Copy ID", modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                fontSize = 10.sp, color = Color(0xFF4FC3F7))
+                        }
+                        // Exit doc Q&A mode
+                        IconButton(onClick = {
+                            activeDocId = null
+                            activeDocName = null
+                        }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, "Exit", tint = Color.White.copy(0.5f), modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
             // ═══ Attachment preview ═══
             if (attachedImageUri != null || attachedFileUri != null) {
                 Surface(
@@ -565,8 +638,11 @@ fun ChatScreen(
                         value = inputText,
                         onValueChange = { inputText = it },
                         placeholder = {
-                            Text("Message ZeroClaw...", fontSize = 14.sp,
-                                color = Color.White.copy(alpha = 0.3f))
+                            Text(
+                                if (activeDocId != null) "Ask about ${activeDocName ?: "document"}..."
+                                else "Message ZeroClaw...",
+                                fontSize = 14.sp,
+                                color = if (activeDocId != null) Color(0xFF4FC3F7).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.3f))
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -600,15 +676,36 @@ fun ChatScreen(
                             keyboardController?.hide()
 
                             scope.launch {
-                                sendMessage(
-                                    context, chatId, text,
-                                    imgUri, fUri, fName,
-                                    messages, isGenerating,
-                                    selectedModel,
-                                    onMessagesChange = { messages = it },
-                                    onGeneratingChange = { isGenerating = it },
-                                    onAfterReply = { saveAfterReply() }
-                                )
+                                // Document Q&A mode: route questions through the graph
+                                if (activeDocId != null && text.isNotBlank() && imgUri == null && fUri == null) {
+                                    val userMsg = ChatMessage(role = "user", content = text)
+                                    messages = messages + userMsg
+                                    isGenerating = true
+                                    val result = try {
+                                        val tool = ai.zeroclaw.android.tools.DocumentGraphTool(context)
+                                        tool.execute(mapOf(
+                                            "action" to "query",
+                                            "doc_id" to activeDocId!!,
+                                            "question" to text
+                                        ))
+                                    } catch (e: Exception) {
+                                        ai.zeroclaw.android.tools.ToolResult(false, "", "Query failed: ${e.message}")
+                                    }
+                                    val reply = if (result.success) result.content else "Error: ${result.error}"
+                                    messages = messages + ChatMessage(role = "assistant", content = reply)
+                                    isGenerating = false
+                                    saveAfterReply()
+                                } else {
+                                    sendMessage(
+                                        context, chatId, text,
+                                        imgUri, fUri, fName,
+                                        messages, isGenerating,
+                                        selectedModel,
+                                        onMessagesChange = { messages = it },
+                                        onGeneratingChange = { isGenerating = it },
+                                        onAfterReply = { saveAfterReply() }
+                                    )
+                                }
                             }
                         },
                         enabled = canSend && !isGenerating,
