@@ -78,7 +78,7 @@ class ToolSystem private constructor(private val context: Context) {
             "notion", "email", "composio", "mcp",
             "delegate", "spawn", "message",
             "pushover", "nostr", "a2a",
-            "doc_read"
+            "doc_read", "document_graph"
         )
 
         @Volatile private var INSTANCE: ToolSystem? = null
@@ -132,6 +132,7 @@ class ToolSystem private constructor(private val context: Context) {
         registerTool(AgentTool(context))
         // Phase 178: Document reader (docx, xlsx, doc, txt)
         registerTool(DocReadTool(context))
+        registerTool(DocumentGraphTool(context))
     }
 
     fun registerTool(tool: Tool) {

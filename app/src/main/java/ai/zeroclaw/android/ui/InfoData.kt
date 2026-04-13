@@ -69,8 +69,8 @@ val APP_FEATURES = listOf(
         "Run AI models directly on your device using LiteRT LM — supports Gemma 4 with 32K context, streaming, thinking mode. Load .litertlm or .bin models from storage. No internet needed."),
     FeatureItem("🔑", "API Key Manager",
         "Add, reorder, test, and manage keys for OpenAI, Anthropic, Google Gemini, OpenRouter, and Ollama. Drag to set priority order."),
-    FeatureItem("🔧", "AI Tools (35 built-in)",
-        "Web Search, Web Fetch, Memory, PDF Reader, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, Bookmarks, WebView Browser, Media Pipeline, Composio (1000+ apps), Delegate, Spawn, MessageTool, and Pushover. Toggle each on/off in Settings."),
+    FeatureItem("🔧", "AI Tools (36 built-in)",
+        "Web Search, Web Fetch, Memory, PDF Reader, Document Knowledge Graph, Image Analysis, Scheduled Tasks, Status, GitHub, Notion, Email, Weather, Summarize, Translate, Image Gen, Speech-to-Text, Text-to-Speech, Calendar, Contacts, Location, Calculator, RSS Feed, QR Code, File Manager, Clipboard, Spotify, Smart Home, Brave Search, Bookmarks, WebView Browser, Media Pipeline, Composio (1000+ apps), Delegate, Spawn, MessageTool, and Pushover. Toggle each on/off in Settings."),
     FeatureItem("🔍", "Google Search Grounding (Gemini)",
         "Enable per-key Google Search grounding for Gemini API calls. Replies include real-time web info — same as the Gemini app."),
     FeatureItem("🧠", "Advanced AI (8 features)",
@@ -83,6 +83,8 @@ val APP_FEATURES = listOf(
         "Export/import settings as JSON, dark/light/system theme, per-channel AI prompts, rate limiting, token usage tracking, tool approval system, conversation labels, home screen widget, voice message transcription, and group chat @mention support."),
     FeatureItem("🚀", "NullClaw Advanced (12 features)",
         "Composio 1000+ app integrations, Delegate/Spawn multi-agent tools, proactive MessageTool, MCP server client, MMR diversity reranking, Adaptive Retrieval, semantic cache, memory hygiene, A2A agent protocol, hint-based routing, AIEOS identity, Pushover notifications, and audit log."),
+    FeatureItem("📊", "Document Knowledge Graph",
+        "Ingest any PDF, DOCX, or text file into an on-device knowledge graph. Extracts entities, relationships, and text chunks with embeddings. Ask any question about your documents — answers are backed by RAG (semantic search) + graph traversal. Works offline with Gemma 4 or any API provider."),
     FeatureItem("🔋", "Battery Optimized",
         "Smart persistence with boot auto-restart, wake locks, foreground service, and WorkManager watchdog — stays alive even on aggressive OEMs like Samsung and Xiaomi.")
 )
