@@ -202,9 +202,12 @@ fun ChatScreen(
                 }
 
                 if (result.success) {
-                    // Extract doc_id from result
+                    // Extract doc_id from result, fallback to computing it
                     val docIdMatch = Regex("Document ID:\\s*([a-f0-9]+)").find(result.content)
                     val docId = docIdMatch?.groupValues?.get(1)
+                        ?: java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(uri.toString().toByteArray())
+                            .joinToString("") { "%02x".format(it) }
                     activeDocId = docId
                     activeDocName = fName
 

@@ -76,7 +76,7 @@ class DocumentGraphTool(private val context: Context) : Tool {
         val docId = sha256(source)
         val existing = dao.getDocument(docId)
         if (existing != null) {
-            return@withContext ToolResult(true, "Document '${existing.name}' is already ingested (${existing.totalNodes} entities, ${existing.totalEdges} relationships). Use 'query' to ask questions about it, or 'delete' then re-ingest.")
+            return@withContext ToolResult(true, "Document '${existing.name}' is already ingested (${existing.totalNodes} entities, ${existing.totalEdges} relationships).\n\nDocument ID: $docId\n\nReady for questions!")
         }
 
         // Step 1: Extract text using existing tools
