@@ -29,33 +29,6 @@ cp zeroclaw-docs/ZeroClawAndroid/plan.md PLAN_FULL.md
 - **Offline:** LiteRT LM SDK (Gemma 4 support, 32K context, streaming, thinking mode)
 - **Build:** `JAVA_HOME="C:/Users/DELL/AppData/Local/Programs/Android Studio/jbr" ./gradlew assembleDebug`
 
-## Phase 182 — Document Knowledge Graph (feat/document-graph)
-
-**Status:** Implemented
-
-### What it does
-Ingest any PDF, DOCX, TXT, MD, CSV, or HTML file into an on-device knowledge graph. Extracts entities (people, technologies, concepts, orgs) and relationships via LLM. Stores text chunks with vector embeddings for semantic search. Users can then ask any question about the document — answers are backed by RAG (Retrieval Augmented Generation) + graph traversal.
-
-### Files
-- `DocumentGraphDatabase.kt` — Room DB: documents, doc_chunks, graph_nodes, graph_edges tables + DAO with graph traversal queries
-- `DocumentGraphTool.kt` — 7 actions: ingest, query, entities, connections, list, summary, delete
-- `ChatScreen.kt` — Added "Ingest to Graph" option in attach dropdown menu
-- `ToolTestSheet.kt` — Added file picker ("Browse Files") button for source parameter fields
-- `InfoData.kt` — Added feature item + updated tool count
-
-### Architecture
-```
-File Upload → PdfReadTool/DocReadTool (extract text)
-           → Chunk text (800 char paragraphs)
-           → VectorMemory (embed chunks)
-           → LlmRouter.extractOnly() (extract entities + relationships)
-           → DocumentGraphDatabase (store nodes + edges)
-
-Query → Semantic search (cosine similarity on chunk embeddings)
-      → Graph traversal (find connected entities)
-      → LlmRouter.extractOnly() (generate answer from context)
-```
-
 ## Session Rules
 
 1. Read `PLAN_FULL.md` (local) or clone from private repo above
