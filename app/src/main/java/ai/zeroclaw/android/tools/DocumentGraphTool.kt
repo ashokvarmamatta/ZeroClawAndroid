@@ -105,28 +105,30 @@ class DocumentGraphTool(private val context: Context) : Tool {
                 embedding = if (embedding != null) vectorMemory.serializeEmbedding(embedding) else ""
             )
         }
-        dao.insertChunks(chunkEntities)
-
         // Step 4: Extract entities + relationships via LLM
         val extractionText = if (text.length > MAX_EXTRACTION_TEXT) text.take(MAX_EXTRACTION_TEXT) else text
         val graphData = extractGraph(extractionText, fileName)
 
-        // Step 5: Store nodes and edges
-        val nodes = graphData.first.map { (label, type, desc) ->
-            GraphNodeEntity(
-                nodeId = "${docId}_${normalizeId(label)}",
-                docId = docId,
-                label = label,
-                nodeType = type,
-                description = desc
-            )
+        // Step 5: Build nodes and edges (deduplicate node IDs)
+        val nodeIdSet = mutableSetOf<String>()
+        val nodes = graphData.first.mapNotNull { (label, type, desc) ->
+            val nodeId = "${docId}_${normalizeId(label)}"
+            if (nodeIdSet.add(nodeId)) {
+                GraphNodeEntity(
+                    nodeId = nodeId,
+                    docId = docId,
+                    label = label,
+                    nodeType = type,
+                    description = desc
+                )
+            } else null
         }
         val edges = graphData.second.mapNotNull { (src, rel, tgt, ctx) ->
             val sourceId = "${docId}_${normalizeId(src)}"
             val targetId = "${docId}_${normalizeId(tgt)}"
-            if (nodes.any { it.nodeId == sourceId } && nodes.any { it.nodeId == targetId }) {
+            if (sourceId in nodeIdSet && targetId in nodeIdSet && sourceId != targetId) {
                 GraphEdgeEntity(
-                    edgeId = "${sourceId}_${rel}_${targetId}",
+                    edgeId = "${sourceId}_${normalizeId(rel)}_${targetId}",
                     docId = docId,
                     sourceId = sourceId,
                     targetId = targetId,
@@ -136,10 +138,7 @@ class DocumentGraphTool(private val context: Context) : Tool {
             } else null
         }
 
-        if (nodes.isNotEmpty()) dao.insertNodes(nodes)
-        if (edges.isNotEmpty()) dao.insertEdges(edges)
-
-        // Step 6: Store document record
+        // Step 6: Store in correct order — document first (parent), then children
         dao.insertDocument(DocumentEntity(
             docId = docId,
             name = fileName,
@@ -150,6 +149,9 @@ class DocumentGraphTool(private val context: Context) : Tool {
             totalEdges = edges.size,
             textPreview = text.take(200)
         ))
+        dao.insertChunks(chunkEntities)
+        if (nodes.isNotEmpty()) dao.insertNodes(nodes)
+        if (edges.isNotEmpty()) dao.insertEdges(edges)
 
         // Generate embeddings for nodes in background
         for (node in nodes) {
