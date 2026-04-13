@@ -64,21 +64,46 @@ class PdfReadTool(private val context: Context) : Tool {
                         sb.appendLine("Reading pages: ${pageRange.first + 1}-${pageRange.last + 1}")
                         sb.appendLine("---")
 
-                        for (i in pageRange) {
-                            val page = pdf.openPage(i)
-                            sb.appendLine("\n[Page ${i + 1}] (${page.width}x${page.height})")
+                        // Step 1: Try heuristic text extraction from PDF bytes
+                        var rawText = extractTextFromPdf(source)
 
-                            // Render page to bitmap for dimensions; actual text from raw PDF parsing
-                            page.close()
+                        // Validate quality — if mostly garbage, discard
+                        if (rawText.isNotBlank() && !isReadableText(rawText)) {
+                            rawText = ""
                         }
 
-                        // Attempt raw text extraction from the PDF bytes
-                        val rawText = extractTextFromPdf(source)
                         if (rawText.isNotBlank()) {
                             sb.appendLine("\n--- Extracted Text ---\n")
                             sb.append(rawText.take(MAX_TEXT_LENGTH))
                         } else {
-                            sb.appendLine("\n(No extractable text found — PDF may contain scanned images)")
+                            // Step 2: Fallback — render each page to bitmap, extract visible text
+                            sb.appendLine("\n--- Extracted Text (from rendered pages) ---\n")
+                            val pageTexts = mutableListOf<String>()
+                            for (i in pageRange) {
+                                val page = pdf.openPage(i)
+                                // Render to bitmap at 2x scale for readability
+                                val scale = 2
+                                val bitmap = Bitmap.createBitmap(
+                                    page.width * scale, page.height * scale, Bitmap.Config.ARGB_8888
+                                )
+                                val canvas = android.graphics.Canvas(bitmap)
+                                canvas.drawColor(android.graphics.Color.WHITE)
+                                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                page.close()
+
+                                // Convert bitmap to base64 for vision LLM, or try pixel-based OCR
+                                val pageText = extractTextFromBitmap(bitmap, i + 1)
+                                if (pageText.isNotBlank()) pageTexts.add(pageText)
+                                bitmap.recycle()
+
+                                if (pageTexts.sumOf { it.length } > MAX_TEXT_LENGTH) break
+                            }
+
+                            if (pageTexts.isNotEmpty()) {
+                                sb.append(pageTexts.joinToString("\n\n").take(MAX_TEXT_LENGTH))
+                            } else {
+                                sb.appendLine("(No extractable text found — PDF may contain scanned images)")
+                            }
                         }
 
                         ToolResult(true, sb.toString().take(MAX_RESULT_LENGTH))
@@ -332,6 +357,54 @@ class PdfReadTool(private val context: Context) : Tool {
         }
 
         return streams
+    }
+
+    /**
+     * Check if extracted text is actually readable (not binary/structural garbage).
+     * Returns false if text has too many non-printable chars or looks like PDF internals.
+     */
+    private fun isReadableText(text: String): Boolean {
+        if (text.length < 20) return false
+        val sample = text.take(500)
+        val printable = sample.count { it in ' '..'~' || it == '\n' || it == '\r' || it == '\t' }
+        val ratio = printable.toFloat() / sample.length
+        // If less than 60% printable ASCII, it's likely garbage
+        if (ratio < 0.6f) return false
+        // Check for common words (at least 3 real words in first 500 chars)
+        val words = sample.split(Regex("\\s+")).count { it.length in 2..20 && it.matches(Regex("[a-zA-Z0-9,.!?:;'\"()-]+")) }
+        return words >= 3
+    }
+
+    /**
+     * Extract text from a rendered PDF page bitmap using pixel analysis.
+     * Looks for text-like patterns in the bitmap. Returns simple OCR-lite output.
+     * For complex PDFs, the bitmap can also be sent to a vision model via ImageAnalysisTool.
+     */
+    private fun extractTextFromBitmap(bitmap: Bitmap, pageNum: Int): String {
+        // Use Android's built-in text extraction if available (API 31+)
+        // Fallback: save bitmap to temp file for vision model to read later
+        val tempFile = File(context.cacheDir, "pdf_page_${pageNum}_${System.currentTimeMillis()}.png")
+        try {
+            java.io.FileOutputStream(tempFile).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 85, out)
+            }
+
+            // Try using ImageAnalysisTool to OCR the page via vision LLM
+            val imageTool = ImageAnalysisTool(context)
+            val result = kotlinx.coroutines.runBlocking {
+                imageTool.execute(mapOf(
+                    "source" to tempFile.absolutePath,
+                    "prompt" to "Extract ALL text from this PDF page image. Return ONLY the text content, preserving formatting and structure. Do not describe the image — just output the text you can read."
+                ))
+            }
+            return if (result.success && result.content.length > 20) {
+                "[Page $pageNum]\n${result.content}"
+            } else ""
+        } catch (_: Exception) {
+            return ""
+        } finally {
+            tempFile.delete()
+        }
     }
 
     private fun decodePdfString(s: String): String {
