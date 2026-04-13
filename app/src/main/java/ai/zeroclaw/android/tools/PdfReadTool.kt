@@ -156,35 +156,62 @@ class PdfReadTool(private val context: Context) : Tool {
 
     private fun extractTextFromPdfBytes(bytes: ByteArray): String {
         val content = String(bytes, Charsets.ISO_8859_1)
-        val sb = StringBuilder()
 
-        // Step 1: Decompress FlateDecode streams (most modern PDFs use zlib compression)
+        // Step 1: Decompress FlateDecode streams
         val decompressedStreams = decompressStreams(bytes, content)
 
-        // Step 2: Extract text from all streams (decompressed + raw)
+        // Step 2: Try BT/ET extraction on all streams
+        val btEtText = extractFromBtEt(content, decompressedStreams)
+        if (btEtText.length > 50) return btEtText
+
+        // Step 3: Fallback — extract printable text runs from decompressed streams
+        // This catches PDFs where BT/ET parsing fails but readable text exists
+        val fallbackText = extractPrintableText(decompressedStreams)
+        if (fallbackText.length > 50) return fallbackText
+
+        // Step 4: Last resort — extract any printable ASCII runs from raw PDF bytes
+        return extractPrintableRuns(bytes)
+    }
+
+    /** Primary extraction: BT/ET text operators with parenthesized + hex strings. */
+    private fun extractFromBtEt(content: String, streams: List<String>): String {
+        val sb = StringBuilder()
         val allContent = buildString {
             append(content)
-            for (stream in decompressedStreams) append(stream)
+            for (s in streams) append(s)
         }
 
-        // Extract text between BT (begin text) and ET (end text) operators
         val btEtPattern = Regex("""BT\s(.*?)\sET""", RegexOption.DOT_MATCHES_ALL)
         for (match in btEtPattern.findAll(allContent)) {
             val textBlock = match.groupValues[1]
 
-            // Extract text from Tj and TJ operators
+            // Parenthesized strings: (text) Tj
             val tjPattern = Regex("""\(([^)]*)\)\s*Tj""")
             for (tj in tjPattern.findAll(textBlock)) {
                 sb.append(decodePdfString(tj.groupValues[1]))
                 sb.append(" ")
             }
 
-            // TJ arrays: [(text) kerning (text) ...]
+            // Hex strings: <hex> Tj  (e.g. <0048006500...>)
+            val hexTjPattern = Regex("""<([0-9A-Fa-f]+)>\s*Tj""")
+            for (hx in hexTjPattern.findAll(textBlock)) {
+                sb.append(decodeHexString(hx.groupValues[1]))
+                sb.append(" ")
+            }
+
+            // TJ arrays: [(text) kerning (text) ...] or [<hex> kerning <hex> ...]
             val tjArrayPattern = Regex("""\[(.*?)]\s*TJ""", RegexOption.DOT_MATCHES_ALL)
             for (tjArr in tjArrayPattern.findAll(textBlock)) {
-                val innerPattern = Regex("""\(([^)]*)\)""")
-                for (inner in innerPattern.findAll(tjArr.groupValues[1])) {
+                val arrayContent = tjArr.groupValues[1]
+                // Parenthesized entries
+                val innerParens = Regex("""\(([^)]*)\)""")
+                for (inner in innerParens.findAll(arrayContent)) {
                     sb.append(decodePdfString(inner.groupValues[1]))
+                }
+                // Hex entries
+                val innerHex = Regex("""<([0-9A-Fa-f]+)>""")
+                for (inner in innerHex.findAll(arrayContent)) {
+                    sb.append(decodeHexString(inner.groupValues[1]))
                 }
                 sb.append(" ")
             }
@@ -192,10 +219,76 @@ class PdfReadTool(private val context: Context) : Tool {
             sb.append("\n")
         }
 
+        return sb.toString().replace(Regex("\\s+"), " ").replace(Regex(" ?\n ?"), "\n").trim()
+    }
+
+    /** Decode hex-encoded PDF string (e.g. "0048006500" → "He"). */
+    private fun decodeHexString(hex: String): String {
+        val sb = StringBuilder()
+        // Try UTF-16BE first (2 bytes per char, common in modern PDFs)
+        if (hex.length >= 4 && hex.length % 4 == 0) {
+            var i = 0
+            var isUtf16 = true
+            while (i + 3 < hex.length) {
+                val code = hex.substring(i, i + 4).toIntOrNull(16) ?: run { isUtf16 = false; break }
+                if (code in 0x20..0xFFFF) sb.append(code.toChar())
+                i += 4
+            }
+            if (isUtf16 && sb.isNotEmpty()) return sb.toString()
+            sb.clear()
+        }
+        // Fallback: single-byte encoding
+        var i = 0
+        while (i + 1 < hex.length) {
+            val code = hex.substring(i, i + 2).toIntOrNull(16) ?: break
+            if (code in 0x20..0x7E) sb.append(code.toChar())
+            i += 2
+        }
         return sb.toString()
-            .replace(Regex("\\s+"), " ")
-            .replace(Regex(" ?\n ?"), "\n")
-            .trim()
+    }
+
+    /** Extract printable text from decompressed stream content. */
+    private fun extractPrintableText(streams: List<String>): String {
+        val sb = StringBuilder()
+        for (stream in streams) {
+            // Look for runs of printable ASCII (4+ chars) — likely real text
+            val runPattern = Regex("""[\x20-\x7E]{4,}""")
+            for (match in runPattern.findAll(stream)) {
+                val text = match.value.trim()
+                // Skip PDF operators and structural keywords
+                if (text.length > 3 && !text.matches(Regex("""^[A-Z][a-z]?\s*$""")) &&
+                    !text.startsWith("/") && !text.contains("endobj") &&
+                    !text.contains("stream") && !text.contains("xref") &&
+                    !text.matches(Regex("""^\d+\s+\d+\s+\d+\s+\w+$"""))
+                ) {
+                    sb.append(text).append(" ")
+                }
+            }
+            sb.append("\n")
+        }
+        return sb.toString().replace(Regex("\\s+"), " ").replace(Regex(" ?\n ?"), "\n").trim()
+    }
+
+    /** Last resort: extract printable ASCII runs directly from raw bytes. */
+    private fun extractPrintableRuns(bytes: ByteArray): String {
+        val sb = StringBuilder()
+        val currentRun = StringBuilder()
+        for (b in bytes) {
+            val c = b.toInt() and 0xFF
+            if (c in 0x20..0x7E || c == 0x0A || c == 0x0D) {
+                currentRun.append(c.toChar())
+            } else {
+                if (currentRun.length >= 8) {
+                    val text = currentRun.toString().trim()
+                    if (text.length >= 8 && !text.startsWith("<<") && !text.startsWith("/") &&
+                        !text.contains("endobj") && !text.contains("endstream")) {
+                        sb.append(text).append(" ")
+                    }
+                }
+                currentRun.clear()
+            }
+        }
+        return sb.toString().replace(Regex("\\s+"), " ").trim()
     }
 
     /**
