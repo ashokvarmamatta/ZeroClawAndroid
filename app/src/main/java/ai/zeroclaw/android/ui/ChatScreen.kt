@@ -679,6 +679,40 @@ fun ChatScreen(
                             keyboardController?.hide()
 
                             scope.launch {
+                                // Check if user pasted a doc_id (64-char hex) — auto-activate Q&A mode
+                                if (activeDocId == null && text.isNotBlank() && imgUri == null && fUri == null) {
+                                    val hexMatch = Regex("[a-f0-9]{64}").find(text)
+                                    if (hexMatch != null) {
+                                        val candidateId = hexMatch.value
+                                        val tool = ai.zeroclaw.android.tools.DocumentGraphTool(context)
+                                        val lookup = try {
+                                            tool.execute(mapOf("action" to "summary", "doc_id" to candidateId))
+                                        } catch (_: Exception) { null }
+
+                                        if (lookup != null && lookup.success) {
+                                            activeDocId = candidateId
+                                            val docNameMatch = Regex("Knowledge Graph Summary:\\s*(.+)").find(lookup.content)
+                                            activeDocName = docNameMatch?.groupValues?.get(1)?.trim()
+
+                                            val userMsg = ChatMessage(role = "user", content = text)
+                                            messages = messages + userMsg
+                                            isGenerating = true
+
+                                            val aiMsg = ChatMessage(role = "assistant", content = buildString {
+                                                appendLine(lookup.content)
+                                                appendLine()
+                                                appendLine("\u2500".repeat(40))
+                                                appendLine("\uD83D\uDCDA **Document Q&A mode active**")
+                                                appendLine("Ask me anything about this document!")
+                                            })
+                                            messages = messages + aiMsg
+                                            isGenerating = false
+                                            saveAfterReply()
+                                            return@launch
+                                        }
+                                    }
+                                }
+
                                 // Document Q&A mode: route questions through the graph
                                 if (activeDocId != null && text.isNotBlank() && imgUri == null && fUri == null) {
                                     val userMsg = ChatMessage(role = "user", content = text)
