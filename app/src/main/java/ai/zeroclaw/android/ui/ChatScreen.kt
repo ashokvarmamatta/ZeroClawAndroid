@@ -887,7 +887,71 @@ fun ChatScreen(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
-                if (sessions.isEmpty()) {
+                // ── Ingested Documents section ──
+                var ingestedDocs by remember { mutableStateOf(listOf<ai.zeroclaw.android.data.DocumentEntity>()) }
+                LaunchedEffect(Unit) {
+                    ingestedDocs = withContext(Dispatchers.IO) {
+                        ai.zeroclaw.android.data.DocumentGraphDatabase.getInstance(context).dao().getAllDocuments()
+                    }
+                }
+                if (ingestedDocs.isNotEmpty()) {
+                    Text("\uD83D\uDCDA Ingested Documents", fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold, color = Color(0xFF4FC3F7),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+
+                    ingestedDocs.forEach { doc ->
+                        Surface(
+                            onClick = {
+                                activeDocId = doc.docId
+                                activeDocName = doc.name
+                                messages = listOf(
+                                    ChatMessage(role = "assistant", content = buildString {
+                                        appendLine("\uD83D\uDCDA **${doc.name}**")
+                                        appendLine("Entities: ${doc.totalNodes} | Relationships: ${doc.totalEdges} | Chunks: ${doc.totalChunks}")
+                                        appendLine()
+                                        appendLine("Document Q&A mode active — ask me anything!")
+                                    })
+                                )
+                                showHistory = false
+                            },
+                            color = Color.Transparent,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                val icon = when (doc.fileType) {
+                                    "pdf" -> "\uD83D\uDCC4"
+                                    "docx", "doc" -> "\uD83D\uDCC3"
+                                    else -> "\uD83D\uDCC1"
+                                }
+                                Text(icon, fontSize = 20.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(doc.name, fontSize = 13.sp, color = Color.White,
+                                        fontWeight = FontWeight.Medium, maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    Text("${doc.totalNodes} entities \u2022 ${doc.totalEdges} relationships \u2022 ID: ${doc.docId.take(8)}...",
+                                        fontSize = 10.sp, color = Color.White.copy(0.4f))
+                                }
+                                // Copy doc ID
+                                Surface(
+                                    onClick = { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(doc.docId)) },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFF4FC3F7).copy(alpha = 0.1f)
+                                ) {
+                                    Text("Copy ID", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        fontSize = 9.sp, color = Color(0xFF4FC3F7))
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 4.dp))
+                }
+
+                if (sessions.isEmpty() && ingestedDocs.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
