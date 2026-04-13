@@ -158,9 +158,18 @@ class PdfReadTool(private val context: Context) : Tool {
         val content = String(bytes, Charsets.ISO_8859_1)
         val sb = StringBuilder()
 
+        // Step 1: Decompress FlateDecode streams (most modern PDFs use zlib compression)
+        val decompressedStreams = decompressStreams(bytes, content)
+
+        // Step 2: Extract text from all streams (decompressed + raw)
+        val allContent = buildString {
+            append(content)
+            for (stream in decompressedStreams) append(stream)
+        }
+
         // Extract text between BT (begin text) and ET (end text) operators
         val btEtPattern = Regex("""BT\s(.*?)\sET""", RegexOption.DOT_MATCHES_ALL)
-        for (match in btEtPattern.findAll(content)) {
+        for (match in btEtPattern.findAll(allContent)) {
             val textBlock = match.groupValues[1]
 
             // Extract text from Tj and TJ operators
@@ -187,6 +196,49 @@ class PdfReadTool(private val context: Context) : Tool {
             .replace(Regex("\\s+"), " ")
             .replace(Regex(" ?\n ?"), "\n")
             .trim()
+    }
+
+    /**
+     * Find and decompress FlateDecode (zlib) streams in the PDF.
+     * Most modern PDFs (Word, Google Docs, etc.) compress content streams.
+     */
+    private fun decompressStreams(bytes: ByteArray, content: String): List<String> {
+        val streams = mutableListOf<String>()
+
+        // Find stream...endstream blocks
+        val streamPattern = Regex("""stream\r?\n""")
+        val endPattern = "endstream"
+
+        var searchFrom = 0
+        while (searchFrom < content.length) {
+            val streamMatch = streamPattern.find(content, searchFrom) ?: break
+            val dataStart = streamMatch.range.last + 1
+            val endIdx = content.indexOf(endPattern, dataStart)
+            if (endIdx < 0) break
+
+            // Check if this stream uses FlateDecode
+            val headerStart = (dataStart - 200).coerceAtLeast(0)
+            val header = content.substring(headerStart, streamMatch.range.first)
+            if (header.contains("FlateDecode")) {
+                try {
+                    val compressedBytes = bytes.copyOfRange(dataStart, endIdx)
+                    val inflater = java.util.zip.Inflater()
+                    inflater.setInput(compressedBytes)
+                    val output = ByteArray(compressedBytes.size * 10)
+                    val decompressedLen = inflater.inflate(output)
+                    inflater.end()
+                    if (decompressedLen > 0) {
+                        streams.add(String(output, 0, decompressedLen, Charsets.ISO_8859_1))
+                    }
+                } catch (_: Exception) {
+                    // Not all FlateDecode streams contain text — skip failures
+                }
+            }
+
+            searchFrom = endIdx + endPattern.length
+        }
+
+        return streams
     }
 
     private fun decodePdfString(s: String): String {
