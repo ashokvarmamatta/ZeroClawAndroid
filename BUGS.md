@@ -7,6 +7,17 @@
 
 ---
 
+## BUG-36 — Offline Gemma 4 vision images routed to online APIs instead of on-device model
+- **Phase:** 181 (Offline Vision + Config Dialog)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** When user attached an image in chat with an offline Gemma 4 model selected (which supports vision), the image was always routed through `ImageAnalysisTool` → online APIs (Gemini/OpenAI/Anthropic) instead of being processed on-device. This meant images didn't work in airplane mode and required an API key even though the local model supports vision.
+- **Root Cause:** `ChatViewModel.sendMessage()` unconditionally passed images to `ImageAnalysisTool.execute()` regardless of whether the active model was offline or online. There was no check for `isLiteRtFormat` or `supportsImage` on the current model.
+- **Fix:** Added offline image routing: when the active model is a LiteRT format (`.litertlm`/`.bin`/`.task`) and supports vision, images are sent directly to the on-device Gemma 4 engine via `Content.ImageBytes`. Images are downscaled to 512px PNG before sending. Online models continue using `ImageAnalysisTool`. Also added `visionBackend = Backend.GPU()` and `audioBackend = Backend.CPU()` to `EngineConfig` for multimodal models to prevent SIGSEGV crashes.
+- **Lesson:** When adding multimodal capabilities, always check whether the active model is local or cloud before routing — don't assume all images must go through the online tool pipeline.
+
+---
+
 ## BUG-35 — LiteRT LM SDK requires Kotlin 2.2.0+ and Room 2.7+ (build failure)
 - **Phase:** 178 (LiteRT LM Migration)
 - **Status:** ✅ Fixed

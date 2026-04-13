@@ -173,11 +173,15 @@
       "Bash(graphify install:*)",
       "Bash(cygpath:*)",
       "Bash(code-review-graph register:*)",
-      "Bash(code-review-graph repos:*)"
+      "Bash(code-review-graph repos:*)",
+      "mcp__graphify-autom__graph_stats",
+      "mcp__graphify-autom__query_graph"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "code-review-graph",
-    "graphify"
+    "graphify",
+    "graphify-autom"
   ]
 }

@@ -225,6 +225,7 @@ All under `app/src/main/java/ai/zeroclaw/android/`
 | `MemoryDatabase.kt` | Room DB: memories table (with embeddings) |
 | `MessageDatabase.kt` | Room DB: messages table (chat history) |
 | `AgentResultDatabase.kt` | Room DB: agent_results table (every agent run result) |
+| `IotlAnimeDatabase.kt` | Room DB: iotl_anime table (published lists from VideoGen) |
 
 ### Infrastructure (`infra/`)
 | File | Purpose |
@@ -332,6 +333,22 @@ data class AgentResultEntity(
 
 **DAO operations:** getAll (limit/offset), getByAgentId (limit/offset), getById, insert, deleteById, deleteByAgentId, deleteOlderThan, count, countByAgent, observeRecent (Flow), getDistinctAgents
 
+### 5. IotlAnimeDatabase (`zeroclaw_iotl_anime`) — Version 1
+```kotlin
+@Entity(tableName = "iotl_anime")
+data class IotlAnimeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,                  // prompt/title used for generation
+    val jsonContent: String,            // the generated JSON list
+    val timestamp: Long,
+    val syncedToCloud: Boolean = false  // future: Cloudflare sync status
+)
+```
+
+**Indices:** `timestamp`
+
+**DAO operations:** getAll, insert, deleteById, deleteAll, count
+
 All databases use singleton pattern, CoroutineScope.IO, and fallback to destructive migration.
 
 ---
@@ -376,6 +393,8 @@ All databases use singleton pattern, CoroutineScope.IO, and fallback to destruct
 | `GET` | `/` | HTML | Browser-based chat UI |
 | `GET` | `/api/agents/results` | ZeroClaw native | Agent run results (filter: `?agent_id=`, `?id=`, `?limit=`, `?offset=`) |
 | `DELETE` | `/api/agents/results` | ZeroClaw native | Delete results (`?id=`, `?agent_id=`, `?older_than=`) |
+| `GET` | `/api/iotlanime` | ZeroClaw native | Published anime/list entries (`?id=N` for single) |
+| `DELETE` | `/api/iotlanime` | ZeroClaw native | Delete entries (`?id=N` or `?all=true`) |
 
 ---
 

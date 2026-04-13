@@ -163,16 +163,27 @@ class TunnelManager(private val context: Context) {
                 .redirectErrorStream(true)
                 .start()
 
-            // The URL is already known from the API response!
             val tunnelUrl = "https://$tunnelHost"
-            onUrlReady(tunnelUrl)
-            ZeroClawService.log("Cloudflare: tunnel live → $tunnelUrl")
-            status = "connected"
-            onStatusChange("Connected: $tunnelUrl")
+            onStatusChange("Waiting for edge connection...")
+            ZeroClawService.log("Cloudflare: process started, waiting for edge connection…")
 
-            // Monitor cloudflared output for errors
+            // Monitor cloudflared output — only announce URL once edge is connected
             val reader = tunnelProcess!!.inputStream.bufferedReader()
+            var urlAnnounced = false
+
             withContext(Dispatchers.IO) {
+                // Fallback: announce URL after 15s even if no edge confirmation
+                val fallbackJob = launch(Dispatchers.IO) {
+                    delay(15_000)
+                    if (!urlAnnounced) {
+                        urlAnnounced = true
+                        ZeroClawService.log("Cloudflare: edge timeout — announcing URL anyway")
+                        onUrlReady(tunnelUrl)
+                        status = "connected"
+                        onStatusChange("Connected: $tunnelUrl")
+                    }
+                }
+
                 launch(Dispatchers.IO) {
                     try {
                         while (true) {
@@ -181,9 +192,14 @@ class TunnelManager(private val context: Context) {
                                 || line.contains("Registered") || line.contains("connected")) {
                                 ZeroClawService.log("Cloudflare: $line")
                             }
-                            // Detect successful edge connection
-                            if (line.contains("Registered tunnel connection")) {
-                                ZeroClawService.log("Cloudflare: edge connection established!")
+                            // Detect successful edge connection — NOW announce the URL
+                            if (line.contains("Registered tunnel connection") && !urlAnnounced) {
+                                urlAnnounced = true
+                                fallbackJob.cancel()
+                                ZeroClawService.log("Cloudflare: tunnel live → $tunnelUrl")
+                                onUrlReady(tunnelUrl)
+                                status = "connected"
+                                onStatusChange("Connected: $tunnelUrl")
                             }
                         }
                         // Process ended

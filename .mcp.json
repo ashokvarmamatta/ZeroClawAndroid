@@ -15,6 +15,15 @@
         "graphify-out/graph.json"
       ],
       "type": "stdio"
+    },
+    "graphify-autom": {
+      "command": "python",
+      "args": [
+        "-m",
+        "graphify.serve",
+        "D:/Ashok/olama/projects/autom/graphify-out/graph.json"
+      ],
+      "type": "stdio"
     }
   }
 }

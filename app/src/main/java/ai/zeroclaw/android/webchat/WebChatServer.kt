@@ -4,7 +4,10 @@ import android.content.Context
 import ai.zeroclaw.android.agents.AgentManager
 import ai.zeroclaw.android.data.AgentResultDatabase
 import ai.zeroclaw.android.data.AgentResultEntity
+import ai.zeroclaw.android.data.IotlAnimeDatabase
+import ai.zeroclaw.android.data.IotlAnimeEntity
 import ai.zeroclaw.android.data.LlmRouter
+import ai.zeroclaw.android.service.HomeWidget
 import ai.zeroclaw.android.service.ZeroClawService
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -112,7 +115,7 @@ class WebChatServer(private val context: Context) {
                         .put("endpoints", org.json.JSONArray()
                             .put("/api/chat").put("/api/generate").put("/api/discover")
                             .put("/v1/chat/completions").put("/v1/models")
-                            .put("/api/agents/results"))
+                            .put("/api/agents/results").put("/api/iotlanime"))
                         .put("tools_available", toolsArray)
                         .put("agents", agentsArray)
                     )
@@ -134,6 +137,13 @@ class WebChatServer(private val context: Context) {
                     } else {
                         handleChatApi(out, body)
                     }
+                }
+                // IotlAnime API
+                requestLine.startsWith("GET /api/iotlanime") -> {
+                    handleIotlAnimeGet(out, requestLine)
+                }
+                requestLine.startsWith("DELETE /api/iotlanime") -> {
+                    handleIotlAnimeDelete(out, requestLine)
                 }
                 // Agent Results API — Phase 175
                 requestLine.startsWith("GET /api/agents/results") -> {
@@ -180,7 +190,7 @@ class WebChatServer(private val context: Context) {
 
     /**
      * POST /api/generate — raw LLM generation, no agent pipeline.
-     * Request:  {"prompt": "...", "session_id": "optional"}
+     * Request:  {"prompt": "...", "session_id": "optional", "publish_to_iotlanime": false}
      * Response: {"text": "raw LLM output"}
      */
     private suspend fun handleGenerateApi(out: java.io.OutputStream, body: String) {
@@ -190,13 +200,15 @@ class WebChatServer(private val context: Context) {
             val jsonMode = json.optBoolean("json_mode", false)
             val maxTokens = json.optInt("max_tokens", 8192)
             val useTools = json.optBoolean("use_tools", false)
+            val publishToIotlAnime = json.optBoolean("publish_to_iotlanime", false)
+            val iotlanimeTitle = json.optString("iotlanime_title", "").trim()
 
             if (prompt.isBlank()) {
                 sendJson(out, JSONObject().put("error", "Empty prompt"))
                 return
             }
 
-            ZeroClawService.log("Generate: ${prompt.take(100)}… (json=$jsonMode, maxTokens=$maxTokens, tools=$useTools)")
+            ZeroClawService.log("Generate: ${prompt.take(100)}… (json=$jsonMode, maxTokens=$maxTokens, tools=$useTools, iotlanime=$publishToIotlAnime)")
             val text = if (useTools) {
                 llmRouter.rawGenerateWithTools(prompt, jsonMode = jsonMode, maxTokens = maxTokens)
             } else {
@@ -204,9 +216,116 @@ class WebChatServer(private val context: Context) {
             }
             ZeroClawService.log("Generate: response sent (${text.length} chars)")
 
+            // Save to IotlAnime database if requested
+            if (publishToIotlAnime && text.isNotBlank()) {
+                try {
+                    val dao = IotlAnimeDatabase.getInstance(context).iotlAnimeDao()
+                    val entryTitle = iotlanimeTitle.ifBlank { prompt.take(200) }
+                    dao.insert(IotlAnimeEntity(
+                        title = entryTitle,
+                        jsonContent = text
+                    ))
+                    ZeroClawService.log("IotlAnime: 📥 saved \"$entryTitle\" (${text.length} chars)")
+                    HomeWidget.broadcastUpdate(context)
+                } catch (e: Exception) {
+                    ZeroClawService.log("IotlAnime: save failed — ${e.message}")
+                }
+            }
+
             sendJson(out, JSONObject().put("text", text))
         } catch (e: Exception) {
             ZeroClawService.log("Generate: error — ${e.message}")
+            sendJson(out, JSONObject().put("error", e.message ?: "Unknown error"))
+        }
+    }
+
+    /**
+     * GET /api/iotlanime — returns all saved IotlAnime entries.
+     * Optional query params: ?limit=N&offset=N&id=N
+     */
+    private suspend fun handleIotlAnimeGet(out: java.io.OutputStream, requestLine: String) {
+        try {
+            val dao = IotlAnimeDatabase.getInstance(context).iotlAnimeDao()
+            val queryString = requestLine.substringAfter("?", "").substringBefore(" HTTP")
+            val params = parseQueryParams(queryString)
+
+            // If ?id=N, return single entry
+            val singleId = params["id"]?.toLongOrNull()
+            if (singleId != null) {
+                val all = dao.getAll()
+                val entry = all.firstOrNull { it.id == singleId }
+                if (entry != null) {
+                    ZeroClawService.log("IotlAnime: 📋 GET entry #$singleId")
+                    HomeWidget.broadcastUpdate(context)
+                    sendJson(out, JSONObject()
+                        .put("id", entry.id)
+                        .put("title", entry.title)
+                        .put("content", entry.jsonContent)
+                        .put("timestamp", entry.timestamp)
+                        .put("synced", entry.syncedToCloud)
+                    )
+                } else {
+                    sendJson(out, JSONObject().put("error", "Not found"))
+                }
+                return
+            }
+
+            val entries = dao.getAll()
+            val arr = JSONArray()
+            for (e in entries) {
+                arr.put(JSONObject()
+                    .put("id", e.id)
+                    .put("title", e.title)
+                    .put("content", e.jsonContent)
+                    .put("timestamp", e.timestamp)
+                    .put("synced", e.syncedToCloud)
+                )
+            }
+            ZeroClawService.log("IotlAnime: 📋 GET ${entries.size} entries")
+            HomeWidget.broadcastUpdate(context)
+            sendJson(out, JSONObject()
+                .put("count", entries.size)
+                .put("entries", arr)
+            )
+        } catch (e: Exception) {
+            ZeroClawService.log("IotlAnime GET: error — ${e.message}")
+            sendJson(out, JSONObject().put("error", e.message ?: "Unknown error"))
+        }
+    }
+
+    /**
+     * DELETE /api/iotlanime — delete entries.
+     * Query params: ?id=N (single) or ?all=true (delete all)
+     */
+    private suspend fun handleIotlAnimeDelete(out: java.io.OutputStream, requestLine: String) {
+        try {
+            val dao = IotlAnimeDatabase.getInstance(context).iotlAnimeDao()
+            val queryString = requestLine.substringAfter("?", "").substringBefore(" HTTP")
+            val params = parseQueryParams(queryString)
+
+            val id = params["id"]?.toLongOrNull()
+            val deleteAll = params["all"]?.toBoolean() ?: false
+
+            when {
+                id != null -> {
+                    dao.deleteById(id)
+                    ZeroClawService.log("IotlAnime: 🗑️ deleted entry #$id")
+                    HomeWidget.broadcastUpdate(context)
+                    sendJson(out, JSONObject().put("deleted", id))
+                }
+                deleteAll -> {
+                    val count = dao.count()
+                    dao.deleteAll()
+                    ZeroClawService.log("IotlAnime: 🗑️ deleted all $count entries")
+                    HomeWidget.broadcastUpdate(context)
+                    sendJson(out, JSONObject().put("deleted", "all"))
+                }
+                else -> {
+                    sendJson(out, JSONObject().put("error", "Specify ?id=N or ?all=true"))
+                }
+            }
+        } catch (e: Exception) {
+            ZeroClawService.log("IotlAnime DELETE: error — ${e.message}")
             sendJson(out, JSONObject().put("error", e.message ?: "Unknown error"))
         }
     }
@@ -304,6 +423,30 @@ header span{font-size:13px;color:#8b949e}
 .pg-btn:hover{background:#30363d}
 .pg-btn:disabled{opacity:.4;cursor:not-allowed}
 .rp-empty{text-align:center;color:#484f58;padding:30px;font-size:13px}
+/* APIs tab */
+.apis-wrap{flex:1;overflow-y:auto;padding:16px}
+.api-section{margin-bottom:20px}
+.api-section h3{font-size:14px;color:#e53935;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px}
+.api-card{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.api-method{font-size:11px;font-weight:700;padding:3px 10px;border-radius:6px;flex-shrink:0;min-width:52px;text-align:center}
+.api-method.get{background:#0d2818;color:#3fb950}
+.api-method.post{background:#0d1d3a;color:#58a6ff}
+.api-method.delete{background:#2d1215;color:#f85149}
+.api-path{font-size:14px;font-weight:600;color:#f0f6fc;font-family:monospace}
+.api-desc{font-size:12px;color:#8b949e;margin-top:2px}
+.api-public{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#1c1e24;color:#d29922;margin-left:auto;flex-shrink:0}
+/* IotlAnime entries */
+.iotl-card{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:14px 16px;margin-bottom:8px}
+.iotl-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.iotl-title{font-size:14px;font-weight:600;color:#f0f6fc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.iotl-time{font-size:11px;color:#8b949e}
+.iotl-actions{display:flex;gap:6px;margin-top:8px}
+.iotl-btn{background:#21262d;color:#c9d1d9;padding:4px 12px;border:1px solid #30363d;border-radius:6px;font-size:11px;cursor:pointer}
+.iotl-btn:hover{background:#30363d}
+.iotl-btn.del{color:#f85149;border-color:#f8514933}
+.iotl-btn.del:hover{background:#2d1215}
+.iotl-empty{text-align:center;color:#484f58;padding:30px;font-size:13px}
+.iotl-count{font-size:12px;color:#8b949e;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -311,6 +454,7 @@ header span{font-size:13px;color:#8b949e}
 <div class="tabs">
   <div class="tab active" onclick="switchTab('chat')">Chat</div>
   <div class="tab" onclick="switchTab('agents')">Agents</div>
+  <div class="tab" onclick="switchTab('apis')">APIs</div>
 </div>
 
 <!-- Chat Tab -->
@@ -326,6 +470,29 @@ header span{font-size:13px;color:#8b949e}
 <div class="tab-content" id="tab-agents">
   <div class="agents-wrap" id="agents-wrap">
     <div class="agents-empty" id="agents-loading">Loading agents...</div>
+  </div>
+</div>
+
+<!-- APIs Tab -->
+<div class="tab-content" id="tab-apis">
+  <div class="apis-wrap">
+    <div class="api-section">
+      <h3>Exposed Endpoints</h3>
+      <div class="api-card"><span class="api-method post">POST</span><div><div class="api-path">/v1/chat/completions</div><div class="api-desc">OpenAI-compatible chat completions</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method get">GET</span><div><div class="api-path">/v1/models</div><div class="api-desc">OpenAI-compatible model listing</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method post">POST</span><div><div class="api-path">/api/chat</div><div class="api-desc">ZeroClaw native chat with session memory</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method post">POST</span><div><div class="api-path">/api/generate</div><div class="api-desc">Raw LLM generation (supports publish_to_iotlanime)</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method get">GET</span><div><div class="api-path">/api/discover</div><div class="api-desc">Service discovery — version, endpoints, tools, agents</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method get">GET</span><div><div class="api-path">/api/iotlanime</div><div class="api-desc">Published anime/list entries from VideoGen</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method delete">DELETE</span><div><div class="api-path">/api/iotlanime</div><div class="api-desc">Delete entries (?id=N or ?all=true)</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method get">GET</span><div><div class="api-path">/api/agents/results</div><div class="api-desc">Agent run results (filter by agent_id, id, limit, offset)</div></div><span class="api-public">PUBLIC</span></div>
+      <div class="api-card"><span class="api-method delete">DELETE</span><div><div class="api-path">/api/agents/results</div><div class="api-desc">Delete agent results</div></div><span class="api-public">PUBLIC</span></div>
+    </div>
+    <div class="api-section">
+      <h3>IotlAnime Published Lists</h3>
+      <div id="iotl-count" class="iotl-count"></div>
+      <div id="iotl-list"><div class="iotl-empty">Loading...</div></div>
+    </div>
   </div>
 </div>
 
@@ -373,7 +540,54 @@ function switchTab(tab){
   document.querySelector('.tab-content#tab-'+tab).classList.add('active');
   event.target.classList.add('active');
   if(tab==='agents') loadAgents();
+  if(tab==='apis') loadIotlAnime();
   if(tab==='chat') inp.focus();
+}
+
+// ── IotlAnime ──
+async function loadIotlAnime(){
+  const list=document.getElementById('iotl-list');
+  const count=document.getElementById('iotl-count');
+  list.innerHTML='<div class="iotl-empty">Loading...</div>';
+  try{
+    const r=await fetch('/api/iotlanime');
+    const d=await r.json();
+    const entries=d.entries||[];
+    count.textContent=entries.length+' published '+(entries.length===1?'entry':'entries');
+    if(entries.length===0){
+      list.innerHTML='<div class="iotl-empty">No published entries yet. Enable "Publish to IotlAnime API" in VideoGen to save lists here.</div>';
+      return;
+    }
+    list.innerHTML=entries.map(e=>{
+      const tm=new Date(e.timestamp).toLocaleString();
+      const preview=e.content.length>200?e.content.substring(0,200)+'...':e.content;
+      const cId='iotl_c_'+e.id;
+      return '<div class="iotl-card"><div class="iotl-top"><span class="iotl-title">'+esc(e.title)+'</span><span class="iotl-time">'+tm+'</span></div>'+
+        '<button class="r-toggle" onclick="tog(\''+cId+'\',this,\'content\')">Show content</button>'+
+        '<div class="r-content" id="'+cId+'">'+esc(e.content)+'</div>'+
+        '<div class="iotl-actions">'+
+        '<button class="iotl-btn" onclick="copyIotl('+e.id+')">Copy JSON</button>'+
+        '<button class="iotl-btn del" onclick="deleteIotl('+e.id+')">Delete</button>'+
+        '</div></div>';
+    }).join('');
+  }catch(e){
+    list.innerHTML='<div class="iotl-empty">Error: '+esc(e.message)+'</div>';
+  }
+}
+async function copyIotl(id){
+  try{
+    const r=await fetch('/api/iotlanime?id='+id);
+    const d=await r.json();
+    await navigator.clipboard.writeText(d.content||'');
+    alert('Copied to clipboard!');
+  }catch(e){alert('Copy failed: '+e.message)}
+}
+async function deleteIotl(id){
+  if(!confirm('Delete this entry?'))return;
+  try{
+    await fetch('/api/iotlanime?id='+id,{method:'DELETE'});
+    loadIotlAnime();
+  }catch(e){alert('Delete failed: '+e.message)}
 }
 
 // ── Agents ──
