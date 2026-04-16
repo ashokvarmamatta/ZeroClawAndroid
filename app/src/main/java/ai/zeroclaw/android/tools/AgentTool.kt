@@ -270,7 +270,7 @@ class AgentTool(private val context: Context) : Tool {
         if (collectedUrls.size < 3) {
             try {
                 ZeroClawService.log("AGENT_CREATE: searching web for best sites → $concept")
-                val searchResult = WebSearchTool().execute(mapOf("query" to "$concept best websites sources"))
+                val searchResult = WebSearchTool(context).execute(mapOf("query" to "$concept best websites sources"))
                 if (searchResult.success && searchResult.content.isNotBlank()) {
                     val urlPattern = Regex("https?://[^\\s\"'<>)]+")
                     val foundUrls = urlPattern.findAll(searchResult.content)

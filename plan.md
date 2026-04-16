@@ -23,7 +23,7 @@ cp zeroclaw-docs/ZeroClawAndroid/plan.md PLAN_FULL.md
 ## Quick Reference
 
 - **Project:** Android app that runs ZeroClaw AI agent with 10 messaging channels
-- **Phases completed:** 182 (178: LiteRT LM migration, 179: Model catalog + download, 180: Token stats UI, 181: Offline vision + config dialog, 182: Document Knowledge Graph)
+- **Phases completed:** 183 (178: LiteRT LM migration, 179: Model catalog + download, 180: Token stats UI, 181: Offline vision + config dialog, 182: Document Knowledge Graph, 183: Autom→ZeroClaw pipeline fixes)
 - **Tools:** 36 built-in AI tools (+ Document Knowledge Graph)
 - **Channels:** Telegram, WhatsApp, Discord, Signal, Slack, Matrix, IRC, Teams, Twitch, LINE
 - **Offline:** LiteRT LM SDK (Gemma 4 support, 32K context, streaming, thinking mode)

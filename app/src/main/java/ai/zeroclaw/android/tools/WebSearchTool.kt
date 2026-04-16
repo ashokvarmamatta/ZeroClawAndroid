@@ -1,5 +1,6 @@
 package ai.zeroclaw.android.tools
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -11,7 +12,7 @@ import java.util.concurrent.TimeUnit
  * WebSearchTool — searches the web via DuckDuckGo HTML (no API key needed).
  * Returns top results with title, snippet, and URL.
  */
-class WebSearchTool : Tool {
+class WebSearchTool(private val context: Context? = null) : Tool {
 
     override val name = "web_search"
 
@@ -51,44 +52,98 @@ class WebSearchTool : Tool {
                     .get()
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                val results = client.newCall(request).execute().use { response ->
                     android.util.Log.d("ZeroClaw.DDG", "HTTP status: ${response.code}")
-
-                    if (response.code != 200) {
-                        android.util.Log.w("ZeroClaw.DDG", "Non-200 response: ${response.code}")
-                        return@withContext ToolResult(false, "", "DuckDuckGo returned HTTP ${response.code}")
-                    }
-
                     val html = response.body?.string()
-                    if (html.isNullOrBlank()) {
-                        android.util.Log.w("ZeroClaw.DDG", "Empty body")
-                        return@withContext ToolResult(false, "", "Empty response from DuckDuckGo")
+                    when {
+                        response.code != 200 -> {
+                            android.util.Log.w("ZeroClaw.DDG", "Non-200: ${response.code} — will try WebView fallback")
+                            emptyList()
+                        }
+                        html.isNullOrBlank() -> {
+                            android.util.Log.w("ZeroClaw.DDG", "Empty body — will try WebView fallback")
+                            emptyList()
+                        }
+                        else -> parseDDGResults(html).also {
+                            android.util.Log.d("ZeroClaw.DDG", "Parsed ${it.size} results (body ${html.length} chars)")
+                        }
                     }
+                }
 
-                    android.util.Log.d("ZeroClaw.DDG", "Response body: ${html.length} chars, preview: ${html.take(200)}")
+                // Fallback: Android WebView renders the JS-heavy DDG page when plain HTTP fails.
+                val finalResults = if (results.isNotEmpty() || context == null) results
+                else {
+                    android.util.Log.w("ZeroClaw.DDG", "Falling back to WebView for query: $query")
+                    webViewSearchFallback(encoded, query)
+                }
 
-                    val results = parseDDGResults(html)
-                    android.util.Log.d("ZeroClaw.DDG", "Parsed ${results.size} results")
-
-                    if (results.isEmpty()) {
-                        android.util.Log.w("ZeroClaw.DDG", "No results parsed — HTML snippet: ${html.take(500)}")
+                    if (finalResults.isEmpty()) {
                         return@withContext ToolResult(false, "", "No results found for: $query")
                     }
 
                     val sb = StringBuilder("Web search results for: \"$query\"\n\n")
-                    for ((i, result) in results.withIndex()) {
+                    for ((i, result) in finalResults.withIndex()) {
                         sb.appendLine("${i + 1}. ${result.title}")
                         sb.appendLine("   ${result.snippet}")
                         sb.appendLine("   URL: ${result.url}")
                         sb.appendLine()
                     }
                     ToolResult(true, sb.toString().take(MAX_RESULT_LENGTH))
-                }
             } catch (e: Exception) {
-                android.util.Log.e("ZeroClaw.DDG", "Exception: ${e.javaClass.simpleName}: ${e.message}", e)
-                ToolResult(false, "", "Web search failed: ${e.message}")
+                android.util.Log.e("ZeroClaw.DDG", "DDG exception: ${e.javaClass.simpleName}: ${e.message} — trying WebView", e)
+                if (context == null) return@withContext ToolResult(false, "", "Web search failed: ${e.message}")
+                try {
+                    val encoded = URLEncoder.encode(query, "UTF-8")
+                    val results = webViewSearchFallback(encoded, query)
+                    if (results.isEmpty()) return@withContext ToolResult(false, "", "Web search failed (DDG+WebView empty): ${e.message}")
+                    val sb = StringBuilder("Web search results for: \"$query\" (via WebView)\n\n")
+                    for ((i, r) in results.withIndex()) {
+                        sb.appendLine("${i + 1}. ${r.title}")
+                        sb.appendLine("   ${r.snippet}")
+                        sb.appendLine("   URL: ${r.url}")
+                        sb.appendLine()
+                    }
+                    ToolResult(true, sb.toString().take(MAX_RESULT_LENGTH))
+                } catch (w: Exception) {
+                    ToolResult(false, "", "Web search failed: ${e.message}; WebView fallback also failed: ${w.message}")
+                }
             }
         }
+    }
+
+    /**
+     * Android WebView headless fallback — renders the DDG HTML page (including any
+     * JS-gated content) and re-parses. Used when plain HTTP hits a challenge or returns 0 results.
+     */
+    private suspend fun webViewSearchFallback(encodedQuery: String, query: String): List<SearchResult> {
+        val ctx = context ?: return emptyList()
+        val url = "https://html.duckduckgo.com/html/?q=$encodedQuery"
+        val wvResult = try {
+            WebViewTool(ctx).execute(mapOf("action" to "fetch", "url" to url, "wait_ms" to "2500"))
+        } catch (e: Exception) {
+            android.util.Log.e("ZeroClaw.DDG", "WebView fallback threw: ${e.message}")
+            return emptyList()
+        }
+        if (!wvResult.success) {
+            android.util.Log.w("ZeroClaw.DDG", "WebView fallback failed: ${wvResult.error}")
+            return emptyList()
+        }
+        // WebView fetch returns visible text — parse loose "Title / snippet / url" lines.
+        val lines = wvResult.content.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val out = mutableListOf<SearchResult>()
+        var i = 0
+        while (i < lines.size && out.size < MAX_RESULTS) {
+            val line = lines[i]
+            val urlMatch = Regex("https?://[^\\s]+").find(line)
+            if (urlMatch != null) {
+                val title = if (i > 0) lines[i - 1] else "Result"
+                val snippet = if (i + 1 < lines.size) lines[i + 1] else ""
+                out.add(SearchResult(title.take(200), snippet.take(400), urlMatch.value))
+                i += 2
+            } else i += 1
+        }
+        android.util.Log.d("ZeroClaw.DDG", "WebView fallback parsed ${out.size} results for \"$query\"")
+        return out
     }
 
     private data class SearchResult(val title: String, val snippet: String, val url: String)

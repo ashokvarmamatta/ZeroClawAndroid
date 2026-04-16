@@ -190,13 +190,16 @@ class OfflineModelManager private constructor(private val context: Context) {
         try {
             _isLoading.value = true
 
-            // Destroy previous engine if different model
-            if (loadedModelPath != modelPath) {
+            // Destroy previous engine if different model OR if caller asked for a larger
+            // context window than the currently loaded instance — LiteRT maxNumTokens is
+            // baked into Engine at init time, so we MUST recreate the engine to grow it.
+            val needsReload = loadedModelPath != modelPath || currentMaxTokens < maxTokens
+            if (needsReload) {
                 destroyEngine()
             }
             if (modelInstance != null) {
                 _isLoading.value = false
-                return@withContext Result.success(Unit) // already loaded
+                return@withContext Result.success(Unit) // already loaded at adequate ctx
             }
 
             val file = File(modelPath)

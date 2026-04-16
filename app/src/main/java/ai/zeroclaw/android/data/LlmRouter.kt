@@ -10,9 +10,11 @@ import ai.zeroclaw.android.service.ZeroClawService
 import ai.zeroclaw.android.tools.ToolCall
 import ai.zeroclaw.android.tools.ToolSystem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -25,7 +27,9 @@ class LlmRouter(private val context: Context) {
     private val keyManager = LlmKeyManager.getInstance(context)
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)   // cloud Gemma-4 27B+ can take 60-180s for 32k JSON
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.SECONDS)     // rely on coroutine withTimeout instead
         .build()
 
     // Rate limit tracking — skip models that were rate-limited recently (within 60s)
@@ -132,50 +136,202 @@ class LlmRouter(private val context: Context) {
      * Uses the same waterfall failover as call() — tries all enabled keys and their
      * selected models in order. Skips offline models (can't do structured JSON).
      */
-    suspend fun rawGenerate(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 8192): String {
-        val allKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider != "offline" }
-        if (allKeys.isEmpty()) {
-            return "No API keys configured."
-        }
+    suspend fun rawGenerate(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 32768): String {
+        val reqId = "r${System.currentTimeMillis().toString().takeLast(6)}"
+        // Online keys first, offline last — offline now supports JSON via prompt-coerce + extract.
+        val onlineKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider != "offline" }
+        val offlineKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider == "offline" }
+        val allKeys = onlineKeys + offlineKeys
+        if (allKeys.isEmpty()) return "No API keys configured."
+
+        ZeroClawService.log("RawGen[$reqId]: ← request (json=$jsonMode, maxTok=$maxTokens, prompt=${prompt.length}ch, online=${onlineKeys.size}, offline=${offlineKeys.size})")
+        android.util.Log.e("ZCRawGen", "[$reqId] IN prompt=${prompt.length}ch json=$jsonMode preview=${prompt.take(160)}")
+
         val rawSystemPrompt = "You are a data assistant. Follow the user's instructions exactly. Output ONLY what is requested, no extra commentary."
         val errors = mutableListOf<String>()
+        val now = System.currentTimeMillis()
+        val cooldownMs = 60_000L
+        // Hard per-model timeout — offline LiteRT inference on 8k+ prompts is slow,
+        // so offline gets a much larger budget than cloud calls.
+        val onlineTimeoutMs = 120_000L
+        val offlineTimeoutMs = 480_000L  // 8 min — Gemma 4 E2B at 32k ctx on CPU is slow for 8k+ prompts
 
         for (entry in allKeys) {
             val provider = entry.safeProvider
             val label = entry.safeLabel.ifBlank { provider }
+            val isOffline = provider == "offline"
 
-            // Build model list — same logic as call()
             val modelsToTry = when {
                 entry.safeSelectedModels.isNotEmpty() -> entry.safeSelectedModels
                 entry.safePreferredModel.isNotBlank() -> listOf(entry.safePreferredModel)
-                else -> listOf("") // let provider pick default
+                else -> listOf("")
             }
 
             for (model in modelsToTry) {
                 val modelName = model.ifBlank { "(default)" }
-                // Skip Gemma models for JSON mode — they don't support it and always return 400
-                if (jsonMode && model.contains("gemma", ignoreCase = true)) {
-                    ZeroClawService.log("RawGenerate: skipping $label/$modelName (Gemma doesn't support JSON mode)")
+                val cooldownKey = "${entry.id}:$model"
+                val until = rateLimitedModels[cooldownKey]
+                if (until != null && now < until) {
+                    ZeroClawService.log("RawGen[$reqId]: skip $label/$modelName (429 cooldown ${((until - now) / 1000)}s left)")
                     continue
                 }
+
+                // Gemma 4 (both cloud + offline via LiteRT) supports structured JSON output.
+                // Offline path uses prompt-coerce + regex extract; cloud path uses responseMimeType.
                 try {
-                    ZeroClawService.log("RawGenerate: trying $label/$modelName (json=$jsonMode, maxTokens=$maxTokens)")
-                    val result = dispatchToProviderRaw(prompt, entry, model = model, systemPrompt = rawSystemPrompt, jsonMode = jsonMode, maxTokens = maxTokens)
-                    if (result.isNotBlank()) {
-                        ZeroClawService.log("RawGenerate: success via $label/$modelName (${result.length} chars)")
-                        return result
+                    val timeoutMs = if (isOffline) offlineTimeoutMs else onlineTimeoutMs
+                    // Cloud Gemma (all variants) IGNORES Gemini's `responseMimeType` because that flag
+                    // is native-Gemini only. So for Gemma — offline OR cloud — we must coerce via
+                    // prompt and post-extract the JSON payload ourselves.
+                    val isGemma = model.contains("gemma", ignoreCase = true)
+                    val needsManualJson = jsonMode && (isOffline || isGemma)
+                    val effectivePrompt = if (needsManualJson) {
+                        // Gemma is poor at following abstract schema instructions — give a CONCRETE filled example.
+                        "$prompt\n\n" +
+                            "═══ JSON OUTPUT RULES (NON-NEGOTIABLE) ═══\n" +
+                            "1. Your reply MUST be ONE valid JSON ARRAY of OBJECTS.\n" +
+                            "2. Each item is an OBJECT enclosed in { }, containing the requested fields.\n" +
+                            "3. NEVER output a flat array of keywords like [\"a\",\"b\"]. NEVER output prose, bullets, markdown, or explanations.\n" +
+                            "4. Do NOT echo the schema. Do NOT wrap in ```. First character MUST be '['. Last character MUST be ']'.\n\n" +
+                            "EXAMPLE OF CORRECT FORMAT (your reply must look structurally like this, with real data for the user's request):\n" +
+                            "[\n" +
+                            "  {\"title\":\"Demon Slayer\",\"description\":\"Boy fights demons to save sister\",\"keywords\":[\"action\",\"swords\",\"family\",\"breathing\",\"demons\"],\"imagePrompt\":\"Tanjiro using water breathing\",\"score\":\"8.7\",\"year\":\"2019\",\"type\":\"TV\",\"episodes\":\"60\",\"votes\":\"2M\"},\n" +
+                            "  {\"title\":\"Jujutsu Kaisen\",\"description\":\"Cursed energy and sorcerer fights\",\"keywords\":[\"curses\",\"sorcery\",\"tokyo\",\"combat\",\"monsters\"],\"imagePrompt\":\"Itadori black flash punch\",\"score\":\"8.7\",\"year\":\"2020\",\"type\":\"TV\",\"episodes\":\"47\",\"votes\":\"2M\"}\n" +
+                            "]\n\n" +
+                            "Now produce the answer for the user's request in the SAME structural format. Output ONLY the JSON array."
+                    } else prompt
+
+                    ZeroClawService.log("RawGen[$reqId]: → trying $label/$modelName (offline=$isOffline, gemma=$isGemma, json=$jsonMode, timeout=${timeoutMs / 1000}s)")
+                    val rawResult = withTimeout(timeoutMs) {
+                        if (isOffline) {
+                            callOfflineJson(effectivePrompt, model, rawSystemPrompt, jsonMode)
+                        } else {
+                            dispatchToProviderRaw(effectivePrompt, entry, model = model, systemPrompt = rawSystemPrompt, jsonMode = jsonMode, maxTokens = maxTokens)
+                        }
                     }
+                    val result = if (needsManualJson) {
+                        val extracted = extractJsonPayload(rawResult)
+                        // For object-array requests we REQUIRE the payload to contain '{'. A flat keyword array
+                        // means Gemma ignored instructions — treat as failed and let waterfall try next model
+                        // (rather than returning garbage that the caller will parse as 0 items).
+                        if (extracted.isNotBlank() && extracted.contains('{')) {
+                            ZeroClawService.log("RawGen[$reqId]: extracted JSON object-array (${extracted.length} chars from ${rawResult.length})")
+                            extracted
+                        } else if (extracted.isNotBlank()) {
+                            ZeroClawService.log("RawGen[$reqId]: ⚠ Gemma emitted only flat array (no objects) — treating as blank, trying next model. Preview: ${extracted.take(100)}")
+                            ""  // blank → triggers waterfall to next model
+                        } else {
+                            ZeroClawService.log("RawGen[$reqId]: ⚠ no JSON payload in Gemma output (${rawResult.length} chars) — preview: ${rawResult.take(150)}")
+                            ""
+                        }
+                    } else rawResult
+                    if (result.isNotBlank()) {
+                        ZeroClawService.log("RawGen[$reqId]: ✓ success via $label/$modelName (${result.length} chars)")
+                        android.util.Log.e("ZCRawGen", "[$reqId] OUT ok via $label/$modelName ${result.length}ch")
+                        return result
+                    } else {
+                        ZeroClawService.log("RawGen[$reqId]: ⚠ $label/$modelName returned BLANK — trying next")
+                        errors.add("$label/$modelName: blank response")
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    val to = if (isOffline) offlineTimeoutMs else onlineTimeoutMs
+                    ZeroClawService.log("RawGen[$reqId]: ⏱ $label/$modelName timed out (${to}ms) — next")
+                    errors.add("$label/$modelName: timeout")
                 } catch (e: Exception) {
                     val errMsg = e.message ?: "Unknown error"
-                    val isRateLimit = errMsg.contains("429") || errMsg.contains("quota", ignoreCase = true) || errMsg.contains("503")
-                    ZeroClawService.log("RawGenerate: $label/$modelName failed — $errMsg${if (isRateLimit) " (rate limit, trying next)" else ""}")
+                    val isRateLimit = errMsg.contains("429") || errMsg.contains("quota", ignoreCase = true) || errMsg.contains("503") ||
+                        errMsg.contains("rate", ignoreCase = true) || errMsg.contains("exceeded", ignoreCase = true)
+                    if (isRateLimit) {
+                        rateLimitedModels[cooldownKey] = now + cooldownMs
+                        ZeroClawService.log("RawGen[$reqId]: 429 $label/$modelName — cooldown ${cooldownMs / 1000}s")
+                    } else {
+                        ZeroClawService.log("RawGen[$reqId]: ✗ $label/$modelName — $errMsg")
+                    }
                     errors.add("$label/$modelName: $errMsg")
-                    // Continue to next model/key
                 }
             }
         }
 
+        android.util.Log.e("ZCRawGen", "[$reqId] OUT FAIL all ${allKeys.size} keys exhausted")
         throw Exception("All API keys/models failed: ${errors.joinToString("; ")}")
+    }
+
+    /**
+     * Offline JSON generation — Gemma 3/4 via LiteRT LM can produce JSON reliably when:
+     *   (a) the prompt explicitly demands ONLY raw JSON, and
+     *   (b) we post-process with a regex extract for bracket-balanced payload.
+     * Loads the model at 32k context to handle 30-item waterfall batches.
+     */
+    private suspend fun callOfflineJson(prompt: String, preferredModel: String, systemPrompt: String, jsonMode: Boolean): String {
+        val manager = OfflineModelManager.getInstance(context)
+        if (preferredModel.isNotBlank()) {
+            val models = manager.listAppModels()
+            val match = models.firstOrNull { m -> m.name == preferredModel || m.path == preferredModel }
+            if (match != null && (manager.getLoadedModelPath() != match.path || manager.getMaxTokens() < 32768)) {
+                // Prefer 32k ctx for JSON batches on LiteRT models; legacy .bin caps at 1024.
+                val maxTokens = if (match.isLiteRtFormat) 32768 else 1024
+                manager.loadModel(match.path, maxTokens = maxTokens, systemInstruction = systemPrompt).getOrThrow()
+            }
+        }
+        if (!manager.isModelLoaded()) throw Exception("No offline model loaded")
+        // rawGenerate already appends the JSON-coercion suffix and post-extracts the payload,
+        // so here we just send the prompt through and return raw output.
+        return manager.generateResponse(prompt).trim()
+    }
+
+    /**
+     * Find the best balanced JSON payload in arbitrary text.
+     * Strategy: collect ALL balanced [...] / {...} spans, prefer the one that
+     *   (a) contains '{' (i.e. an object or object-array, not a keyword list)
+     *   (b) is the longest. Falls back to the longest span overall, then "".
+     */
+    private fun extractJsonPayload(text: String): String {
+        val cleaned = text
+            .replace(Regex("```(?:json)?", RegexOption.IGNORE_CASE), "")
+            .replace("```", "")
+            .trim()
+        val spans = mutableListOf<String>()
+        var i = 0
+        while (i < cleaned.length) {
+            val c = cleaned[i]
+            if (c == '[' || c == '{') {
+                val span = scanBalanced(cleaned, i)
+                if (span != null) {
+                    spans.add(span)
+                    i += span.length
+                    continue
+                }
+            }
+            i++
+        }
+        if (spans.isEmpty()) return ""
+        // Prefer object-bearing spans (real data over flat keyword arrays); among those, longest.
+        val objectBearing = spans.filter { it.contains('{') }
+        return (objectBearing.maxByOrNull { it.length } ?: spans.maxByOrNull { it.length } ?: "")
+    }
+
+    private fun scanBalanced(s: String, start: Int): String? {
+        val open = s[start]
+        val close = if (open == '[') ']' else '}'
+        var depth = 0
+        var inStr = false
+        var esc = false
+        for (i in start until s.length) {
+            val c = s[i]
+            if (inStr) {
+                if (esc) esc = false
+                else if (c == '\\') esc = true
+                else if (c == '"') inStr = false
+            } else {
+                if (c == '"') inStr = true
+                else if (c == open) depth++
+                else if (c == close) {
+                    depth--
+                    if (depth == 0) return s.substring(start, i + 1)
+                }
+            }
+        }
+        return null
     }
 
     /**
@@ -186,7 +342,7 @@ class LlmRouter(private val context: Context) {
      *
      * If web tools are not enabled, falls back to plain rawGenerate().
      */
-    suspend fun rawGenerateWithTools(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 8192): String {
+    suspend fun rawGenerateWithTools(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 32768): String {
         val toolSystem = ToolSystem.getInstance(context)
         val enabled = toolSystem.enabledTools()
         val hasWebSearch = enabled.any { it.name == "web_search" }

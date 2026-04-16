@@ -52,34 +52,39 @@ class WebChatServer(private val context: Context) {
 
     private suspend fun handleRequest(socket: java.net.Socket) {
         try {
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            // Read raw bytes — avoids Content-Length bytes/chars mismatch that causes hangs.
+            // Headers are ASCII so safe to read as bytes line-by-line.
+            val input = socket.getInputStream().buffered()
             val out = socket.getOutputStream()
 
-            val requestLine = reader.readLine() ?: return
+            val requestLine = readLine(input) ?: return
+            if (requestLine.startsWith("POST")) {
+                ZeroClawService.log("WebChat: ← ${requestLine.take(60)} from ${socket.inetAddress?.hostAddress}")
+            }
             val headers = mutableMapOf<String, String>()
-            var line: String?
             var contentLength = 0
-            while (reader.readLine().also { line = it } != null) {
-                if (line.isNullOrBlank()) break
-                val colonIdx = line!!.indexOf(':')
+            while (true) {
+                val hLine = readLine(input) ?: break
+                if (hLine.isBlank()) break
+                val colonIdx = hLine.indexOf(':')
                 if (colonIdx > 0) {
-                    val key = line!!.substring(0, colonIdx).trim().lowercase()
-                    val value = line!!.substring(colonIdx + 1).trim()
+                    val key = hLine.substring(0, colonIdx).trim().lowercase()
+                    val value = hLine.substring(colonIdx + 1).trim()
                     headers[key] = value
                     if (key == "content-length") contentLength = value.toIntOrNull() ?: 0
                 }
             }
 
-            // Read body for POST requests
+            // Read body as raw bytes — Content-Length is in bytes (correct unit now).
             val body = if (requestLine.startsWith("POST") && contentLength > 0) {
-                val bodyChars = CharArray(contentLength)
+                val bodyBytes = ByteArray(contentLength)
                 var totalRead = 0
                 while (totalRead < contentLength) {
-                    val n = reader.read(bodyChars, totalRead, contentLength - totalRead)
+                    val n = input.read(bodyBytes, totalRead, contentLength - totalRead)
                     if (n <= 0) break
                     totalRead += n
                 }
-                String(bodyChars, 0, totalRead)
+                String(bodyBytes, 0, totalRead, Charsets.UTF_8)
             } else ""
 
             // Handle OPTIONS preflight for CORS
@@ -198,7 +203,7 @@ class WebChatServer(private val context: Context) {
             val json = JSONObject(body)
             val prompt = json.optString("prompt", json.optString("message", "")).trim()
             val jsonMode = json.optBoolean("json_mode", false)
-            val maxTokens = json.optInt("max_tokens", 8192)
+            val maxTokens = json.optInt("max_tokens", 32768)
             val useTools = json.optBoolean("use_tools", false)
             val publishToIotlAnime = json.optBoolean("publish_to_iotlanime", false)
             val iotlanimeTitle = json.optString("iotlanime_title", "").trim()
@@ -335,6 +340,23 @@ class WebChatServer(private val context: Context) {
         val response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         out.write(response.toByteArray())
         out.write(bytes)
+    }
+
+    /** Read one HTTP header line (CRLF or LF terminated) from a raw byte stream — no BufferedReader needed. */
+    private fun readLine(input: java.io.InputStream): String? {
+        val buf = ByteArray(8192)
+        var pos = 0
+        while (pos < buf.size) {
+            val b = input.read()
+            if (b == -1) return if (pos > 0) String(buf, 0, pos, Charsets.UTF_8) else null
+            if (b == '\n'.code) {
+                // Strip trailing CR if present
+                val end = if (pos > 0 && buf[pos - 1] == '\r'.code.toByte()) pos - 1 else pos
+                return String(buf, 0, end, Charsets.UTF_8)
+            }
+            buf[pos++] = b.toByte()
+        }
+        return String(buf, 0, pos, Charsets.UTF_8) // line longer than 8K — return what we have
     }
 
     private fun sendJson(out: java.io.OutputStream, json: JSONObject) {

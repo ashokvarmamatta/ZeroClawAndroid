@@ -91,7 +91,7 @@ class ToolSystem private constructor(private val context: Context) {
 
     init {
         // Auto-register all built-in tools
-        registerTool(WebSearchTool())
+        registerTool(WebSearchTool(context))
         registerTool(WebFetchTool())
         registerTool(MemoryTool(context))
         registerTool(PdfReadTool(context))
