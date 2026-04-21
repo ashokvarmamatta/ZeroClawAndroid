@@ -43,7 +43,15 @@ class WebChatServer(private val context: Context) {
         while (running) {
             try {
                 val socket = serverSocket!!.accept()
-                launch { handleRequest(socket) }
+                val acceptTime = System.currentTimeMillis()
+                // Launch on IO so handleRequest runs concurrently and accept() returns fast
+                launch(Dispatchers.IO) {
+                    val launchDelay = System.currentTimeMillis() - acceptTime
+                    if (launchDelay > 100) {
+                        ZeroClawService.log("WebChat: socket launched ${launchDelay}ms after accept (dispatcher busy?)")
+                    }
+                    handleRequest(socket)
+                }
             } catch (e: Exception) {
                 if (running) ZeroClawService.log("WebChat: server error — ${e.message}")
             }
@@ -51,15 +59,22 @@ class WebChatServer(private val context: Context) {
     }
 
     private suspend fun handleRequest(socket: java.net.Socket) {
+        val t0 = System.currentTimeMillis()
+        val reqId = "wc${t0.toString().takeLast(6)}"
         try {
+            // Set SO_TIMEOUT so a silent client can't block the socket read forever.
+            // This is short — if no bytes arrive in 30s during reading, we bail.
+            socket.soTimeout = 30_000
+
             // Read raw bytes — avoids Content-Length bytes/chars mismatch that causes hangs.
             // Headers are ASCII so safe to read as bytes line-by-line.
             val input = socket.getInputStream().buffered()
             val out = socket.getOutputStream()
 
             val requestLine = readLine(input) ?: return
+            val tAfterRequestLine = System.currentTimeMillis()
             if (requestLine.startsWith("POST")) {
-                ZeroClawService.log("WebChat: ← ${requestLine.take(60)} from ${socket.inetAddress?.hostAddress}")
+                ZeroClawService.log("WebChat[$reqId]: ← ${requestLine.take(60)} from ${socket.inetAddress?.hostAddress} (requestLine read in ${tAfterRequestLine - t0}ms)")
             }
             val headers = mutableMapOf<String, String>()
             var contentLength = 0
@@ -74,18 +89,41 @@ class WebChatServer(private val context: Context) {
                     if (key == "content-length") contentLength = value.toIntOrNull() ?: 0
                 }
             }
+            val tAfterHeaders = System.currentTimeMillis()
+            if (requestLine.startsWith("POST")) {
+                ZeroClawService.log("WebChat[$reqId]: headers read in ${tAfterHeaders - tAfterRequestLine}ms (${headers.size} headers, contentLength=$contentLength)")
+            }
 
             // Read body as raw bytes — Content-Length is in bytes (correct unit now).
             val body = if (requestLine.startsWith("POST") && contentLength > 0) {
                 val bodyBytes = ByteArray(contentLength)
                 var totalRead = 0
+                var readIterations = 0
+                val bodyStart = System.currentTimeMillis()
                 while (totalRead < contentLength) {
+                    readIterations++
+                    val iterStart = System.currentTimeMillis()
                     val n = input.read(bodyBytes, totalRead, contentLength - totalRead)
-                    if (n <= 0) break
+                    val iterElapsed = System.currentTimeMillis() - iterStart
+                    if (n <= 0) {
+                        ZeroClawService.log("WebChat[$reqId]: body read ABORTED at $totalRead/$contentLength bytes (read returned $n after ${iterElapsed}ms)")
+                        break
+                    }
+                    // Log slow chunks so we can see if body arrives in chunks over time
+                    if (iterElapsed > 500) {
+                        ZeroClawService.log("WebChat[$reqId]: body read slow chunk — got $n bytes in ${iterElapsed}ms (progress $totalRead→${totalRead + n}/$contentLength)")
+                    }
                     totalRead += n
                 }
+                val bodyElapsed = System.currentTimeMillis() - bodyStart
+                ZeroClawService.log("WebChat[$reqId]: body read complete — $totalRead bytes in ${bodyElapsed}ms ($readIterations reads)")
                 String(bodyBytes, 0, totalRead, Charsets.UTF_8)
             } else ""
+
+            val tAfterBody = System.currentTimeMillis()
+            if (requestLine.startsWith("POST")) {
+                ZeroClawService.log("WebChat[$reqId]: total pre-handler time = ${tAfterBody - t0}ms → dispatching to handler")
+            }
 
             // Handle OPTIONS preflight for CORS
             if (requestLine.startsWith("OPTIONS")) {
@@ -163,10 +201,16 @@ class WebChatServer(private val context: Context) {
                 }
             }
 
+            val tAfterHandler = System.currentTimeMillis()
             out.flush()
+            val tAfterFlush = System.currentTimeMillis()
+            if (requestLine.startsWith("POST")) {
+                ZeroClawService.log("WebChat[$reqId]: done — handler=${tAfterHandler - tAfterBody}ms, flush=${tAfterFlush - tAfterHandler}ms, total=${tAfterFlush - t0}ms")
+            }
             socket.close()
         } catch (e: Exception) {
-            ZeroClawService.log("WebChat: request error — ${e.message}")
+            val elapsed = System.currentTimeMillis() - t0
+            ZeroClawService.log("WebChat[$reqId]: request error after ${elapsed}ms — ${e.javaClass.simpleName}: ${e.message}")
             runCatching { socket.close() }
         }
     }
