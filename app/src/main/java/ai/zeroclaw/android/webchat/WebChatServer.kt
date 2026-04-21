@@ -158,7 +158,10 @@ class WebChatServer(private val context: Context) {
                         .put("endpoints", org.json.JSONArray()
                             .put("/api/chat").put("/api/generate").put("/api/discover")
                             .put("/v1/chat/completions").put("/v1/models")
-                            .put("/api/agents/results").put("/api/iotlanime"))
+                            .put("/api/agents/results").put("/api/iotlanime")
+                            .put("/api/agents/list").put("/api/agents/create")
+                            .put("/api/agents/update").put("/api/agents/delete")
+                            .put("/api/agents/toggle"))
                         .put("tools_available", toolsArray)
                         .put("agents", agentsArray)
                     )
@@ -194,6 +197,22 @@ class WebChatServer(private val context: Context) {
                 }
                 requestLine.startsWith("DELETE /api/agents/results") -> {
                     handleAgentResultsDelete(out, requestLine)
+                }
+                // Agent CRUD API — for autom remote management
+                requestLine.startsWith("GET /api/agents/list") -> {
+                    handleAgentsList(out)
+                }
+                requestLine.startsWith("POST /api/agents/create") -> {
+                    handleAgentCreate(out, body)
+                }
+                requestLine.startsWith("POST /api/agents/update") -> {
+                    handleAgentUpdate(out, body)
+                }
+                requestLine.startsWith("DELETE /api/agents/delete") -> {
+                    handleAgentDelete(out, requestLine)
+                }
+                requestLine.startsWith("POST /api/agents/toggle") -> {
+                    handleAgentToggle(out, body)
                 }
                 else -> {
                     val response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
@@ -987,6 +1006,156 @@ function timeAgo(ts){
             sendApiError(out, e.message ?: "Unknown error", 500)
         }
     }
+
+    // ═══ Agent CRUD API — for autom remote management ═════════════════════════
+
+    /** GET /api/agents/list — returns all agents as JSON */
+    private fun handleAgentsList(out: java.io.OutputStream) {
+        try {
+            val mgr = AgentManager.getInstance(context)
+            val agents = mgr.loadAll()
+            val arr = JSONArray()
+            for (a in agents) arr.put(agentToJson(a))
+            sendJson(out, JSONObject().put("agents", arr).put("count", agents.size))
+        } catch (e: Exception) {
+            sendApiError(out, e.message ?: "Unknown error", 500)
+        }
+    }
+
+    /**
+     * POST /api/agents/create — creates a new web scraper agent.
+     * Body: {name, url, intervalMinutes, channel, chatId, extractPrompt, onlyOnChange, templateId?, apiSource?}
+     */
+    private fun handleAgentCreate(out: java.io.OutputStream, body: String) {
+        try {
+            val json = JSONObject(body)
+            val name = json.optString("name").trim()
+            val url = json.optString("url").trim()
+            val intervalMinutes = json.optInt("interval_minutes", 60)
+            val channel = json.optString("channel", "webhook").trim()
+            val chatId = json.optString("chat_id", "").trim()
+            val extractPrompt = json.optString("extract_prompt", "")
+            val onlyOnChange = json.optBoolean("only_on_change", false)
+            val templateId = json.optString("template_id").takeIf { it.isNotBlank() }
+            val apiSource = json.optString("api_source").takeIf { it.isNotBlank() }
+
+            if (name.isBlank()) {
+                sendApiError(out, "name is required", 400)
+                return
+            }
+            // URL is optional if apiSource is set, or if it's just for collecting data (no URL needed)
+            if (url.isBlank() && apiSource == null) {
+                sendApiError(out, "url or api_source is required", 400)
+                return
+            }
+
+            val agent = AgentManager.getInstance(context).createWebScraper(
+                name = name,
+                url = url,
+                intervalMinutes = intervalMinutes,
+                channel = channel,
+                chatId = chatId,
+                extractPrompt = extractPrompt,
+                onlyOnChange = onlyOnChange,
+                templateId = templateId,
+                apiSource = apiSource,
+            )
+
+            ZeroClawService.log("AgentAPI: created agent '${agent.name}' (id=${agent.id}, interval=${agent.intervalMinutes}min)")
+            sendJson(out, agentToJson(agent))
+        } catch (e: Exception) {
+            ZeroClawService.log("AgentAPI: create failed — ${e.message}")
+            sendApiError(out, e.message ?: "Unknown error", 500)
+        }
+    }
+
+    /**
+     * POST /api/agents/update — updates an existing agent.
+     * Body: {id, name?, url?, intervalMinutes?, extractPrompt?, onlyOnChange?, enabled?}
+     */
+    private fun handleAgentUpdate(out: java.io.OutputStream, body: String) {
+        try {
+            val json = JSONObject(body)
+            val id = json.optString("id").trim()
+            if (id.isBlank()) {
+                sendApiError(out, "id is required", 400)
+                return
+            }
+            val mgr = AgentManager.getInstance(context)
+            val existing = mgr.loadAll().firstOrNull { it.id == id }
+            if (existing == null) {
+                sendApiError(out, "agent not found", 404)
+                return
+            }
+            val updated = existing.copy(
+                name = if (json.has("name")) json.getString("name") else existing.name,
+                url = if (json.has("url")) json.getString("url") else existing.url,
+                intervalMinutes = if (json.has("interval_minutes")) json.getInt("interval_minutes").coerceAtLeast(5) else existing.intervalMinutes,
+                extractPrompt = if (json.has("extract_prompt")) json.getString("extract_prompt") else existing.extractPrompt,
+                onlyOnChange = if (json.has("only_on_change")) json.getBoolean("only_on_change") else existing.onlyOnChange,
+                enabled = if (json.has("enabled")) json.getBoolean("enabled") else existing.enabled,
+                channel = if (json.has("channel")) json.getString("channel") else existing.channel,
+                chatId = if (json.has("chat_id")) json.getString("chat_id") else existing.chatId,
+            )
+            mgr.save(updated)
+            ZeroClawService.log("AgentAPI: updated agent '${updated.name}' (id=$id)")
+            sendJson(out, agentToJson(updated))
+        } catch (e: Exception) {
+            sendApiError(out, e.message ?: "Unknown error", 500)
+        }
+    }
+
+    /** DELETE /api/agents/delete?id=XXX — deletes an agent */
+    private fun handleAgentDelete(out: java.io.OutputStream, requestLine: String) {
+        try {
+            val params = parseQueryParams(requestLine)
+            val id = params["id"]
+            if (id.isNullOrBlank()) {
+                sendApiError(out, "id param required", 400)
+                return
+            }
+            AgentManager.getInstance(context).delete(id)
+            ZeroClawService.log("AgentAPI: deleted agent id=$id")
+            sendJson(out, JSONObject().put("deleted", true).put("id", id))
+        } catch (e: Exception) {
+            sendApiError(out, e.message ?: "Unknown error", 500)
+        }
+    }
+
+    /** POST /api/agents/toggle — toggles an agent's enabled state. Body: {id, enabled} */
+    private fun handleAgentToggle(out: java.io.OutputStream, body: String) {
+        try {
+            val json = JSONObject(body)
+            val id = json.optString("id").trim()
+            val enabled = json.optBoolean("enabled", true)
+            if (id.isBlank()) {
+                sendApiError(out, "id is required", 400)
+                return
+            }
+            AgentManager.getInstance(context).setEnabled(id, enabled)
+            ZeroClawService.log("AgentAPI: toggled agent id=$id enabled=$enabled")
+            sendJson(out, JSONObject().put("id", id).put("enabled", enabled))
+        } catch (e: Exception) {
+            sendApiError(out, e.message ?: "Unknown error", 500)
+        }
+    }
+
+    private fun agentToJson(a: ai.zeroclaw.android.agents.AgentConfig): JSONObject = JSONObject()
+        .put("id", a.id)
+        .put("name", a.name)
+        .put("type", a.type)
+        .put("url", a.url)
+        .put("interval_minutes", a.intervalMinutes)
+        .put("channel", a.channel)
+        .put("chat_id", a.chatId)
+        .put("extract_prompt", a.extractPrompt)
+        .put("only_on_change", a.onlyOnChange)
+        .put("enabled", a.enabled)
+        .put("created_at", a.createdAt)
+        .put("last_run_at", a.lastRunAt)
+        .put("last_status", a.lastStatus)
+        .put("template_id", a.templateId ?: "")
+        .put("api_source", a.apiSource ?: "")
 
     private fun resultToJson(r: AgentResultEntity): JSONObject = JSONObject()
         .put("id", r.id)
