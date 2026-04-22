@@ -7,6 +7,135 @@
 
 ---
 
+## BUG-43 — Discovery Agent creation fails with "url or api_source is required" 🔴 OPEN
+- **Phase:** 184 (Autom Discovery Agents)
+- **Status:** 🔴 Open — needs fix next session
+- **Severity:** High (blocks the entire Discovery feature)
+- **Symptom:** User opens autom → Single Post Forge → Scheduled Discoveries → New Discovery Agent → fills in topic like "ai news April 21" → Create. Red error appears: **"Create failed: HTTP 400 ('url or api_source is required')"**. Pending Discoveries stays empty.
+- **Root Cause:** Design mismatch between autom and ZeroClaw's agent contract.
+  - **Autom side** (`SinglePostViewModel.createDiscoveryAgent()`): sends `url = ""` (empty string) on purpose, assuming ZeroClaw will run `web_search` using the `extract_prompt` alone — no URL needed.
+  - **ZeroClaw side** (`WebChatServer.handleAgentCreate`): validates `if (url.isBlank() && apiSource == null) return 400`. Built on top of `WebScraperAgent` which requires a URL to fetch — it doesn't run a pure "web search → summarize" flow.
+  - So autom sends `url=""` → ZeroClaw rejects with 400 before the agent is even created.
+- **Fix (proposed, not yet implemented):**
+  Two complementary fixes — pick the right one or do both:
+
+  **Option A — Quick: autom sends template URLs per type**
+  When user creates a Discovery Agent, autom fills in the URL based on `createAgentType`:
+  ```kotlin
+  val (url, apiSource, template) = when (s.createAgentType) {
+    SinglePostType.NEWS  -> Triple("https://news.google.com/rss/search?q=$encoded",
+                                   "gnews", "tpl_latest_news")
+    SinglePostType.FACTS -> Triple("https://www.google.com/search?q=$encoded+interesting+facts",
+                                   null, null)
+    SinglePostType.CODE  -> Triple("https://github.com/trending?q=$encoded",
+                                   null, null)
+    SinglePostType.AI    -> Triple("https://www.google.com/search?q=$encoded+AI+2026",
+                                   null, null)
+    // ... other types
+  }
+  ```
+  Then ZeroClaw's existing WebScraperAgent pipeline works as-is.
+
+  **Option B — Correct: support a new "search_only" agent type**
+  Add a new agent type to ZeroClaw that skips URL fetching entirely and just runs
+  `web_search` tool with the `extract_prompt` as the query. This matches what
+  autom's trending search already does (in-process), but runs it on a schedule.
+  ```kotlin
+  // AgentConfig.type = "web_search_only"
+  // WebScraperAgent.run(): if type==web_search_only → llmRouter.rawGenerateWithTools(extractPrompt)
+  //                         directly, skip WebFetchTool / WebViewTool entirely
+  ```
+
+  Recommendation: **do both** — Option A for immediate fix, Option B for the proper
+  long-term design. Users will want topic-driven scheduled discoveries without
+  having to pre-pick RSS feeds.
+- **Workaround (until fixed):** User can manually create agents via the ZeroClaw Agents screen
+  with a real RSS/URL + the existing template system.
+- **Files affected:**
+  - `autom/.../SinglePostViewModel.kt::createDiscoveryAgent()` — send URL
+  - `ZeroClaw/.../WebChatServer.kt::handleAgentCreate` — accept new agent type
+  - `ZeroClaw/.../WebScraperAgent.kt::run()` — handle search-only flow
+  - `ZeroClaw/.../AgentManager.kt::createWebScraper()` — add type param
+- **Lesson:** When adding a new agent type that's fundamentally different from
+  URL-based scraping (scheduled web_search), don't try to shoehorn it into the
+  existing `WebScraperAgent` path. Either add a new agent type or generate a
+  template URL so the existing pipeline works unchanged. Always test the full
+  flow end-to-end before shipping a cross-app feature.
+
+---
+
+## BUG-42 — WebChatServer body reading hangs for 5 minutes (bytes vs chars mismatch)
+- **Phase:** 183 (Autom→ZeroClaw pipeline)
+- **Status:** ✅ Fixed
+- **Severity:** Critical
+- **Symptom:** POST `/api/generate` from autom arrives at ZeroClaw, request line is read, but body reading blocks for exactly 5 minutes. By the time ZeroClaw processes the request and generates a response, autom's Ktor 300s timeout has already killed the socket → "Broken pipe". Autom then falls back to Gemini direct and gets 429 on all keys.
+- **Root Cause:** `WebChatServer.handleRequest()` used `BufferedReader.read(char[contentLength])` to read the POST body. `Content-Length` is in **bytes** but `BufferedReader.read()` counts **chars** (decoded UTF-8). For any body with multi-byte characters, `contentLength > charCount` → the read loop blocked forever waiting for chars that would never arrive, until the socket died.
+- **Fix:** Replaced `BufferedReader` with raw `InputStream.buffered()` + custom `readLine(InputStream)` byte-level helper. Headers are read byte-by-byte, body is read as raw `ByteArray(contentLength)` then decoded to UTF-8 string. Content-Length now correctly matches byte count.
+- **Files Changed:** WebChatServer.kt
+- **Lesson:** Never mix `Content-Length` (bytes) with `Reader.read()` (chars). HTTP body reading must always use byte-level I/O, then decode to String after reading the exact byte count.
+
+---
+
+## BUG-41 — refreshZeroClawTools blocks research pipeline for 5 minutes on timeout
+- **Phase:** 183 (Autom→ZeroClaw pipeline)
+- **Status:** ✅ Fixed (autom)
+- **Severity:** High
+- **Symptom:** autom's research request to ZeroClaw is delayed by up to 5 minutes before even sending the POST. Neural Log shows "Researching..." but ZeroClaw receives nothing for minutes.
+- **Root Cause:** `GeminiRepositoryImpl.refreshZeroClawTools()` calls GET `/api/discover` with the default Ktor 5-minute request timeout. If ZeroClaw is slow to respond (e.g. loading model), this GET blocks the entire research pipeline for the full 5 minutes before the actual `/api/generate` POST is even sent.
+- **Fix:** Added hard 10-second timeout to `refreshZeroClawTools()` — both `withTimeout(10_000L)` and per-request Ktor timeout overrides. On failure, sets `lastDiscoverTime = now` to prevent retry-every-call loops, and uses cached tool state.
+- **Files Changed:** autom GeminiRepositoryImpl.kt
+- **Lesson:** Discovery/health-check calls must have aggressive timeouts — never inherit the main request timeout. A 10s cap for a simple GET is generous.
+
+---
+
+## BUG-40 — OkHttp readTimeout(60s) silently overrides coroutine withTimeout for cloud LLM calls
+- **Phase:** 183 (Autom→ZeroClaw pipeline)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** Cloud Gemma 4 calls (gemma-4-31b-it) timed out at exactly 60 seconds despite `withTimeout(120_000ms)` in the coroutine. Log showed "timeout" at 60s boundaries.
+- **Root Cause:** `LlmRouter.client` had `readTimeout(60, TimeUnit.SECONDS)`. OkHttp's readTimeout is enforced at the socket level — it kills the read before the coroutine timeout fires. The two timeout systems race, and OkHttp always wins because it's lower-level.
+- **Fix:** Bumped OkHttp to `readTimeout(300s)`, `callTimeout(0)` (disabled). Coroutine `withTimeout()` is now the sole timeout authority: 120s for online, 480s for offline.
+- **Files Changed:** LlmRouter.kt
+- **Lesson:** When using OkHttp inside coroutines, set OkHttp timeouts to be >= coroutine timeouts. Otherwise OkHttp kills the connection before the coroutine can react.
+
+---
+
+## BUG-39 — Gemma 4 cloud API ignores responseMimeType, returns prose instead of JSON
+- **Phase:** 183 (Autom→ZeroClaw pipeline)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** Cloud Gemma 4 (via Gemini API) returned markdown-bulleted prose (6989 chars) instead of a JSON array. autom's `extractJson` found the schema literal `{"title":"string",...}` and parsed it as 1 item. Or extracted a flat keyword array `["magic","underdog",...]` as the result.
+- **Root Cause:** `responseMimeType: "application/json"` is a Gemini-native feature — Gemma models hosted on the Gemini API silently ignore it and free-form generate. The old code had a "skip Gemma for JSON" guard that was removed, but no coercion was added for cloud Gemma.
+- **Fix:** `rawGenerate` now detects Gemma models (online OR offline) and appends an aggressive JSON-coercion suffix with a concrete 2-item filled example. Post-processing extracts the longest balanced `[{...}]` span (preferring object-bearing spans over flat keyword arrays). If no object-array is found, the model is treated as failed and the waterfall moves to the next model.
+- **Files Changed:** LlmRouter.kt (`rawGenerate`, `extractJsonPayload`, `scanBalanced`)
+- **Lesson:** Gemma ≠ Gemini. `responseMimeType` only works on native Gemini models. For Gemma, always use prompt-level coercion with a concrete filled example — abstract schema instructions alone produce prose.
+
+---
+
+## BUG-38 — OfflineModelManager.loadModel silently skips 32K context reload
+- **Phase:** 183 (Autom→ZeroClaw pipeline)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** Offline Gemma 4 (E2B, LiteRT) timed out at 240s generating a 10-anime JSON list. Model was loaded at 4096 maxTokens (from background preload), so a 2500-token prompt left only 1500 tokens for output — insufficient for a 10-item structured JSON. Model spun indefinitely.
+- **Root Cause:** `loadModel()` early-returned when `loadedModelPath == modelPath`, even if the caller requested a larger `maxTokens`. LiteRT LM's `maxNumTokens` is baked into the Engine at init time — it cannot be changed without recreating the engine.
+- **Fix:** Added `currentMaxTokens < maxTokens` to the reload condition. When a larger context is needed, the old engine is destroyed and a new one is created at the requested size.
+- **Files Changed:** OfflineModelManager.kt
+- **Lesson:** When model configuration is immutable after init (like LiteRT's maxNumTokens), always check ALL config params in the "already loaded" guard, not just the model path.
+
+---
+
+## BUG-37 — Waterfall exhausts all API keys on rate-limited models, maxTokens defaults too low
+- **Phase:** 183 (Autom→ZeroClaw pipeline)
+- **Status:** ✅ Fixed
+- **Severity:** High
+- **Symptom:** 30-anime request takes over an hour. Each batch (3×10) walks the full waterfall (3 keys × 10+ models), re-trying keys that were already 429'd. Silent cancels — no progress or error notifications between autom and ZeroClaw.
+- **Root Cause:** (1) `rawGenerate` had no per-key rate-limit cooldown — a 429'd key was retried on the next batch. (2) `maxTokens` defaulted to 8192 everywhere (autom, ZeroClaw server, LlmRouter) — too small for 32K-capable models. (3) No correlation IDs or progress logs. (4) WebSearchTool had no fallback when DDG HTTP failed. (5) Offline models were excluded from `rawGenerate` entirely.
+- **Fix:** (1) Per-key 60s cooldown on 429. (2) Default maxTokens bumped to 32768 across all paths. (3) Correlation IDs `[rXXX]`/`[zcXXX]` with Log.e checkpoints on both sides. (4) WebSearchTool now falls back to headless Android WebView via WebViewTool. (5) Offline models included in rawGenerate via `callOfflineJson` with 32K context.
+- **Files Changed:** LlmRouter.kt, WebSearchTool.kt, ToolSystem.kt, AgentTool.kt, WebChatServer.kt, OfflineModelManager.kt; autom: GeminiRepositoryImpl.kt
+- **Lesson:** Multi-layer HTTP pipelines (app→tunnel→server→API) need: (a) per-key cooldowns not just per-model, (b) correlation IDs end-to-end, (c) timeouts that don't race each other, (d) fallbacks at every I/O boundary.
+
+---
+
 ## BUG-36 — Offline Gemma 4 vision images routed to online APIs instead of on-device model
 - **Phase:** 181 (Offline Vision + Config Dialog)
 - **Status:** ✅ Fixed
