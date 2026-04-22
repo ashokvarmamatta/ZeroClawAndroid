@@ -1023,8 +1023,9 @@ function timeAgo(ts){
     }
 
     /**
-     * POST /api/agents/create — creates a new web scraper agent.
-     * Body: {name, url, intervalMinutes, channel, chatId, extractPrompt, onlyOnChange, templateId?, apiSource?}
+     * POST /api/agents/create — creates a new agent.
+     * Body: {name, url, intervalMinutes, channel, chatId, extractPrompt, onlyOnChange, templateId?, apiSource?, type?}
+     *   type defaults to "web_scraper". Use "search_only" (BUG-43) to run web_search without a URL.
      */
     private fun handleAgentCreate(out: java.io.OutputStream, body: String) {
         try {
@@ -1038,14 +1039,20 @@ function timeAgo(ts){
             val onlyOnChange = json.optBoolean("only_on_change", false)
             val templateId = json.optString("template_id").takeIf { it.isNotBlank() }
             val apiSource = json.optString("api_source").takeIf { it.isNotBlank() }
+            val type = json.optString("type").trim().ifBlank { AgentManager.TYPE_WEB_SCRAPER }
 
             if (name.isBlank()) {
                 sendApiError(out, "name is required", 400)
                 return
             }
-            // URL is optional if apiSource is set, or if it's just for collecting data (no URL needed)
-            if (url.isBlank() && apiSource == null) {
+            // BUG-43: search_only agents don't fetch a URL — they just run web_search with extractPrompt.
+            // For all other types, require url or api_source.
+            if (type != AgentManager.TYPE_SEARCH_ONLY && url.isBlank() && apiSource == null) {
                 sendApiError(out, "url or api_source is required", 400)
+                return
+            }
+            if (type == AgentManager.TYPE_SEARCH_ONLY && extractPrompt.isBlank()) {
+                sendApiError(out, "extract_prompt is required for search_only agents", 400)
                 return
             }
 
@@ -1059,6 +1066,7 @@ function timeAgo(ts){
                 onlyOnChange = onlyOnChange,
                 templateId = templateId,
                 apiSource = apiSource,
+                type = type,
             )
 
             ZeroClawService.log("AgentAPI: created agent '${agent.name}' (id=${agent.id}, interval=${agent.intervalMinutes}min)")

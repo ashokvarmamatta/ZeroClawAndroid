@@ -93,6 +93,19 @@ fun AgentCreateSheet(
     var trackingMode  by remember { mutableStateOf(existing?.safeTrackingMode ?: "full_site") }
     var customInput   by remember { mutableStateOf("") }
     var selectedSubs  by remember { mutableStateOf(setOf<String>()) }
+    // BUG-43: three-way target mode — "url" (scrape a web page), "api" (free API
+    // registered on the template), "search" (no URL; run web_search + web_fetch
+    // tools dynamically per run). Initialised from the existing agent's type or
+    // template shape.
+    var targetMode    by remember {
+        mutableStateOf(
+            when {
+                existing?.type == AgentManager.TYPE_SEARCH_ONLY -> "search"
+                (existing?.apiSource ?: template?.apiSource) != null -> "api"
+                else -> "url"
+            }
+        )
+    }
 
     // Live-update URL and extractPrompt when sub-categories or custom input change (new template only)
     LaunchedEffect(selectedSubs, customInput) {
@@ -372,16 +385,68 @@ fun AgentCreateSheet(
                 )
             }
 
+            // BUG-43: target-mode selector. Three mutually-exclusive modes:
+            //   • "url"    — classic scrape (URL required)
+            //   • "api"    — free-API template (url + apiSource from the template)
+            //   • "search" — no URL; ZeroClaw runs web_search + web_fetch dynamically
             item {
-                FormField(
-                    label = "Target URL",
-                    value = url,
-                    onValueChange = { url = it; urlError = null },
-                    placeholder = "https://example.com/news",
-                    error = urlError,
-                    accent = accentColor,
-                    leadingIcon = { Icon(Icons.Default.Link, null, tint = accentColor, modifier = Modifier.size(18.dp)) }
-                )
+                Column {
+                    Text("Target", fontSize = 12.sp, color = accentColor, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    val hasApi = (template?.apiSource ?: existing?.apiSource) != null
+                    val modes = buildList {
+                        add("url" to "URL")
+                        if (hasApi) add("api" to "API Source")
+                        add("search" to "web_search + web_fetch")
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        modes.forEach { (mode, label) ->
+                            FilterChip(
+                                selected = targetMode == mode,
+                                onClick = {
+                                    targetMode = mode
+                                    if (mode == "search") {
+                                        url = ""
+                                        urlError = null
+                                    }
+                                },
+                                label = { Text(label, fontSize = 10.sp, maxLines = 1) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = accentColor,
+                                    selectedLabelColor = Color.White,
+                                ),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                    Text(
+                        when (targetMode) {
+                            "search" -> "No fixed URL — the agent runs web_search + web_fetch on its schedule using the extract prompt as the query."
+                            "api"    -> "Uses the template's free data API. URL below is optional context."
+                            else     -> "Agent fetches the URL below each run and extracts per your prompt."
+                        },
+                        fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                    )
+                }
+            }
+
+            if (targetMode != "search") {
+                item {
+                    FormField(
+                        label = "Target URL",
+                        value = url,
+                        onValueChange = { url = it; urlError = null },
+                        placeholder = "https://example.com/news",
+                        error = urlError,
+                        accent = accentColor,
+                        leadingIcon = { Icon(Icons.Default.Link, null, tint = accentColor, modifier = Modifier.size(18.dp)) }
+                    )
+                }
             }
 
             // ── Section: Schedule ──────────────────────────────────────────
@@ -1142,8 +1207,16 @@ Start directly with the data list:"""
                         // Validate
                         var ok = true
                         if (name.isBlank()) { nameError = "Name is required"; ok = false }
-                        if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
-                            urlError = "Enter a valid URL starting with http:// or https://"; ok = false
+                        // search_only agents don't need a URL — skip URL validation in that mode.
+                        if (targetMode != "search") {
+                            if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+                                urlError = "Enter a valid URL starting with http:// or https://"; ok = false
+                            }
+                        } else {
+                            // search_only needs an extract prompt to drive the query.
+                            if (extractPrompt.isBlank()) {
+                                urlError = "Extract prompt is required for web_search + web_fetch"; ok = false
+                            }
                         }
                         if (selectedBots.isEmpty() && channelTargets.isEmpty()) {
                             deliveryError = "Select at least one bot or add a channel target"; ok = false
@@ -1195,24 +1268,35 @@ Start directly with the data list:"""
                         val channelStr = selectedBots.joinToString(",")
                         val chatIdStr = encodeChannelTargets(channelTargets)
 
+                        val resolvedType = when (targetMode) {
+                            "search" -> AgentManager.TYPE_SEARCH_ONLY
+                            else     -> AgentManager.TYPE_WEB_SCRAPER
+                        }
+                        val resolvedApiSource = when (targetMode) {
+                            "search" -> null
+                            "api"    -> template?.apiSource ?: existing?.apiSource
+                            else     -> template?.apiSource ?: existing?.apiSource
+                        }
+                        val resolvedUrl = if (targetMode == "search") "" else finalUrl
                         val config = (existing ?: AgentConfig(
                             id = UUID.randomUUID().toString(),
-                            name = "", type = AgentManager.TYPE_WEB_SCRAPER,
+                            name = "", type = resolvedType,
                             url = "", intervalMinutes = 60, channel = "",
                             chatId = "", extractPrompt = "", onlyOnChange = true,
                             enabled = true, createdAt = System.currentTimeMillis(),
                             lastRunAt = 0L, lastContentHash = 0, lastStatus = "Not run yet",
                             templateId = template?.id,
-                            apiSource = template?.apiSource
+                            apiSource = resolvedApiSource
                         )).copy(
+                            type = resolvedType,
                             name = finalName,
-                            url = finalUrl,
+                            url = resolvedUrl,
                             intervalMinutes = intervalMins,
                             channel = channelStr,
                             chatId = chatIdStr,
                             extractPrompt = finalPrompt,
                             onlyOnChange = onlyOnChange,
-                            apiSource = template?.apiSource ?: existing?.apiSource,
+                            apiSource = resolvedApiSource,
                             fetchType = aiFetchType,
                             formatPreview = aiFormatPreview,
                             trackingMode = trackingMode

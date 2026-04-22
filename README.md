@@ -91,6 +91,7 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 | 📦 **25+ templates** | Crypto, gold, stocks, weather, news, sports, GitHub trending, YouTube, IPO, earthquakes... |
 | ⚡ **21 free APIs** | CoinGecko, AlphaVantage, Metals.live, wttr.in, USGS, and more — no API keys needed |
 | 🕸️ **Web scraping** | Monitor any URL, AI extracts what you want |
+| 🔍 **web_search + web_fetch** | No URL needed — agent searches the web dynamically each run and summarises (tool-based discovery, selectable from the target picker) |
 | 📢 **Delivery** | Telegram, Discord, Slack, WhatsApp, Email |
 | ⏱️ **Schedule** | Every 5 min to 24 hours |
 | 🔄 **Smart updates** | Only sends when content actually changes |

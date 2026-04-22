@@ -7,60 +7,35 @@
 
 ---
 
-## BUG-43 — Discovery Agent creation fails with "url or api_source is required" 🔴 OPEN
+## BUG-43 — Discovery Agent creation fails with "url or api_source is required" ✅ FIXED
 - **Phase:** 184 (Autom Discovery Agents)
-- **Status:** 🔴 Open — needs fix next session
+- **Status:** ✅ Fixed (2026-04-22, branch `fix/bug-43-discovery-agent-url`)
 - **Severity:** High (blocks the entire Discovery feature)
 - **Symptom:** User opens autom → Single Post Forge → Scheduled Discoveries → New Discovery Agent → fills in topic like "ai news April 21" → Create. Red error appears: **"Create failed: HTTP 400 ('url or api_source is required')"**. Pending Discoveries stays empty.
 - **Root Cause:** Design mismatch between autom and ZeroClaw's agent contract.
-  - **Autom side** (`SinglePostViewModel.createDiscoveryAgent()`): sends `url = ""` (empty string) on purpose, assuming ZeroClaw will run `web_search` using the `extract_prompt` alone — no URL needed.
-  - **ZeroClaw side** (`WebChatServer.handleAgentCreate`): validates `if (url.isBlank() && apiSource == null) return 400`. Built on top of `WebScraperAgent` which requires a URL to fetch — it doesn't run a pure "web search → summarize" flow.
-  - So autom sends `url=""` → ZeroClaw rejects with 400 before the agent is even created.
-- **Fix (proposed, not yet implemented):**
-  Two complementary fixes — pick the right one or do both:
+  - **Autom side** (`SinglePostViewModel.createDiscoveryAgent()`): sent `url = ""` (empty string), assuming ZeroClaw would run `web_search` using the `extract_prompt` alone.
+  - **ZeroClaw side** (`WebChatServer.handleAgentCreate`): validated `if (url.isBlank() && apiSource == null) return 400`. Built on top of `WebScraperAgent` which requires a URL to fetch.
+- **Fix:** New ZeroClaw agent type `search_only` that runs `web_search + web_fetch` tools dynamically per schedule — no fixed URL, no apiSource. Autom sends `url=""` and `type="search_only"` so ZeroClaw's LLM uses its tool system to search and fetch against the topic. Matches how autom already calls ZeroClaw for real-time research in chat.
 
-  **Option A — Quick: autom sends template URLs per type**
-  When user creates a Discovery Agent, autom fills in the URL based on `createAgentType`:
-  ```kotlin
-  val (url, apiSource, template) = when (s.createAgentType) {
-    SinglePostType.NEWS  -> Triple("https://news.google.com/rss/search?q=$encoded",
-                                   "gnews", "tpl_latest_news")
-    SinglePostType.FACTS -> Triple("https://www.google.com/search?q=$encoded+interesting+facts",
-                                   null, null)
-    SinglePostType.CODE  -> Triple("https://github.com/trending?q=$encoded",
-                                   null, null)
-    SinglePostType.AI    -> Triple("https://www.google.com/search?q=$encoded+AI+2026",
-                                   null, null)
-    // ... other types
-  }
-  ```
-  Then ZeroClaw's existing WebScraperAgent pipeline works as-is.
-
-  **Option B — Correct: support a new "search_only" agent type**
-  Add a new agent type to ZeroClaw that skips URL fetching entirely and just runs
-  `web_search` tool with the `extract_prompt` as the query. This matches what
-  autom's trending search already does (in-process), but runs it on a schedule.
-  ```kotlin
-  // AgentConfig.type = "web_search_only"
-  // WebScraperAgent.run(): if type==web_search_only → llmRouter.rawGenerateWithTools(extractPrompt)
-  //                         directly, skip WebFetchTool / WebViewTool entirely
-  ```
-
-  Recommendation: **do both** — Option A for immediate fix, Option B for the proper
-  long-term design. Users will want topic-driven scheduled discoveries without
-  having to pre-pick RSS feeds.
-- **Workaround (until fixed):** User can manually create agents via the ZeroClaw Agents screen
-  with a real RSS/URL + the existing template system.
-- **Files affected:**
-  - `autom/.../SinglePostViewModel.kt::createDiscoveryAgent()` — send URL
-  - `ZeroClaw/.../WebChatServer.kt::handleAgentCreate` — accept new agent type
-  - `ZeroClaw/.../WebScraperAgent.kt::run()` — handle search-only flow
-  - `ZeroClaw/.../AgentManager.kt::createWebScraper()` — add type param
-- **Lesson:** When adding a new agent type that's fundamentally different from
-  URL-based scraping (scheduled web_search), don't try to shoehorn it into the
-  existing `WebScraperAgent` path. Either add a new agent type or generate a
-  template URL so the existing pipeline works unchanged. Always test the full
-  flow end-to-end before shipping a cross-app feature.
+  - **ZeroClaw**
+    - `AgentManager.TYPE_SEARCH_ONLY = "search_only"` + new `type` param on `createWebScraper` (default `"web_scraper"` for wire compat).
+    - `WebChatServer.handleAgentCreate` accepts optional `type` field. Validation relaxed: `url` / `apiSource` only required when `type != "search_only"`; `extract_prompt` required when `type == "search_only"`.
+    - `WebScraperAgent.run()` branches on `agent.type == "search_only"` and delegates to new `runSearchOnly()` which calls `LlmRouter.rawGenerateWithTools(extractPrompt)` (which internally runs `web_search` → `web_fetch` top 2 URLs → LLM synthesis) and reuses the existing delivery + change-detection path.
+    - `AgentsScreen` target-URL row shows `using web_search + web_fetch` for `search_only` agents instead of an empty URL.
+    - `WebScraperAgent.buildHeader` prints `🔗 using web_search + web_fetch` for `search_only` agents in delivered messages.
+  - **autom**
+    - `ZeroClawAgentsClient.createAgent` adds optional `type: String = "web_scraper"` param (omitted from JSON body when default).
+    - `SinglePostViewModel.createDiscoveryAgent()` sends `url=""` + `type="search_only"` + an extract-prompt that explicitly tells the LLM to use `web_search` + `web_fetch`.
+- **Files changed:**
+  - `autom/.../SinglePostViewModel.kt::createDiscoveryAgent()` — send `url=""` and `type="search_only"`
+  - `autom/.../ZeroClawAgentsClient.kt::createAgent` — optional `type` param
+  - `ZeroClaw/.../AgentConfig.kt` — doc strings updated for `search_only`
+  - `ZeroClaw/.../AgentManager.kt` — `TYPE_SEARCH_ONLY` constant + `type` param on `createWebScraper`
+  - `ZeroClaw/.../WebChatServer.kt::handleAgentCreate` — accept `type`, relax validation, pass through
+  - `ZeroClaw/.../WebScraperAgent.kt::run`, new `runSearchOnly()` — skip fetch, call `rawGenerateWithTools`
+  - `ZeroClaw/.../WebScraperAgent.kt::buildHeader` — show tool usage line instead of URL for `search_only`
+  - `ZeroClaw/.../AgentsScreen.kt` — show `using web_search + web_fetch` in the target row for `search_only`
+- **Lesson:** Tool-using agents that should search the web dynamically don't belong in the URL-fetch pipeline. Add a dedicated type that routes through the existing `rawGenerateWithTools` path (which already does `web_search` → `web_fetch` top-N → LLM synthesis), and make the UI honestly reflect that there's no single target URL.
 
 ---
 

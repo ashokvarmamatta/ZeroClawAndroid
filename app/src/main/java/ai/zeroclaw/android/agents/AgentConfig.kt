@@ -3,14 +3,16 @@ package ai.zeroclaw.android.agents
 /**
  * AgentConfig — persisted definition of a user-created agent.
  *
- * Currently supports type = "web_scraper".
+ * Supported types:
+ *  - "web_scraper"  — fetch URL, optionally extract via LLM
+ *  - "search_only"  — skip fetch entirely, run web_search with extractPrompt as query (BUG-43)
  * Future types: rss_monitor, price_tracker, social_feed, etc.
  */
 data class AgentConfig(
     val id: String,                    // UUID
     val name: String,                  // User-given label
-    val type: String,                  // "web_scraper"
-    val url: String,                   // Target URL to scrape
+    val type: String,                  // "web_scraper" | "search_only"
+    val url: String,                   // Target URL to scrape (empty for search_only)
     val intervalMinutes: Int,          // How often to run (min 5)
     val channel: String,               // "telegram" | "discord" | "slack" | "whatsapp" | "email"
     val chatId: String,                // Destination chat/channel/email

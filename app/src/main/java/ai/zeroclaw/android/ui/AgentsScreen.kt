@@ -284,12 +284,15 @@ private fun AgentCard(
                     )
                 }
 
-                // URL row
+                // URL row — for search_only agents, show tool usage instead of empty URL
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(Icons.Default.Link, null,
                         tint = accentColor, modifier = Modifier.size(13.dp))
-                    Text(agent.url, fontSize = 11.sp,
+                    val targetLabel = if (agent.type == ai.zeroclaw.android.agents.AgentManager.TYPE_SEARCH_ONLY)
+                        "using web_search + web_fetch"
+                    else agent.url
+                    Text(targetLabel, fontSize = 11.sp,
                         color = Color.White.copy(alpha = 0.7f),
                         maxLines = 1, fontFamily = FontFamily.Monospace)
                 }

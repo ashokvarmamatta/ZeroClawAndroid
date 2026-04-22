@@ -24,6 +24,14 @@ cp zeroclaw-docs/ZeroClawAndroid/plan.md PLAN_FULL.md
 
 - **Project:** Android app that runs ZeroClaw AI agent with 10 messaging channels
 - **Phases completed:** 183 (178: LiteRT LM migration, 179: Model catalog + download, 180: Token stats UI, 181: Offline vision + config dialog, 182: Document Knowledge Graph, 183: Autom→ZeroClaw pipeline fixes)
+- **Phase 184 — Implemented (fix/bug-43-discovery-agent-url, awaiting device test):** BUG-43 — added `type = "search_only"` agent flavour that skips URL fetch and runs `web_search + web_fetch` via `LlmRouter.rawGenerateWithTools`. Code changes:
+  - `AgentConfig.kt` — doc strings updated; `type` values now `"web_scraper"` | `"search_only"`
+  - `AgentManager.kt` — `TYPE_SEARCH_ONLY` constant + new `type` param on `createWebScraper` (default `TYPE_WEB_SCRAPER` for wire compat)
+  - `WebChatServer.handleAgentCreate` — accepts optional `type` field; validation relaxed so url/apiSource are only required for non-search agents; extract_prompt required for search_only
+  - `WebScraperAgent.run` + new `runSearchOnly()` — skip fetch, call `rawGenerateWithTools(extractPrompt)`, reuse change-detection and delivery path
+  - `WebScraperAgent.buildHeader` — delivered messages show `🔗 using web_search + web_fetch` for search_only agents
+  - `AgentsScreen.kt` — target-URL row shows `using web_search + web_fetch` instead of empty URL for search_only agents
+  - `AgentCreateSheet.kt` — new three-way target selector **URL / API Source / web_search + web_fetch** above the URL field; URL field hidden in search mode; validation branches on mode; type resolved at save time.
 - **Tools:** 36 built-in AI tools (+ Document Knowledge Graph)
 - **Channels:** Telegram, WhatsApp, Discord, Signal, Slack, Matrix, IRC, Teams, Twitch, LINE
 - **Offline:** LiteRT LM SDK (Gemma 4 support, 32K context, streaming, thinking mode)

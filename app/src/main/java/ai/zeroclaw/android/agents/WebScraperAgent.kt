@@ -30,9 +30,15 @@ class WebScraperAgent(private val context: Context) {
 
     suspend fun run(agent: AgentConfig) {
         val runId = UUID.randomUUID().toString()
-        ZeroClawService.log("AGENT[${agent.name}]: starting run → ${agent.url}")
+        ZeroClawService.log("AGENT[${agent.name}]: starting run → ${if (agent.url.isBlank()) "(no url)" else agent.url}")
         ZeroClawService.activityState = "agent_run"
         ZeroClawService.lastActivityDetail = agent.name
+
+        // ── BUG-43: search_only agents skip URL fetching and run web_search directly ──
+        if (agent.type == AgentManager.TYPE_SEARCH_ONLY) {
+            runSearchOnly(agent, runId)
+            return
+        }
 
         // ── Step 1: Try direct free API first (Phase 166) ────────────────────
         val apiParams = buildApiParams(agent)
@@ -207,6 +213,105 @@ class WebScraperAgent(private val context: Context) {
     }
 
     /**
+     * BUG-43: search_only agents skip URL fetching and run web_search directly.
+     * The extractPrompt is treated as the search query + extraction instructions.
+     */
+    private suspend fun runSearchOnly(agent: AgentConfig, runId: String) {
+        val content: String = try {
+            val router = LlmRouter.getInstance(context)
+            ZeroClawService.log("AGENT[${agent.name}]: search_only — calling rawGenerateWithTools")
+            val reply = router.rawGenerateWithTools(agent.extractPrompt).trim()
+            if (reply.isBlank()) {
+                val status = "search_only: empty LLM reply"
+                ZeroClawService.log("AGENT[${agent.name}]: $status")
+                agentManager.markRun(agent.id, agent.lastContentHash, status)
+                saveResult(agent, runId, "failed", "", "", emptyList(), status, false, agent.lastContentHash)
+                return
+            }
+            reply
+        } catch (e: Throwable) {
+            val status = "search_only failed: ${e.message}"
+            ZeroClawService.log("AGENT[${agent.name}]: $status")
+            agentManager.markRun(agent.id, agent.lastContentHash, status)
+            saveResult(agent, runId, "failed", "", "", emptyList(), status, false, agent.lastContentHash)
+            return
+        }
+
+        val newHash = content.hashCode()
+        if (agent.onlyOnChange && newHash == agent.lastContentHash) {
+            val status = "No change detected — skipped push"
+            ZeroClawService.log("AGENT[${agent.name}]: $status")
+            agentManager.markRun(agent.id, newHash, status)
+            saveResult(agent, runId, "skipped", content, content, emptyList(), status, false, newHash)
+            return
+        }
+
+        val header = buildHeader(agent, usedApi = false)
+        val message = "$header\n\n${content.take(MAX_MESSAGE_CHARS)}"
+
+        val svc = ZeroClawService.instance
+        if (svc == null) {
+            val status = "Service not running — delivery skipped"
+            ZeroClawService.log("AGENT[${agent.name}]: $status")
+            agentManager.markRun(agent.id, newHash, status)
+            saveResult(agent, runId, "failed", content, content, emptyList(), status, false, newHash)
+            return
+        }
+
+        val botChannels = agent.channel.split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+        val channelTargets = parseChannelTargets(agent.chatId)
+
+        if (botChannels.isEmpty() && channelTargets.isEmpty()) {
+            val chatId = resolveSingleChatId(agent.channel, agent.chatId, agent, newHash)
+            if (chatId != null) {
+                deliverToChannel(svc, agent, agent.channel, chatId, message, content.length, newHash, runId, content, usedApi = false)
+            } else {
+                saveResult(agent, runId, "failed", content, message, emptyList(), "No chat available", false, newHash)
+            }
+            return
+        }
+
+        val deliveredTo = mutableListOf<String>()
+        val errors = mutableListOf<String>()
+        for (ch in botChannels) {
+            val chatId = resolveBotChatId(ch, agent)
+            if (chatId != null) {
+                try {
+                    svc.sendProactive(ch, chatId, message)
+                    deliveredTo.add("${channelEmoji(ch)}$ch")
+                } catch (e: Exception) {
+                    errors.add("$ch: ${e.message}")
+                }
+            } else {
+                errors.add("$ch: no chat available")
+            }
+        }
+        for (target in channelTargets) {
+            try {
+                svc.sendProactive(target.channel, target.chatId, message)
+                deliveredTo.add("${channelEmoji(target.channel)}${target.channel}/${target.chatId.take(10)}")
+            } catch (e: Exception) {
+                errors.add("${target.channel}/${target.chatId}: ${e.message}")
+            }
+        }
+
+        val status = buildString {
+            if (deliveredTo.isNotEmpty()) append("Delivered ${content.length} chars → ${deliveredTo.joinToString(", ")}")
+            if (errors.isNotEmpty()) {
+                if (deliveredTo.isNotEmpty()) append(" | ")
+                append("Failed: ${errors.joinToString("; ")}")
+            }
+            if (deliveredTo.isEmpty() && errors.isEmpty()) append("No delivery targets available")
+        }
+        val resultStatus = if (deliveredTo.isNotEmpty() && errors.isEmpty()) "success"
+            else if (deliveredTo.isNotEmpty()) "partial"
+            else "failed"
+        ZeroClawService.log("AGENT[${agent.name}]: ${if (deliveredTo.isNotEmpty()) "✓" else "✗"} $status")
+        agentManager.markRun(agent.id, newHash, status)
+        saveResult(agent, runId, resultStatus, content, message, deliveredTo, errors.joinToString("; "), false, newHash)
+    }
+
+    /**
      * Resolve chat ID for a bot channel (no user-specified ID).
      * Uses LlmRouter history → TelegramBotManager last known chat → empty string for other channels.
      */
@@ -376,8 +481,15 @@ OUTPUT (start directly with the extracted data, following the reference format a
     private fun buildHeader(agent: AgentConfig, usedApi: Boolean = false): String {
         val dtFmt = java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.ENGLISH)
         dtFmt.timeZone = java.util.TimeZone.getDefault()
-        val sourceLabel = if (usedApi) "Free API" else "Web Scraper"
-        return "🤖 *${agent.name}* — $sourceLabel\n🔗 ${agent.url}\n🕐 ${dtFmt.format(java.util.Date())}"
+        val sourceLabel = when {
+            agent.type == AgentManager.TYPE_SEARCH_ONLY -> "Tool Search"
+            usedApi -> "Free API"
+            else -> "Web Scraper"
+        }
+        val sourceLine = if (agent.type == AgentManager.TYPE_SEARCH_ONLY)
+            "🔗 using web_search + web_fetch"
+        else "🔗 ${agent.url}"
+        return "🤖 *${agent.name}* — $sourceLabel\n$sourceLine\n🕐 ${dtFmt.format(java.util.Date())}"
     }
 
     /** Build params map for API data sources from agent config */

@@ -128,9 +128,9 @@ All under `app/src/main/java/ai/zeroclaw/android/`
 | File | Purpose |
 |------|---------|
 | `AgentManager.kt` | CRUD + persistence for custom agents |
-| `AgentConfig.kt` | Agent data class (name, url, interval, channel, fetchType, format) |
+| `AgentConfig.kt` | Agent data class (name, url, interval, channel, fetchType, format). `type` ∈ {`web_scraper`, `search_only`} |
 | `AgentTemplates.kt` | 25+ pre-built agent templates |
-| `WebScraperAgent.kt` | Periodic web scraping + LLM extraction + delivery |
+| `WebScraperAgent.kt` | Periodic web scraping + LLM extraction + delivery. `runSearchOnly()` skips fetch and calls `LlmRouter.rawGenerateWithTools` for `search_only` agents (BUG-43) |
 
 ### Free API Data Sources (`agents/api/`)
 | File | Data Source |

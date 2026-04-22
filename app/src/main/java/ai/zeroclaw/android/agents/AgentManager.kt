@@ -59,12 +59,13 @@ class AgentManager private constructor(context: Context) {
         extractPrompt: String,
         onlyOnChange: Boolean,
         templateId: String? = null,
-        apiSource: String? = null
+        apiSource: String? = null,
+        type: String = TYPE_WEB_SCRAPER
     ): AgentConfig {
         val agent = AgentConfig(
             id = UUID.randomUUID().toString(),
             name = name,
-            type = TYPE_WEB_SCRAPER,
+            type = type,
             url = url,
             intervalMinutes = intervalMinutes.coerceAtLeast(5),
             channel = channel,
@@ -136,6 +137,7 @@ class AgentManager private constructor(context: Context) {
 
     companion object {
         const val TYPE_WEB_SCRAPER = "web_scraper"
+        const val TYPE_SEARCH_ONLY = "search_only"
 
         private const val KEY_AGENTS = "agents_v1"
 
