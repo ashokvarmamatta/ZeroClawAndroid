@@ -68,8 +68,11 @@ class LlmRouter(private val context: Context) {
         .callTimeout(0, TimeUnit.SECONDS)     // rely on coroutine withTimeout instead
         .build()
 
-    // Rate limit tracking — skip models that were rate-limited recently (within 60s)
-    private val rateLimitedModels = mutableMapOf<String, Long>() // "key:model" → timestamp
+    // Rate limit tracking — skip models that were rate-limited recently. Concurrent
+    // because rawGenerate / call / generateTtsAudio can be invoked from different
+    // coroutines simultaneously (e.g. background agent + foreground chat at the same
+    // time). A plain mutableMapOf occasionally threw ConcurrentModificationException.
+    private val rateLimitedModels = java.util.concurrent.ConcurrentHashMap<String, Long>() // "key:model" → expiry timestamp
 
     companion object {
         const val SYSTEM_PROMPT = "You are ZeroClaw, a helpful AI assistant. " +
@@ -77,6 +80,8 @@ class LlmRouter(private val context: Context) {
             "Be concise and friendly. Maintain context from the conversation history provided."
         const val MAX_TOKENS = 1000
         private const val MAX_HISTORY = 20  // keep last 10 exchanges per chat
+        /** Cooldown for a (key, model) pair after a 429 / quota / 503 response. */
+        const val RATE_LIMIT_COOLDOWN_MS = 60_000L
 
         @Volatile private var INSTANCE: LlmRouter? = null
         fun getInstance(context: Context): LlmRouter {
@@ -175,8 +180,11 @@ class LlmRouter(private val context: Context) {
     suspend fun rawGenerate(prompt: String, jsonMode: Boolean = false, maxTokens: Int = 32768): String {
         val reqId = "r${System.currentTimeMillis().toString().takeLast(6)}"
         // Online keys first, offline last — offline now supports JSON via prompt-coerce + extract.
-        val onlineKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider != "offline" }
-        val offlineKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider == "offline" }
+        // Skip keys that have been permanently marked failed by call() so we don't retry a known-dead
+        // key on every /api/generate request.
+        val failed = keyManager.getFailedKeyIds()
+        val onlineKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider != "offline" && it.id !in failed }
+        val offlineKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider == "offline" && it.id !in failed }
         val allKeys = onlineKeys + offlineKeys
         if (allKeys.isEmpty()) return "No API keys configured."
 
@@ -186,7 +194,7 @@ class LlmRouter(private val context: Context) {
         val rawSystemPrompt = "You are a data assistant. Follow the user's instructions exactly. Output ONLY what is requested, no extra commentary."
         val errors = mutableListOf<String>()
         val now = System.currentTimeMillis()
-        val cooldownMs = 60_000L
+        val cooldownMs = RATE_LIMIT_COOLDOWN_MS
         // Hard per-model timeout — offline LiteRT inference on 8k+ prompts is slow,
         // so offline gets a much larger budget than cloud calls.
         val onlineTimeoutMs = 120_000L
@@ -480,15 +488,20 @@ class LlmRouter(private val context: Context) {
      * accumulated reasons if every key fails. Caller should handle the failure as 5xx.
      */
     suspend fun generateTtsAudio(text: String, voice: String): TtsResult {
-        val geminiKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider == "gemini" }
+        // Skip permanently-failed keys, same as call() does — no point retrying a known-dead
+        // Gemini key on every /api/tts request.
+        val failed = keyManager.getFailedKeyIds()
+        val geminiKeys = keyManager.loadKeys()
+            .filter { it.enabled && it.safeProvider == "gemini" && it.id !in failed }
         if (geminiKeys.isEmpty()) throw Exception("No enabled Gemini keys configured")
         val errors = mutableListOf<String>()
         val now = System.currentTimeMillis()
         for (entry in geminiKeys) {
             // Honour the same 429 cooldown window the chat waterfall uses — keeps a freshly
             // rate-limited key from getting hammered again on the next /api/tts request.
+            // ConcurrentHashMap → no explicit synchronized block needed.
             val cooldownKey = "${entry.id}:gemini-2.5-flash-preview-tts"
-            val until = synchronized(rateLimitedModels) { rateLimitedModels[cooldownKey] }
+            val until = rateLimitedModels[cooldownKey]
             if (until != null && until > now) {
                 errors += "key cooldown ${(until - now) / 1000}s left"
                 continue
@@ -498,7 +511,7 @@ class LlmRouter(private val context: Context) {
             } catch (e: Exception) {
                 val safeMsg = redactKeys(e.message ?: e::class.java.simpleName)
                 if (safeMsg.contains("429") || safeMsg.lowercase().contains("quota") || safeMsg.lowercase().contains("rate")) {
-                    synchronized(rateLimitedModels) { rateLimitedModels[cooldownKey] = System.currentTimeMillis() + 60_000L }
+                    rateLimitedModels[cooldownKey] = System.currentTimeMillis() + RATE_LIMIT_COOLDOWN_MS
                 }
                 errors += "[${entry.safeApiKey.take(6)}…] $safeMsg"
                 ZeroClawService.log("TTS: gemini key ${entry.safeApiKey.take(6)}… failed — $safeMsg")
@@ -828,7 +841,7 @@ class LlmRouter(private val context: Context) {
                 // Skip models that were rate-limited in the last 60 seconds
                 val rlKey = "${entry.id}:$model"
                 val rlTime = rateLimitedModels[rlKey]
-                if (rlTime != null && System.currentTimeMillis() - rlTime < 60_000) {
+                if (rlTime != null && System.currentTimeMillis() - rlTime < RATE_LIMIT_COOLDOWN_MS) {
                     ZeroClawService.log("LLM: [$mode] skipping $model — rate-limited ${(System.currentTimeMillis() - rlTime) / 1000}s ago")
                     continue
                 }
