@@ -161,7 +161,7 @@ class WebChatServer(private val context: Context) {
                             .put("/api/agents/results").put("/api/iotlanime")
                             .put("/api/agents/list").put("/api/agents/create")
                             .put("/api/agents/update").put("/api/agents/delete")
-                            .put("/api/agents/toggle"))
+                            .put("/api/agents/toggle").put("/api/tts"))
                         .put("tools_available", toolsArray)
                         .put("agents", agentsArray)
                     )
@@ -213,6 +213,10 @@ class WebChatServer(private val context: Context) {
                 }
                 requestLine.startsWith("POST /api/agents/toggle") -> {
                     handleAgentToggle(out, body)
+                }
+                // Phase 185 — Gemini TTS proxy (called by autom's tryZeroClawTts)
+                requestLine.startsWith("POST /api/tts") -> {
+                    handleTtsApi(out, body)
                 }
                 else -> {
                     val response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"
@@ -427,6 +431,47 @@ class WebChatServer(private val context: Context) {
         val response = "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
         out.write(response.toByteArray())
         out.write(bytes)
+    }
+
+    private fun sendJsonStatus(out: java.io.OutputStream, statusLine: String, json: JSONObject) {
+        val bytes = json.toString().toByteArray()
+        val response = "HTTP/1.1 $statusLine\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
+        out.write(response.toByteArray())
+        out.write(bytes)
+    }
+
+    /**
+     * POST /api/tts — Gemini TTS proxy for autom (and any other client wanting to
+     * route TTS through ZeroClaw's higher-quota Gemini key).
+     *
+     * Request:  {"text": string, "voice": string, "tone": string?}
+     *   tone is informational only — autom prepends "Say in a {tone} tone:" to text
+     *   before calling, so we forward `text` to Gemini verbatim.
+     * Response (200): {"audio_base64", "sample_rate": 24000, "channels": 1, "format": "pcm_s16le"}
+     * Errors:
+     *   400 — empty text
+     *   502 — every Gemini key failed (waterfall) → autom falls back to direct Gemini
+     */
+    private suspend fun handleTtsApi(out: java.io.OutputStream, body: String) {
+        try {
+            val json = JSONObject(body)
+            val text = json.optString("text", "").trim()
+            val voice = json.optString("voice", "Puck").ifBlank { "Puck" }
+            if (text.isBlank()) {
+                sendJsonStatus(out, "400 Bad Request", JSONObject().put("error", "text required"))
+                return
+            }
+            ZeroClawService.log("TTS: ${text.length} chars, voice=$voice")
+            val result = llmRouter.generateTtsAudio(text, voice)
+            sendJson(out, JSONObject()
+                .put("audio_base64", result.audioBase64)
+                .put("sample_rate", result.sampleRate)
+                .put("channels", result.channels)
+                .put("format", "pcm_s16le"))
+        } catch (e: Exception) {
+            ZeroClawService.log("TTS: error — ${e.message}")
+            sendJsonStatus(out, "502 Bad Gateway", JSONObject().put("error", e.message ?: "Unknown error"))
+        }
     }
 
     private fun chatPage(): String = """

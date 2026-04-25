@@ -24,6 +24,7 @@ cp zeroclaw-docs/ZeroClawAndroid/plan.md PLAN_FULL.md
 
 - **Project:** Android app that runs ZeroClaw AI agent with 10 messaging channels
 - **Phases completed:** 183 (178: LiteRT LM migration, 179: Model catalog + download, 180: Token stats UI, 181: Offline vision + config dialog, 182: Document Knowledge Graph, 183: Autom→ZeroClaw pipeline fixes)
+- **Phase 185 — Implemented:** `POST /api/tts` Gemini TTS proxy in `WebChatServer` (called by autom's `tryZeroClawTts`). Picks first enabled `gemini` key, calls `gemini-2.5-flash-preview-tts:generateContent` with `responseModalities=["AUDIO"]` + `speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName=<voice>`, returns `{audio_base64, sample_rate, channels, format:"pcm_s16le"}`. Endpoint added to `/api/discover` list. New `LlmRouter.generateTtsAudio(text, voice)` helper.
 - **Phase 184 — Implemented (fix/bug-43-discovery-agent-url, awaiting device test):** BUG-43 — added `type = "search_only"` agent flavour that skips URL fetch and runs `web_search + web_fetch` via `LlmRouter.rawGenerateWithTools`. Code changes:
   - `AgentConfig.kt` — doc strings updated; `type` values now `"web_scraper"` | `"search_only"`
   - `AgentManager.kt` — `TYPE_SEARCH_ONLY` constant + new `type` param on `createWebScraper` (default `TYPE_WEB_SCRAPER` for wire compat)

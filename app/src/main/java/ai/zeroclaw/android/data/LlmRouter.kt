@@ -435,6 +435,65 @@ class LlmRouter(private val context: Context) {
         }
     }
 
+    /** Result of a Gemini TTS synthesis — base64 PCM audio + sample rate parsed from `audio/L16;rate=N`. */
+    data class TtsResult(val audioBase64: String, val sampleRate: Int, val channels: Int)
+
+    /**
+     * Synthesise speech using Gemini's `gemini-2.5-flash-preview-tts` model.
+     * Waterfalls through every enabled Gemini key — returns first success, throws with
+     * accumulated reasons if every key fails. Caller should handle the failure as 5xx.
+     */
+    suspend fun generateTtsAudio(text: String, voice: String): TtsResult {
+        val geminiKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider == "gemini" }
+        if (geminiKeys.isEmpty()) throw Exception("No enabled Gemini keys configured")
+        val errors = mutableListOf<String>()
+        for (entry in geminiKeys) {
+            try {
+                return callGeminiTts(text, voice, entry.safeApiKey)
+            } catch (e: Exception) {
+                val reason = "[${entry.safeApiKey.take(6)}…] ${e.message ?: e::class.java.simpleName}"
+                errors += reason
+                ZeroClawService.log("TTS: gemini key ${entry.safeApiKey.take(6)}… failed — ${e.message}")
+            }
+        }
+        throw Exception("All Gemini keys failed: ${errors.joinToString("; ")}")
+    }
+
+    private suspend fun callGeminiTts(text: String, voice: String, apiKey: String): TtsResult {
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=$apiKey"
+        val body = JSONObject().apply {
+            put("contents", JSONArray().put(JSONObject().apply {
+                put("parts", JSONArray().put(JSONObject().put("text", text)))
+            }))
+            put("generationConfig", JSONObject().apply {
+                put("responseModalities", JSONArray().put("AUDIO"))
+                put("speechConfig", JSONObject().apply {
+                    put("voiceConfig", JSONObject().apply {
+                        put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice))
+                    })
+                })
+            })
+        }.toString()
+        val req = Request.Builder().url(url).addHeader("Content-Type", "application/json")
+            .post(body.toRequestBody()).build()
+        return withContext(Dispatchers.IO) {
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: throw Exception("Empty body")
+                val json = JSONObject(respBody)
+                if (!resp.isSuccessful) throw Exception("[${resp.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"}")
+                val part = json.optJSONArray("candidates")?.optJSONObject(0)
+                    ?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)
+                    ?: throw Exception("No part in TTS response. Raw: ${respBody.take(300)}")
+                val inline = part.optJSONObject("inlineData")
+                    ?: throw Exception("No inlineData in TTS part. Raw: ${respBody.take(300)}")
+                val data = inline.optString("data", "").ifBlank { throw Exception("Empty audio data") }
+                val mime = inline.optString("mimeType", "audio/L16;codec=pcm;rate=24000")
+                val sampleRate = Regex("rate=(\\d+)").find(mime)?.groupValues?.get(1)?.toIntOrNull() ?: 24000
+                TtsResult(data, sampleRate, channels = 1)
+            }
+        }
+    }
+
     private suspend fun callGeminiRaw(message: String, apiKey: String, model: String, systemPrompt: String, jsonMode: Boolean, maxTokens: Int): String {
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
         val isGemma = model.contains("gemma", ignoreCase = true)

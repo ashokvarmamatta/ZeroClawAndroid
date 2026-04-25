@@ -395,6 +395,7 @@ All databases use singleton pattern, CoroutineScope.IO, and fallback to destruct
 | `DELETE` | `/api/agents/results` | ZeroClaw native | Delete results (`?id=`, `?agent_id=`, `?older_than=`) |
 | `GET` | `/api/iotlanime` | ZeroClaw native | Published anime/list entries (`?id=N` for single) |
 | `DELETE` | `/api/iotlanime` | ZeroClaw native | Delete entries (`?id=N` or `?all=true`) |
+| `POST` | `/api/tts` | ZeroClaw native | Gemini TTS proxy (Phase 185) — `{text, voice, tone}` → `{audio_base64, sample_rate, channels, format:"pcm_s16le"}`. Waterfalls all enabled Gemini keys; 502 on full failure so callers fall back. |
 
 ---
 
