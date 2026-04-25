@@ -2806,11 +2806,13 @@ class LlmRouter(private val context: Context) {
         val testModel = when {
             preferredModel.isNotBlank() -> preferredModel
             provider == "openrouter"    -> "openai/gpt-4o-mini"
+            provider == "grok"          -> "grok-3-mini"
             else                        -> "gpt-4o-mini"
         }
         val label = when {
             baseUrl.isNotBlank() -> "custom endpoint ($resolvedBase)"
             provider == "openrouter" -> "OpenRouter"
+            provider == "grok"       -> "xAI Grok"
             else -> "OpenAI"
         }
 

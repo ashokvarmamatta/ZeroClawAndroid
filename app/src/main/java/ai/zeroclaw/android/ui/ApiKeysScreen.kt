@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1383,56 +1385,90 @@ fun ApiKeyCard(
                     null -> Color(0xFF03A9F4)
                 }
 
+                val cardClipboard = LocalClipboardManager.current
+
                 Spacer(Modifier.height(8.dp))
-                Surface(
-                    onClick = onClick@{
-                        if (testing) return@onClick
-                        val model = entry.safePreferredModel.ifBlank { defaultTestModelFor(entry.safeProvider) }
-                        if (model.isBlank() && entry.safeProvider != "ollama") {
-                            testOk = false
-                            testMessage = "No model configured — set a preferred model first"
-                            return@onClick
-                        }
-                        testing = true
-                        testOk = null
-                        testMessage = "Testing ${model.ifBlank { "default" }}…"
-                        cardScope.launch {
-                            val router = LlmRouter.getInstance(cardCtx)
-                            val result = router.testSingleModel(entry, model)
-                            testing = false
-                            testOk = result.isSuccess
-                            testMessage = if (result.isSuccess) {
-                                "✓ Working — \"${result.getOrNull().orEmpty().trim().take(80)}\""
-                            } else {
-                                "✗ ${result.exceptionOrNull()?.message?.take(140) ?: "Failed"}"
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        onClick = onClick@{
+                            if (testing) return@onClick
+                            val model = entry.safePreferredModel.ifBlank { defaultTestModelFor(entry.safeProvider) }
+                            if (model.isBlank() && entry.safeProvider != "ollama") {
+                                testOk = false
+                                testMessage = "No model configured — set a preferred model first"
+                                return@onClick
                             }
-                        }
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    color = pillColor.copy(alpha = 0.12f),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            testing = true
+                            testOk = null
+                            testMessage = "Testing ${model.ifBlank { "default" }}…"
+                            cardScope.launch {
+                                val router = LlmRouter.getInstance(cardCtx)
+                                val result = router.testSingleModel(entry, model)
+                                testing = false
+                                testOk = result.isSuccess
+                                testMessage = if (result.isSuccess) {
+                                    "✓ Working — \"${result.getOrNull().orEmpty().trim().take(120)}\""
+                                } else {
+                                    // Show the FULL error — no truncation. Long errors wrap to multiple
+                                    // lines below the pill so the user can read what the provider rejected.
+                                    "✗ ${result.exceptionOrNull()?.message ?: "Failed"}"
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        color = pillColor.copy(alpha = 0.12f),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        if (testing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp,
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (testing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = pillColor,
+                                )
+                            } else {
+                                Icon(Icons.Default.PlayArrow, null,
+                                    modifier = Modifier.size(16.dp), tint = pillColor)
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            // Short label inside the pill — full text shows below if it's long
+                            Text(
+                                when {
+                                    testing -> testMessage
+                                    testMessage.isBlank() -> "Test Connection"
+                                    testOk == true -> "✓ Working — tap below to copy reply"
+                                    testOk == false -> "✗ Failed — full error below (tap to copy)"
+                                    else -> testMessage
+                                },
+                                fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 color = pillColor,
                             )
-                        } else {
-                            Icon(Icons.Default.PlayArrow, null,
-                                modifier = Modifier.size(16.dp), tint = pillColor)
                         }
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (testMessage.isBlank()) "Test Connection" else testMessage,
-                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            color = pillColor,
-                        )
+                    }
+                    // Full result/error body — wraps, copy-on-tap, no truncation. Hidden when
+                    // the user hasn't tested yet or while a request is in flight.
+                    if (!testing && testMessage.isNotBlank() && testOk != null) {
+                        Surface(
+                            onClick = {
+                                cardClipboard.setText(androidx.compose.ui.text.AnnotatedString(testMessage))
+                                Toast.makeText(cardCtx, "Copied", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(6.dp),
+                            color = pillColor.copy(alpha = 0.06f),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        ) {
+                            Text(
+                                testMessage,
+                                fontSize = 10.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = pillColor.copy(alpha = 0.85f),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -2819,7 +2855,7 @@ fun defaultTestModelFor(provider: String): String = when (provider) {
     "openai"     -> "gpt-4o-mini"
     "anthropic"  -> "claude-haiku-4-5-20251001"
     "openrouter" -> "openai/gpt-4o-mini"
-    "grok"       -> "grok-2-mini"
+    "grok"       -> "grok-3-mini"
     "gemini"     -> "gemini-2.5-flash"
     "ollama"     -> ""   // local, model is implied by what's running
     else         -> ""
