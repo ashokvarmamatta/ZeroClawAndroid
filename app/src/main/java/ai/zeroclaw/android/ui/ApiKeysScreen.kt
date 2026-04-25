@@ -2840,6 +2840,7 @@ fun providerColor(provider: String): Color = when (provider) {
     "gemini"     -> Color(0xFF4285F4)
     "openrouter" -> Color(0xFF7C4DFF)
     "grok"       -> Color(0xFF1DA1F2)
+    "groq"       -> Color(0xFFF55036)
     "ollama"     -> Color(0xFF607D8B)
     "offline"    -> Color(0xFF795548)
     else         -> Color(0xFF9E9E9E)
@@ -2856,6 +2857,7 @@ fun defaultTestModelFor(provider: String): String = when (provider) {
     "anthropic"  -> "claude-haiku-4-5-20251001"
     "openrouter" -> "openai/gpt-4o-mini"
     "grok"       -> "grok-3-mini"
+    "groq"       -> "llama-3.1-8b-instant"
     "gemini"     -> "gemini-2.5-flash"
     "ollama"     -> ""   // local, model is implied by what's running
     else         -> ""

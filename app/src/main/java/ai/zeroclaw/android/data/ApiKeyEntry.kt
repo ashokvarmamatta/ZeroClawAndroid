@@ -67,6 +67,11 @@ enum class LlmProvider(
         "xai-...",
         "Get from: console.x.ai → API Keys"
     ),
+    GROQ(
+        "groq", "Groq (fast Llama/Mixtral)", "🚀",
+        "gsk_...",
+        "Get from: console.groq.com → API Keys (NOT xAI Grok — different product)"
+    ),
     OLLAMA(
         "ollama", "Ollama (local, no key)", "⚫",
         "no-key-needed",

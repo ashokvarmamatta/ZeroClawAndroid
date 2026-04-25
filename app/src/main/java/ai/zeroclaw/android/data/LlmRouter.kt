@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
 fun defaultOpenAICompatibleBaseUrl(provider: String): String = when (provider) {
     "openrouter" -> "https://openrouter.ai/api/v1"
     "grok"       -> "https://api.x.ai/v1"
+    "groq"       -> "https://api.groq.com/openai/v1"
     else         -> "https://api.openai.com/v1"
 }
 
@@ -54,6 +55,7 @@ internal fun redactKeys(text: String?): String {
         .replace(Regex("AIzaSy[A-Za-z0-9_\\-]{20,}"), "AIzaSy***REDACTED***")
         .replace(Regex("sk-[a-z]+-[A-Za-z0-9_\\-]{10,}"), "sk-***REDACTED***")
         .replace(Regex("xai-[A-Za-z0-9_\\-]{10,}"), "xai-***REDACTED***")
+        .replace(Regex("gsk_[A-Za-z0-9]{10,}"), "gsk_***REDACTED***")
 }
 
 class LlmRouter(private val context: Context) {
@@ -2864,12 +2866,14 @@ class LlmRouter(private val context: Context) {
             preferredModel.isNotBlank() -> preferredModel
             provider == "openrouter"    -> "openai/gpt-4o-mini"
             provider == "grok"          -> "grok-3-mini"
+            provider == "groq"          -> "llama-3.1-8b-instant"
             else                        -> "gpt-4o-mini"
         }
         val label = when {
             baseUrl.isNotBlank() -> "custom endpoint ($resolvedBase)"
             provider == "openrouter" -> "OpenRouter"
             provider == "grok"       -> "xAI Grok"
+            provider == "groq"       -> "Groq"
             else -> "OpenAI"
         }
 
