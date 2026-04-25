@@ -1366,6 +1366,77 @@ fun ApiKeyCard(
                 }
             }
 
+            // ── Card-level Test Connection (works for every provider, even before models load) ──
+            // Gemini already exposes per-model Test buttons inside its model list, but for
+            // OpenAI / Anthropic / OpenRouter / Grok / Ollama users, this is the only way
+            // to confirm the key actually works without picking a specific model first.
+            if (entry.safeProvider != "offline") {
+                val cardCtx = LocalContext.current
+                val cardScope = rememberCoroutineScope()
+                var testing by remember(entry.id) { mutableStateOf(false) }
+                var testOk by remember(entry.id) { mutableStateOf<Boolean?>(null) }
+                var testMessage by remember(entry.id) { mutableStateOf("") }
+
+                val pillColor = when (testOk) {
+                    true -> Color(0xFF4CAF50)
+                    false -> Color(0xFFE53935)
+                    null -> Color(0xFF03A9F4)
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    onClick = onClick@{
+                        if (testing) return@onClick
+                        val model = entry.safePreferredModel.ifBlank { defaultTestModelFor(entry.safeProvider) }
+                        if (model.isBlank() && entry.safeProvider != "ollama") {
+                            testOk = false
+                            testMessage = "No model configured — set a preferred model first"
+                            return@onClick
+                        }
+                        testing = true
+                        testOk = null
+                        testMessage = "Testing ${model.ifBlank { "default" }}…"
+                        cardScope.launch {
+                            val router = LlmRouter.getInstance(cardCtx)
+                            val result = router.testSingleModel(entry, model)
+                            testing = false
+                            testOk = result.isSuccess
+                            testMessage = if (result.isSuccess) {
+                                "✓ Working — \"${result.getOrNull().orEmpty().trim().take(80)}\""
+                            } else {
+                                "✗ ${result.exceptionOrNull()?.message?.take(140) ?: "Failed"}"
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    color = pillColor.copy(alpha = 0.12f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (testing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = pillColor,
+                            )
+                        } else {
+                            Icon(Icons.Default.PlayArrow, null,
+                                modifier = Modifier.size(16.dp), tint = pillColor)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (testMessage.isBlank()) "Test Connection" else testMessage,
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            color = pillColor,
+                        )
+                    }
+                }
+            }
+
             // ── Check All Models section ────────────────────────────────────
             if (entry.safeAvailableModels.isNotEmpty() && entry.safeProvider != "offline") {
                 val isChecking = checkState?.isChecking == true
@@ -2732,8 +2803,25 @@ fun providerColor(provider: String): Color = when (provider) {
     "anthropic"  -> Color(0xFFD97757)
     "gemini"     -> Color(0xFF4285F4)
     "openrouter" -> Color(0xFF7C4DFF)
+    "grok"       -> Color(0xFF1DA1F2)
     "ollama"     -> Color(0xFF607D8B)
     "offline"    -> Color(0xFF795548)
     else         -> Color(0xFF9E9E9E)
+}
+
+/**
+ * Cheapest / fastest sensible model for a quick "is this key alive?" check when
+ * the user hasn't picked a preferred model yet. Used by the card-level Test
+ * Connection button so users can verify a key works before committing to a
+ * specific model.
+ */
+fun defaultTestModelFor(provider: String): String = when (provider) {
+    "openai"     -> "gpt-4o-mini"
+    "anthropic"  -> "claude-haiku-4-5-20251001"
+    "openrouter" -> "openai/gpt-4o-mini"
+    "grok"       -> "grok-2-mini"
+    "gemini"     -> "gemini-2.5-flash"
+    "ollama"     -> ""   // local, model is implied by what's running
+    else         -> ""
 }
 

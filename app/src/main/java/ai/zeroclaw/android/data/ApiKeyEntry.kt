@@ -62,6 +62,11 @@ enum class LlmProvider(
         "sk-or-v1-...",
         "Get from: openrouter.ai → Keys"
     ),
+    GROK(
+        "grok", "xAI Grok", "⚡",
+        "xai-...",
+        "Get from: console.x.ai → API Keys"
+    ),
     OLLAMA(
         "ollama", "Ollama (local, no key)", "⚫",
         "no-key-needed",

@@ -22,6 +22,17 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+/**
+ * Default base URL for an OpenAI-compatible provider when the user hasn't set a
+ * custom one. Single source of truth — every callsite in [LlmRouter] funnels
+ * through this so adding a new provider only edits one place.
+ */
+fun defaultOpenAICompatibleBaseUrl(provider: String): String = when (provider) {
+    "openrouter" -> "https://openrouter.ai/api/v1"
+    "grok"       -> "https://api.x.ai/v1"
+    else         -> "https://api.openai.com/v1"
+}
+
 class LlmRouter(private val context: Context) {
 
     private val keyManager = LlmKeyManager.getInstance(context)
@@ -555,7 +566,7 @@ class LlmRouter(private val context: Context) {
     }
 
     private suspend fun callOpenAICompatibleRaw(message: String, apiKey: String, provider: String, baseUrl: String, model: String, systemPrompt: String, jsonMode: Boolean, maxTokens: Int): String {
-        val resolvedBase = baseUrl.ifBlank { if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1" }.trimEnd('/')
+        val resolvedBase = baseUrl.ifBlank { defaultOpenAICompatibleBaseUrl(provider) }.trimEnd('/')
         val useModel = model.ifBlank { if (provider == "openrouter") "openai/gpt-4o-mini" else "gpt-4o-mini" }
         val body = JSONObject().apply {
             put("model", useModel); put("max_tokens", maxTokens)
@@ -2377,7 +2388,7 @@ class LlmRouter(private val context: Context) {
 
     /** Fetch model list from any OpenAI-compatible /v1/models endpoint */
     private suspend fun listOpenAIModels(apiKey: String, provider: String, baseUrl: String): List<String> {
-        val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+        val defaultBase = defaultOpenAICompatibleBaseUrl(provider)
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
         val req = Request.Builder()
             .url("$resolvedBase/models")
@@ -2694,7 +2705,7 @@ class LlmRouter(private val context: Context) {
             }
             else -> {
                 // OpenAI-compatible (OpenAI, OpenRouter, custom)
-                val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+                val defaultBase = defaultOpenAICompatibleBaseUrl(provider)
                 val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
                 val body = JSONObject().apply {
                     put("model", model)
@@ -2790,7 +2801,7 @@ class LlmRouter(private val context: Context) {
     }
 
     private suspend fun validateOpenAICompatible(apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = ""): ValidationResult {
-        val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+        val defaultBase = defaultOpenAICompatibleBaseUrl(provider)
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
         val testModel = when {
             preferredModel.isNotBlank() -> preferredModel
@@ -2901,7 +2912,7 @@ class LlmRouter(private val context: Context) {
     }
 
     private suspend fun callOpenAICompatible(message: String, apiKey: String, provider: String, baseUrl: String = "", preferredModel: String = "", history: List<ChatMessage> = emptyList(), systemPrompt: String = SYSTEM_PROMPT): String {
-        val defaultBase = if (provider == "openrouter") "https://openrouter.ai/api/v1" else "https://api.openai.com/v1"
+        val defaultBase = defaultOpenAICompatibleBaseUrl(provider)
         val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
         val model = when {
             preferredModel.isNotBlank() -> preferredModel
