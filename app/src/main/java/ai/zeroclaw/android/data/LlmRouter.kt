@@ -33,6 +33,29 @@ fun defaultOpenAICompatibleBaseUrl(provider: String): String = when (provider) {
     else         -> "https://api.openai.com/v1"
 }
 
+/**
+ * Strip API-key fragments from any string before logging or showing it to the
+ * user. Gemini bakes the key into the request URL (?key=AIzaSy...) and some
+ * provider error payloads echo that URL back — without redaction we'd leak the
+ * key into logcat AND into the Test Connection copy-to-clipboard surface.
+ *
+ * Patterns covered:
+ *  - URL query  : `?key=AIzaSy...` / `&key=AIzaSy...`
+ *  - Bearer hdr : `Authorization: Bearer xxx`
+ *  - x-api-key  : Anthropic header form
+ *  - Raw prefixes: AIzaSy*, sk-proj-*, sk-ant-*, sk-or-*, xai-*
+ */
+internal fun redactKeys(text: String?): String {
+    if (text.isNullOrEmpty()) return text.orEmpty()
+    return text
+        .replace(Regex("([?&]key=)[A-Za-z0-9_\\-]+"), "$1***REDACTED***")
+        .replace(Regex("(?i)(Bearer\\s+)[A-Za-z0-9_\\-.]+"), "$1***REDACTED***")
+        .replace(Regex("(?i)(x-api-key[\":\\s=]+)[A-Za-z0-9_\\-.]+"), "$1***REDACTED***")
+        .replace(Regex("AIzaSy[A-Za-z0-9_\\-]{20,}"), "AIzaSy***REDACTED***")
+        .replace(Regex("sk-[a-z]+-[A-Za-z0-9_\\-]{10,}"), "sk-***REDACTED***")
+        .replace(Regex("xai-[A-Za-z0-9_\\-]{10,}"), "xai-***REDACTED***")
+}
+
 class LlmRouter(private val context: Context) {
 
     private val keyManager = LlmKeyManager.getInstance(context)
@@ -458,16 +481,28 @@ class LlmRouter(private val context: Context) {
         val geminiKeys = keyManager.loadKeys().filter { it.enabled && it.safeProvider == "gemini" }
         if (geminiKeys.isEmpty()) throw Exception("No enabled Gemini keys configured")
         val errors = mutableListOf<String>()
+        val now = System.currentTimeMillis()
         for (entry in geminiKeys) {
+            // Honour the same 429 cooldown window the chat waterfall uses — keeps a freshly
+            // rate-limited key from getting hammered again on the next /api/tts request.
+            val cooldownKey = "${entry.id}:gemini-2.5-flash-preview-tts"
+            val until = synchronized(rateLimitedModels) { rateLimitedModels[cooldownKey] }
+            if (until != null && until > now) {
+                errors += "key cooldown ${(until - now) / 1000}s left"
+                continue
+            }
             try {
                 return callGeminiTts(text, voice, entry.safeApiKey)
             } catch (e: Exception) {
-                val reason = "[${entry.safeApiKey.take(6)}…] ${e.message ?: e::class.java.simpleName}"
-                errors += reason
-                ZeroClawService.log("TTS: gemini key ${entry.safeApiKey.take(6)}… failed — ${e.message}")
+                val safeMsg = redactKeys(e.message ?: e::class.java.simpleName)
+                if (safeMsg.contains("429") || safeMsg.lowercase().contains("quota") || safeMsg.lowercase().contains("rate")) {
+                    synchronized(rateLimitedModels) { rateLimitedModels[cooldownKey] = System.currentTimeMillis() + 60_000L }
+                }
+                errors += "[${entry.safeApiKey.take(6)}…] $safeMsg"
+                ZeroClawService.log("TTS: gemini key ${entry.safeApiKey.take(6)}… failed — $safeMsg")
             }
         }
-        throw Exception("All Gemini keys failed: ${errors.joinToString("; ")}")
+        throw Exception(redactKeys("All Gemini keys failed: ${errors.joinToString("; ")}"))
     }
 
     private suspend fun callGeminiTts(text: String, voice: String, apiKey: String): TtsResult {
@@ -491,12 +526,15 @@ class LlmRouter(private val context: Context) {
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: throw Exception("Empty body")
                 val json = JSONObject(respBody)
-                if (!resp.isSuccessful) throw Exception("[${resp.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"}")
+                if (!resp.isSuccessful) {
+                    android.util.Log.e("LlmRouter", "Gemini TTS HTTP ${resp.code} body=${redactKeys(respBody.take(2000))}")
+                    throw Exception(redactKeys("[${resp.code}] ${json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"}"))
+                }
                 val part = json.optJSONArray("candidates")?.optJSONObject(0)
                     ?.optJSONObject("content")?.optJSONArray("parts")?.optJSONObject(0)
-                    ?: throw Exception("No part in TTS response. Raw: ${respBody.take(300)}")
+                    ?: throw Exception(redactKeys("No part in TTS response. Raw: ${respBody.take(300)}"))
                 val inline = part.optJSONObject("inlineData")
-                    ?: throw Exception("No inlineData in TTS part. Raw: ${respBody.take(300)}")
+                    ?: throw Exception(redactKeys("No inlineData in TTS part. Raw: ${respBody.take(300)}"))
                 val data = inline.optString("data", "").ifBlank { throw Exception("Empty audio data") }
                 val mime = inline.optString("mimeType", "audio/L16;codec=pcm;rate=24000")
                 val sampleRate = Regex("rate=(\\d+)").find(mime)?.groupValues?.get(1)?.toIntOrNull() ?: 24000
@@ -2704,7 +2742,7 @@ class LlmRouter(private val context: Context) {
                 }
             }
             else -> {
-                // OpenAI-compatible (OpenAI, OpenRouter, custom)
+                // OpenAI-compatible (OpenAI, OpenRouter, Grok, custom)
                 val defaultBase = defaultOpenAICompatibleBaseUrl(provider)
                 val resolvedBase = baseUrl.ifBlank { defaultBase }.trimEnd('/')
                 val body = JSONObject().apply {
@@ -2721,12 +2759,31 @@ class LlmRouter(private val context: Context) {
                     .apply { if (provider == "openrouter") addHeader("HTTP-Referer", "https://zeroclaw.ai") }
                     .post(body.toRequestBody()).build()
                 client.newCall(req).execute().use { resp ->
-                    val respBody = resp.body?.string() ?: throw Exception("Empty response")
-                    val json = JSONObject(respBody)
+                    val respBody = resp.body?.string().orEmpty()
                     if (!resp.isSuccessful) {
-                        val errMsg = json.optJSONObject("error")?.optString("message") ?: "HTTP ${resp.code}"
-                        throw Exception("[${resp.code}] $errMsg")
+                        // Always dump the raw body to logcat so the user can paste it for diagnosis.
+                        // Body never contains the request key (it's only on the wire), so redaction
+                        // is mostly a belt-and-braces against echoed-back URLs.
+                        android.util.Log.e("LlmRouter",
+                            "$provider $resolvedBase/chat/completions HTTP ${resp.code} body=${redactKeys(respBody.take(2000))}")
+                        // Try every common error-shape providers actually use:
+                        //   OpenAI / xAI: {"error":{"message":"…","code":"…"}}
+                        //   xAI-alt    : {"error":"string"} or {"code":"…","error":"…"}
+                        //   Anthropic  : {"error":{"type":"…","message":"…"}}
+                        //   Generic    : {"detail":"…"} (Modal, vLLM, etc.)
+                        // Fall back to the raw body (truncated) when nothing parses.
+                        val parsed = runCatching { JSONObject(respBody) }.getOrNull()
+                        val errObj = parsed?.optJSONObject("error")
+                        val errMsg = errObj?.optString("message")?.ifBlank { null }
+                            ?: errObj?.optString("code")?.ifBlank { null }
+                            ?: parsed?.optString("error")?.ifBlank { null }
+                            ?: parsed?.optString("detail")?.ifBlank { null }
+                            ?: parsed?.optString("message")?.ifBlank { null }
+                            ?: respBody.ifBlank { "HTTP ${resp.code} (empty body)" }
+                        throw Exception(redactKeys("[${resp.code}] $errMsg"))
                     }
+                    val json = runCatching { JSONObject(respBody) }.getOrNull()
+                        ?: throw Exception("[${resp.code}] non-JSON response: ${redactKeys(respBody.take(200))}")
                     json.getJSONArray("choices").getJSONObject(0)
                         .getJSONObject("message").getString("content").trim()
                 }

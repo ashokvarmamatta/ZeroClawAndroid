@@ -456,9 +456,22 @@ class WebChatServer(private val context: Context) {
         try {
             val json = JSONObject(body)
             val text = json.optString("text", "").trim()
-            val voice = json.optString("voice", "Puck").ifBlank { "Puck" }
+            val rawVoice = json.optString("voice", "Puck").ifBlank { "Puck" }
+            // Allow-list of Gemini prebuilt voices (per the autom plan.md contract).
+            // Anything else → coerce to Puck. Stops a public tunnel caller from
+            // smuggling arbitrary strings into the Gemini speechConfig.voiceName field.
+            val allowedVoices = setOf("Puck", "Charon", "Kore", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr")
+            val voice = if (rawVoice in allowedVoices) rawVoice else "Puck"
             if (text.isBlank()) {
                 sendJsonStatus(out, "400 Bad Request", JSONObject().put("error", "text required"))
+                return
+            }
+            // Cap input size — protects the user's Gemini quota from a public-tunnel
+            // caller sending huge prompts (the WebChatServer has no auth — BUG-31).
+            val MAX_TTS_CHARS = 4000
+            if (text.length > MAX_TTS_CHARS) {
+                sendJsonStatus(out, "413 Payload Too Large",
+                    JSONObject().put("error", "text exceeds $MAX_TTS_CHARS chars"))
                 return
             }
             ZeroClawService.log("TTS: ${text.length} chars, voice=$voice")
@@ -469,8 +482,11 @@ class WebChatServer(private val context: Context) {
                 .put("channels", result.channels)
                 .put("format", "pcm_s16le"))
         } catch (e: Exception) {
-            ZeroClawService.log("TTS: error — ${e.message}")
-            sendJsonStatus(out, "502 Bad Gateway", JSONObject().put("error", e.message ?: "Unknown error"))
+            // Belt-and-braces — generateTtsAudio already redacts, but if anything else
+            // throws here we still scrub before logging or sending the body to the client.
+            val safe = ai.zeroclaw.android.data.redactKeys(e.message ?: "Unknown error")
+            ZeroClawService.log("TTS: error — $safe")
+            sendJsonStatus(out, "502 Bad Gateway", JSONObject().put("error", safe))
         }
     }
 

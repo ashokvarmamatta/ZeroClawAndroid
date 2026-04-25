@@ -407,7 +407,10 @@ class ZeroClawService : Service() {
                         for (agent in dueAgents) {
                             log("AGENT: running '${agent.name}' [${agent.type}]")
                             when (agent.type) {
-                                AgentManager.TYPE_WEB_SCRAPER -> scraper.run(agent)
+                                // Both types use the same WebScraperAgent — its `run()` internally
+                                // forks to `runSearchOnly()` when type == TYPE_SEARCH_ONLY (BUG-43).
+                                AgentManager.TYPE_WEB_SCRAPER,
+                                AgentManager.TYPE_SEARCH_ONLY -> scraper.run(agent)
                                 else -> log("AGENT: unknown type '${agent.type}' — skipping")
                             }
                         }
