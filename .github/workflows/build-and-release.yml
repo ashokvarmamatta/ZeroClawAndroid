@@ -27,10 +27,13 @@ jobs:
 
     steps:
       # ── 1. Checkout ───────────────────────────────────────────────────────
+      #   fetch-depth: 0 + fetch-tags: true so the changelog step (6b) can see
+      #   the previous v* tag and emit a proper "What's new since vX" section.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       # ── 2. Java 17 ────────────────────────────────────────────────────────
       - name: Set up JDK 17
@@ -80,7 +83,7 @@ jobs:
         if: steps.keystore_check.outputs.has_keystore == 'false'
         run: ./gradlew assembleRelease --no-daemon
 
-      # ── 6. Extract version & rename APKs ─────────────────────────────────
+      # ── 6. Extract version, rename APKs, compute size + SHA-256 ─────────
       - name: Extract version & rename APKs
         id: version
         run: |
@@ -99,12 +102,66 @@ jobs:
           echo "debug_apk=$DEBUG_DST"     >> $GITHUB_OUTPUT
           echo "release_apk=$RELEASE_DST" >> $GITHUB_OUTPUT
 
+          # File sizes (human-friendly) and SHA-256 for verification
+          RELEASE_SIZE=$(du -h "$RELEASE_DST" | cut -f1)
+          DEBUG_SIZE=$(du -h "$DEBUG_DST" | cut -f1)
+          RELEASE_SHA=$(sha256sum "$RELEASE_DST" | cut -d' ' -f1)
+          echo "release_size=$RELEASE_SIZE" >> $GITHUB_OUTPUT
+          echo "debug_size=$DEBUG_SIZE"     >> $GITHUB_OUTPUT
+          echo "release_sha=$RELEASE_SHA"   >> $GITHUB_OUTPUT
+
           # Signing status label (shown in release notes)
           if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
             echo "sign_status=✅ Signed release" >> $GITHUB_OUTPUT
           else
-            echo "sign_status=⚠️ Unsigned release (sideload only — add keystore secrets to sign)" >> $GITHUB_OUTPUT
+            echo "sign_status=⚠️ Unsigned — sideload only" >> $GITHUB_OUTPUT
           fi
+
+      # ── 6b. Build human-readable changelog from git log ─────────────────
+      #   Pulls commit subjects between the most recent existing v* tag and
+      #   HEAD. Step 8 creates the new tag *after* this step, so the latest
+      #   pre-existing tag is the previous build — exactly what we want.
+      #   Falls back to the last 30 commits if no v* tag exists yet.
+      - name: Build changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --list 'v*' --sort=-creatordate | head -1 || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+            HEADER="### What's new since [${PREV_TAG}](https://github.com/${{ github.repository }}/releases/tag/${PREV_TAG})"
+          else
+            RANGE="HEAD~30..HEAD"
+            HEADER="### Recent changes"
+          fi
+
+          # Pull subject lines, drop merge commits + auto bot bumps.
+          LOG=$(git log "$RANGE" \
+                  --no-merges \
+                  --invert-grep --grep='^Merge ' --grep='^chore: bump' \
+                  --pretty=format:'- %s' || true)
+
+          if [ -z "$LOG" ]; then
+            LOG="- (no user-facing changes since previous build)"
+            COUNT=0
+          else
+            COUNT=$(printf '%s\n' "$LOG" | grep -c '^- ' || echo 0)
+          fi
+
+          AUTHORS=$(git log "$RANGE" --no-merges --format='%an' 2>/dev/null | sort -u | grep -c . || echo 0)
+
+          # Pluralisation
+          C_S=$([ "$COUNT" -ne 1 ] && echo s || true)
+          A_S=$([ "$AUTHORS" -ne 1 ] && echo s || true)
+
+          {
+            echo "header<<__END__"
+            echo "$HEADER"
+            echo "__END__"
+            echo "log<<__END__"
+            echo "$LOG"
+            echo "__END__"
+            echo "summary=**${COUNT} commit${C_S} by ${AUTHORS} author${A_S}** since the previous build."
+          } >> $GITHUB_OUTPUT
 
       # ── 7. Upload workflow artifacts (90-day retention) ──────────────────
       - name: Upload Debug APK
@@ -137,37 +194,53 @@ jobs:
           git push origin "$TAG" || echo "Tag push skipped"
 
       # ── 9. GitHub Release ─────────────────────────────────────────────────
+      #   `generate_release_notes: false` because we generate our own readable
+      #   changelog above (the auto-generated one is just a "compare URL" when
+      #   commits aren't from labelled PRs).
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: "ZeroClaw ${{ steps.tag.outputs.tag }}"
           prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
-            ## ZeroClaw Android — ${{ steps.tag.outputs.tag }}
+            ## 🦀 ZeroClaw Android — ${{ steps.tag.outputs.tag }}
 
-            ${{ steps.version.outputs.sign_status }}
+            ${{ steps.changelog.outputs.header }}
 
-            ### 📲 Install (sideload)
-            1. Download **`ZeroClaw-v${{ steps.version.outputs.version }}-release.apk`** below
-            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser/file manager
-            3. Open the downloaded APK and tap **Install**
+            ${{ steps.changelog.outputs.log }}
 
-            ### 🔨 Build info
-            | Field | Value |
-            |-------|-------|
-            | Version | `${{ steps.version.outputs.version }}` |
-            | Build # | `${{ github.run_number }}` |
-            | Commit | `${{ github.sha }}` |
-            | Branch | `${{ github.ref_name }}` |
-
-            > **Debug APK** also attached — has `.debug` app-id suffix, can be installed alongside release.
+            _${{ steps.changelog.outputs.summary }}_
 
             ---
-            ### 🚀 Play Store
-            _Play Store distribution is not yet configured. To set it up:_
-            _add `PLAY_SERVICE_ACCOUNT_JSON` secret and enable the upload step in `.github/workflows/build-and-release.yml`_
+
+            ### 📲 Install on your phone (sideload)
+
+            1. Download **`ZeroClaw-v${{ steps.version.outputs.version }}-release.apk`** from the **Assets** below.
+            2. On the device: **Settings → Security → Install unknown apps** → allow for your browser/file manager.
+            3. Open the downloaded APK → **Install**.
+
+            > Already have ZeroClaw installed? You can install this APK over the top — your settings, agents, and API keys are preserved.
+
+            ### 📦 Build artifacts
+
+            | File | Size | Purpose |
+            |------|------|---------|
+            | `ZeroClaw-v${{ steps.version.outputs.version }}-release.apk` | ${{ steps.version.outputs.release_size }} | Main install — what you want |
+            | `ZeroClaw-v${{ steps.version.outputs.version }}-debug.apk` | ${{ steps.version.outputs.debug_size }} | Side-by-side debug build (`.debug` app-id), for testing alongside the release |
+
+            **SHA-256 (release APK):** `${{ steps.version.outputs.release_sha }}`
+
+            ### 🔨 Build metadata
+
+            | Field | Value |
+            |-------|-------|
+            | Version | `${{ steps.version.outputs.version }}` (build #${{ github.run_number }}) |
+            | Commit | [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |
+            | Branch | `${{ github.ref_name }}` |
+            | Signing | ${{ steps.version.outputs.sign_status }} |
+            | Built by | GitHub Actions (`build-and-release.yml`) |
           files: |
             ${{ steps.version.outputs.debug_apk }}
             ${{ steps.version.outputs.release_apk }}
