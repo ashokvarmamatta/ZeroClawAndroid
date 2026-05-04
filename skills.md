@@ -49,6 +49,15 @@ A native Android app that:
 - **Key:** Twilio Account SID, Auth Token, WhatsApp sandbox number
 - **Docs:** https://www.twilio.com/docs/whatsapp
 
+### 5b. whatsmeow (Native WhatsApp) — Phase 189
+- **What:** Pure-Go library implementing the WhatsApp Web multidevice protocol (Noise + Signal + binary framing).
+- **Why:** Lets ZeroClaw connect a real WhatsApp account via QR code or 8-digit pair code — no Twilio fees, no sandbox, no public webhook URL needed.
+- **Pattern:** `whatsmeow-bridge/main.go` is cross-compiled to `arm64-v8a/libwhatsmeow.so`. Bundled like `libcloudflared.so`. Spawned via `ProcessBuilder` from `WhatsAppNativeManager.kt`. Line-based stdout protocol (`STATUS …`, `QR …`, `PAIRCODE …`, `MSG …`) ↔ stdin commands (`PAIR`, `SEND`, `STOP`).
+- **Persistence:** SQLite via whatsmeow's sqlstore at `<filesDir>/whatsmeow/session.db` — session survives app restarts; QR only needed on first pair.
+- **Caveats:** Unofficial — uses the same protocol WhatsApp Web does. Account ban risk exists; do not run on a primary phone number.
+- **Build:** See `whatsmeow-bridge/BUILD.md` for `GOOS=android GOARCH=arm64 CC=…/aarch64-linux-android21-clang go build -buildmode=pie -o libwhatsmeow.so`.
+- **Docs:** https://github.com/tulir/whatsmeow
+
 ### 6. Cloudflare Tunnel / ngrok
 - **What:** Creates a public HTTPS URL that tunnels to localhost
 - **Why:** Telegram and Twilio webhooks need a public URL to reach our app

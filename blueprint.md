@@ -50,6 +50,7 @@ MainActivity (NavHost)
 ├── "settings" ──→ SettingsScreen
 │   ├── → "api_keys"
 │   ├── → "ai_tools"
+│   ├── → "whatsapp_native"  (Phase 189)
 │   └── → "info/{sectionId}"
 ├── "api_keys" ──→ ApiKeysScreen
 ├── "ai_tools" ──→ AiToolsScreen
@@ -57,7 +58,10 @@ MainActivity (NavHost)
 ├── "info" ──→ InfoScreen
 ├── "info/{sectionId}" ──→ InfoScreen (parametrized)
 ├── "tool_playground" ──→ ToolPlaygroundScreen
-└── "agents" ──→ AgentsScreen
+├── "whatsapp_native" ──→ WhatsAppNativeScreen (QR + pair code)
+├── "agents" ──→ AgentsScreen
+│   └── → "agent_results/{agentId}"
+└── "agent_results/{agentId}" ──→ AgentResultsScreen (Phase 190)
 ```
 
 No XML navigation graph — fully programmatic via `NavController`.
@@ -88,6 +92,8 @@ All under `app/src/main/java/ai/zeroclaw/android/`
 | `InfoData.kt` | Static guide content, sections, feature list |
 | `theme/Color.kt` | Color definitions (zeroclaw_red, surface, green, etc.) |
 | `theme/Theme.kt` | Material 3 theme (dark/light) |
+| `WhatsAppNativeScreen.kt` | Native WhatsApp pairing UI — live QR + 8-digit pair code via `libwhatsmeow.so` (Phase 189) |
+| `AgentResultsScreen.kt` | Per-agent run-history screen — status filter chips, expandable result cards, deep-linked from Phase 188 notifications (Phase 190) |
 
 ### Services (`service/`)
 | File | Purpose |
@@ -101,6 +107,7 @@ All under `app/src/main/java/ai/zeroclaw/android/`
 |------|---------|----------|
 | `telegram/TelegramBotManager.kt` | Telegram | Long polling (getUpdates) |
 | `whatsapp/TwilioWhatsAppManager.kt` | WhatsApp | Twilio REST API |
+| `whatsapp/WhatsAppNativeManager.kt` | WhatsApp | Bundled `libwhatsmeow.so` Go bridge — QR / pair-code, WhatsApp Web protocol (Phase 189) |
 | `discord/DiscordBotManager.kt` | Discord | Gateway WebSocket + REST |
 | `signal/SignalBridgeManager.kt` | Signal | signal-cli REST API bridge |
 | `slack/SlackBotManager.kt` | Slack | Socket Mode WebSocket |

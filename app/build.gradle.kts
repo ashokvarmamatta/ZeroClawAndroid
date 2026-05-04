@@ -38,9 +38,11 @@ android {
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
         jniLibs {
-            // Force extraction of .so files to disk (needed for cloudflared execution)
+            // Force extraction of .so files to disk (needed for native binary execution).
+            // libcloudflared.so → tunnel manager.  libwhatsmeow.so → Phase 189 native WhatsApp bridge.
             useLegacyPackaging = true
             keepDebugSymbols += "**/libcloudflared.so"
+            keepDebugSymbols += "**/libwhatsmeow.so"
         }
     }
 }

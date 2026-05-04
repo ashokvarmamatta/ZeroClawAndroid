@@ -210,6 +210,7 @@ class WebScraperAgent(private val context: Context) {
         }
         agentManager.markRun(agent.id, newHash, status)
         saveResult(agent, runId, resultStatus, content, message, deliveredTo, errors.joinToString("; "), usedApi, newHash)
+        notifyCompletion(agent, resultStatus, deliveredTo, content.length, status)
     }
 
     /**
@@ -309,6 +310,34 @@ class WebScraperAgent(private val context: Context) {
         ZeroClawService.log("AGENT[${agent.name}]: ${if (deliveredTo.isNotEmpty()) "✓" else "✗"} $status")
         agentManager.markRun(agent.id, newHash, status)
         saveResult(agent, runId, resultStatus, content, message, deliveredTo, errors.joinToString("; "), false, newHash)
+        notifyCompletion(agent, resultStatus, deliveredTo, content.length, status)
+    }
+
+    /**
+     * Phase 188 — fire a native Android notification when a run finishes.
+     * Skipped runs are still notified at low priority so the user can see the agent ran.
+     * Wrapped in try/catch so a notification failure never breaks the agent pipeline.
+     */
+    private fun notifyCompletion(
+        agent: AgentConfig,
+        resultStatus: String,
+        deliveredTo: List<String>,
+        contentLen: Int,
+        statusLine: String
+    ) {
+        try {
+            ai.zeroclaw.android.infra.RichNotifications.getInstance(context)
+                .showAgentCompletionNotification(
+                    agentId = agent.id,
+                    agentName = agent.name,
+                    status = resultStatus,
+                    deliveredTo = deliveredTo,
+                    contentLen = contentLen,
+                    tag = statusLine
+                )
+        } catch (e: Throwable) {
+            ZeroClawService.log("AGENT[${agent.name}]: notification post failed — ${e.message}")
+        }
     }
 
     /**
@@ -363,11 +392,13 @@ class WebScraperAgent(private val context: Context) {
             ZeroClawService.log("AGENT[${agent.name}]: ✓ $status")
             agentManager.markRun(agent.id, newHash, status)
             saveResult(agent, runId, "success", rawContent, message, listOf(channel), "", usedApi, newHash)
+            notifyCompletion(agent, "success", listOf("${channelEmoji(channel)}$channel"), contentLength, status)
         } catch (e: Exception) {
             val status = "Delivery error: ${e.message}"
             ZeroClawService.log("AGENT[${agent.name}]: ✗ $status")
             agentManager.markRun(agent.id, newHash, status)
             saveResult(agent, runId, "failed", rawContent, message, emptyList(), e.message ?: status, usedApi, newHash)
+            notifyCompletion(agent, "failed", emptyList(), contentLength, status)
         }
     }
 

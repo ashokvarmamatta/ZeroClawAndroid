@@ -33,6 +33,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToApiKeys: () -> Unit,
     onNavigateToAiTools: () -> Unit = {},
+    onNavigateToWhatsAppNative: () -> Unit = {},
     onNavigateToInfo: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -158,6 +159,8 @@ fun SettingsScreen(
             item { SettingsTextField("Twilio Account SID", twilioSid, false) { twilioSid = it } }
             item { SettingsTextField("Twilio Auth Token", twilioToken, true) { twilioToken = it } }
             item { SettingsTextField("WhatsApp From Number", twilioFrom, false) { twilioFrom = it } }
+            item { SectionHeader("💬 WhatsApp (Native — QR / Pair Code)") }
+            item { WhatsAppNativeNavButton(onClick = onNavigateToWhatsAppNative) }
             item { SectionHeader("💼 Slack Bot") }
             item {
                 SettingsTextField("Bot + App Token (xoxb-...|xapp-...)", slackToken, true) { slackToken = it }
@@ -731,6 +734,37 @@ fun ResourceLink(
             }
             Text("↗", fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
+        }
+    }
+}
+
+/** Phase 189 — quick-launcher into the native WhatsApp pairing screen. */
+@Composable
+fun WhatsAppNativeNavButton(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("💬", fontSize = 26.sp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Pair WhatsApp directly", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    "Bundled libwhatsmeow.so — QR code or 8-digit pair code, no Twilio account",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text("↗", fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
         }
     }
 }

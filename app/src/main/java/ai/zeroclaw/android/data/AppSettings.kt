@@ -44,7 +44,10 @@ data class SettingsData(
     val offlineWebSummarize: Boolean = true,   // fetch web data + ask model to summarize it
     val tunnelMode: String = "quick",          // "off", "quick" (trycloudflare.com), "token" (named tunnel)
     val tunnelToken: String = "",              // Cloudflare tunnel token (for named tunnels)
-    val tunnelHostname: String = ""            // Your domain (e.g. "api.yourdomain.com") — shown in UI for named tunnels
+    val tunnelHostname: String = "",           // Your domain (e.g. "api.yourdomain.com") — shown in UI for named tunnels
+    // Phase 189 — Native WhatsApp via bundled whatsmeow Go binary
+    val whatsappMode: String = "twilio",       // "off" | "twilio" | "native" — "twilio" stays default for back-compat
+    val whatsappNativeJid: String = ""         // Last-paired JID (display only) — actual session lives in session.db
 )
 
 class AppSettings(private val context: Context) {
@@ -88,6 +91,8 @@ class AppSettings(private val context: Context) {
         val KEY_TUNNEL_MODE = stringPreferencesKey("tunnel_mode")
         val KEY_TUNNEL_TOKEN = stringPreferencesKey("tunnel_token")
         val KEY_TUNNEL_HOSTNAME = stringPreferencesKey("tunnel_hostname")
+        val KEY_WHATSAPP_MODE = stringPreferencesKey("whatsapp_mode")
+        val KEY_WHATSAPP_NATIVE_JID = stringPreferencesKey("whatsapp_native_jid")
     }
 
     suspend fun getAll(): SettingsData {
@@ -126,8 +131,19 @@ class AppSettings(private val context: Context) {
             offlineWebSummarize = prefs[KEY_OFFLINE_WEB_SUMMARIZE] ?: true,
             tunnelMode = prefs[KEY_TUNNEL_MODE] ?: "quick",
             tunnelToken = prefs[KEY_TUNNEL_TOKEN] ?: "",
-            tunnelHostname = prefs[KEY_TUNNEL_HOSTNAME] ?: ""
+            tunnelHostname = prefs[KEY_TUNNEL_HOSTNAME] ?: "",
+            whatsappMode = prefs[KEY_WHATSAPP_MODE] ?: "twilio",
+            whatsappNativeJid = prefs[KEY_WHATSAPP_NATIVE_JID] ?: ""
         )
+    }
+
+    /** Phase 189 — narrow setter so we don't have to thread the new fields through `save()`. */
+    suspend fun setWhatsAppMode(mode: String) {
+        context.appDataStore.edit { it[KEY_WHATSAPP_MODE] = mode }
+    }
+
+    suspend fun setWhatsAppNativeJid(jid: String) {
+        context.appDataStore.edit { it[KEY_WHATSAPP_NATIVE_JID] = jid }
     }
 
     suspend fun save(

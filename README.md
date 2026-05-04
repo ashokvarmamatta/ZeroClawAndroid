@@ -97,6 +97,8 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 | 🔄 **Smart updates** | Only sends when content actually changes |
 | ▶️ **Run Now** | Test any agent instantly |
 | 🔗 **Multi-channel** | Same agent can push to multiple chat apps |
+| 🔔 **Completion notifications** | High-priority Android notification on every agent run — tap to jump straight to that agent's run history |
+| 📊 **Per-agent Results screen** | Filterable, expandable run history with status chips, delivery channels, and full extracted/raw content |
 | 🔌 **Results API** | `GET /api/agents/results` — query agent data from any app (JS, Python, cURL) |
 | 📖 **Built-in API Guide** | Edit any agent → see copy-paste code for your language + live tunnel URL |
 
@@ -115,7 +117,7 @@ An Android app that runs AI **in the background 24/7**. It connects to your chat
 | | Channel | | Channel |
 |---|---------|---|---------|
 | ✈️ | **Telegram** (+ groups) | 🎮 | **Discord** (+ servers) |
-| 💼 | **Slack** (+ channels) | 💬 | **WhatsApp** (Twilio) |
+| 💼 | **Slack** (+ channels) | 💬 | **WhatsApp** (Twilio + native QR/pair-code 🚧) |
 | 🔗 | **Matrix** (federated) | 💻 | **IRC** (TCP socket) |
 | 🏢 | **Microsoft Teams** | 🎬 | **Twitch** (!commands) |
 | 🟢 | **LINE** | 📡 | **Signal** (bridge) |

@@ -13,6 +13,7 @@ import ai.zeroclaw.android.data.LlmRouter
 import ai.zeroclaw.android.data.OfflineModelManager
 import ai.zeroclaw.android.telegram.TelegramBotManager
 import ai.zeroclaw.android.whatsapp.TwilioWhatsAppManager
+import ai.zeroclaw.android.whatsapp.WhatsAppNativeManager
 import ai.zeroclaw.android.discord.DiscordBotManager
 import ai.zeroclaw.android.signal.SignalBridgeManager
 import ai.zeroclaw.android.slack.SlackBotManager
@@ -217,19 +218,41 @@ class ZeroClawService : Service() {
                 log("Telegram: no token set — go to Settings")
             }
 
-            // WhatsApp
-            if (settings.twilioSid.isNotBlank()) {
-                launch {
-                    try {
-                        whatsappManager.startWebhookServer(settings, 8080)
-                        whatsappConnected = true
-                        log("WhatsApp webhook ready on :8080")
-                    } catch (e: Exception) {
-                        log("WhatsApp error: ${e.message}")
+            // WhatsApp — native (whatsmeow) takes precedence over Twilio when selected.
+            // Phase 189: settings.whatsappMode ∈ {"off", "twilio", "native"}.
+            when (settings.whatsappMode) {
+                "native" -> {
+                    val native = WhatsAppNativeManager.getInstance(this@ZeroClawService)
+                    if (!native.isBinaryReady()) {
+                        log("WhatsApp(native): libwhatsmeow.so not bundled — see whatsmeow-bridge/BUILD.md")
+                    } else {
+                        launch {
+                            try {
+                                native.start()
+                                // whatsappConnected flips to true once bridge emits STATUS connected.
+                                log("WhatsApp(native): bridge starting — pair via Settings → WhatsApp (Native)")
+                            } catch (e: Exception) {
+                                log("WhatsApp(native) error: ${e.message}")
+                            }
+                        }
                     }
                 }
-            } else {
-                log("WhatsApp: Twilio not configured — go to Settings")
+                "twilio" -> {
+                    if (settings.twilioSid.isNotBlank()) {
+                        launch {
+                            try {
+                                whatsappManager.startWebhookServer(settings, 8080)
+                                whatsappConnected = true
+                                log("WhatsApp webhook ready on :8080")
+                            } catch (e: Exception) {
+                                log("WhatsApp error: ${e.message}")
+                            }
+                        }
+                    } else {
+                        log("WhatsApp: Twilio not configured — go to Settings")
+                    }
+                }
+                else -> log("WhatsApp: disabled in settings")
             }
 
             // Discord
@@ -450,6 +473,8 @@ class ZeroClawService : Service() {
         lineManager.stop()
         webChatServer.stop()
         tunnelManager.stop()
+        // Phase 189 — shut the native WhatsApp bridge cleanly so the child process exits.
+        try { WhatsAppNativeManager.getInstance(this).stop() } catch (_: Exception) {}
         // Release offline model to free memory
         try { OfflineModelManager.getInstance(this).destroyEngine() } catch (_: Exception) {}
         wakeLock?.release()
@@ -474,7 +499,15 @@ class ZeroClawService : Service() {
             }
             "discord" -> discordManager.sendProactiveMessage(chatId, text)
             "slack" -> slackManager.sendProactiveMessage(chatId, text)
-            "whatsapp" -> whatsappManager.sendProactiveMessage(chatId, text)
+            "whatsapp" -> {
+                // Phase 189 — route through whichever WhatsApp backend is currently selected.
+                val mode = ai.zeroclaw.android.data.AppSettings(this).getAll().whatsappMode
+                if (mode == "native") {
+                    WhatsAppNativeManager.getInstance(this).sendProactiveMessage(chatId, text)
+                } else {
+                    whatsappManager.sendProactiveMessage(chatId, text)
+                }
+            }
             "signal" -> signalManager.sendProactiveMessage(chatId, text)
             "matrix" -> matrixManager.sendProactiveMessage(chatId, text)
             "irc" -> ircManager.sendProactiveMessage(chatId, text)

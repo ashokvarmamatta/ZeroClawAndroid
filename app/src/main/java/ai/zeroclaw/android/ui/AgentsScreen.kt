@@ -38,7 +38,10 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AgentsScreen(onBack: () -> Unit) {
+fun AgentsScreen(
+    onBack: () -> Unit,
+    onViewResults: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val agentManager = remember { AgentManager.getInstance(context) }
     val scope = rememberCoroutineScope()
@@ -158,6 +161,7 @@ fun AgentsScreen(onBack: () -> Unit) {
                                 agents = agentManager.loadAll()
                             }
                         },
+                        onViewResults = { onViewResults(agent.id) },
                         onReset = if (agent.templateId != null) {{
                             agentManager.resetToTemplate(agent.id)
                             agents = agentManager.loadAll()
@@ -231,6 +235,7 @@ private fun AgentCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onRunNow: () -> Unit,
+    onViewResults: () -> Unit,
     onReset: (() -> Unit)? = null
 ) {
     var showDelete by remember { mutableStateOf(false) }
@@ -348,34 +353,48 @@ private fun AgentCard(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.07f))
 
-                // Run Now button — full width, prominent
-                Button(
-                    onClick = {
-                        running = true
-                        scope.launch {
-                            onRunNow()
-                            running = false
-                        }
-                    },
-                    enabled = !running,
-                    modifier = Modifier.fillMaxWidth().height(42.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1565C0),
-                        disabledContainerColor = Color(0xFF0D2A4A)
-                    )
-                ) {
-                    if (running) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color.White, strokeWidth = 2.dp
+                // Primary action row — Run Now + View Results, side by side
+                Row(modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            running = true
+                            scope.launch {
+                                onRunNow()
+                                running = false
+                            }
+                        },
+                        enabled = !running,
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF1565C0),
+                            disabledContainerColor = Color(0xFF0D2A4A)
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Scraping…", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    } else {
-                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                    ) {
+                        if (running) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White, strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Scraping…", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Run Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = onViewResults,
+                        modifier = Modifier.weight(1f).height(42.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, accentColor),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
+                    ) {
+                        Icon(Icons.Default.Inbox, null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Run Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Results", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 

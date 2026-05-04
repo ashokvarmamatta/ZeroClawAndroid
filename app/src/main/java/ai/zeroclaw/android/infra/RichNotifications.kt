@@ -30,6 +30,7 @@ class RichNotifications(private val context: Context) {
         const val CHANNEL_SLACK    = "notif_slack"
         const val CHANNEL_WHATSAPP = "notif_whatsapp"
         const val CHANNEL_GENERAL  = "notif_general"
+        const val CHANNEL_AGENTS   = "notif_agents"
 
         const val KEY_QUICK_REPLY = "quick_reply_text"
         val ACTION_QUICK_REPLY get() = "${ai.zeroclaw.android.BuildConfig.APPLICATION_ID}.QUICK_REPLY"
@@ -130,6 +131,86 @@ class RichNotifications(private val context: Context) {
     }
 
     /**
+     * Phase 188 + 190 — push a system notification when an agent run finishes,
+     * deep-linked to that agent's Results screen (Phase 190).
+     *
+     * Fires for every successful or partially-successful agent delivery so the user
+     * sees the result on-device even when the chat app delivery target is muted.
+     *
+     * @param agentId    primary key from [ai.zeroclaw.android.agents.AgentConfig] —
+     *                   carried as an Intent extra so tapping the notification opens
+     *                   the matching `agent_results/{id}` route.
+     * @param agentName  display name of the agent (e.g. "Crypto BTC Tracker")
+     * @param status     one of "success" / "partial" / "failed" / "skipped"
+     * @param deliveredTo  pretty channel labels (e.g. ["✈️telegram", "🎮discord"])
+     * @param contentLen size of delivered content in chars (used for the "1.2KB" hint)
+     * @param tag        short detail line (the agent's own status string)
+     */
+    fun showAgentCompletionNotification(
+        agentId: String,
+        agentName: String,
+        status: String,
+        deliveredTo: List<String>,
+        contentLen: Int,
+        tag: String = ""
+    ) {
+        val notifId = notifIdCounter++
+        val statusEmoji = when (status) {
+            "success" -> "✅"
+            "partial" -> "⚠️"
+            "skipped" -> "💤"
+            else      -> "❌"
+        }
+
+        val title = "🕷️ $agentName $statusEmoji"
+        val body = buildString {
+            if (deliveredTo.isNotEmpty()) {
+                append("Delivered ${formatBytes(contentLen)} → ")
+                append(deliveredTo.joinToString(", "))
+            } else if (status == "skipped") {
+                append("No change — skipped push")
+            } else {
+                append(tag.ifBlank { "No delivery" })
+            }
+        }
+
+        // Deep-link target: open MainActivity at agent_results/<id>.
+        // FLAG_ACTIVITY_CLEAR_TOP + SINGLE_TOP ensures the existing activity is reused.
+        val openIntent = PendingIntent.getActivity(
+            context, notifId,
+            Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra("navigate_to", "agent_results")
+                putExtra("agent_id", agentId)
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val priority = if (status == "skipped") NotificationCompat.PRIORITY_LOW
+                       else NotificationCompat.PRIORITY_HIGH
+
+        val notif = NotificationCompat.Builder(context, CHANNEL_AGENTS)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openIntent)
+            .setAutoCancel(true)
+            .setGroup("zeroclaw_agents")
+            .setPriority(priority)
+            .build()
+
+        notifManager.notify(notifId, notif)
+        ZeroClawService.log("NOTIF: agent '$agentName' → $status")
+    }
+
+    private fun formatBytes(chars: Int): String = when {
+        chars < 1024 -> "${chars}B"
+        chars < 1024 * 1024 -> "%.1fKB".format(chars / 1024.0)
+        else -> "%.1fMB".format(chars / 1024.0 / 1024.0)
+    }
+
+    /**
      * Cancel a notification after quick reply was sent.
      */
     fun cancelNotification(notifId: Int) {
@@ -149,7 +230,8 @@ class RichNotifications(private val context: Context) {
             Triple(CHANNEL_DISCORD,  "🎮 Discord Messages", NotificationManager.IMPORTANCE_HIGH),
             Triple(CHANNEL_SLACK,    "💼 Slack Messages",   NotificationManager.IMPORTANCE_DEFAULT),
             Triple(CHANNEL_WHATSAPP, "💬 WhatsApp Messages", NotificationManager.IMPORTANCE_HIGH),
-            Triple(CHANNEL_GENERAL,  "🤖 ZeroClaw Messages", NotificationManager.IMPORTANCE_DEFAULT)
+            Triple(CHANNEL_GENERAL,  "🤖 ZeroClaw Messages", NotificationManager.IMPORTANCE_DEFAULT),
+            Triple(CHANNEL_AGENTS,   "🕷️ Agent Runs",        NotificationManager.IMPORTANCE_HIGH)
         )
         for ((id, name, importance) in channels) {
             val chan = NotificationChannel(id, name, importance).apply {

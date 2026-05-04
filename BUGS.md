@@ -7,6 +7,29 @@
 
 ---
 
+## BUG-44 — Native WhatsApp pair-code rejected as "invalid", QR scan does nothing 🐛 OPEN
+- **Phase:** 189 (Native WhatsApp via whatsmeow Go bridge)
+- **Status:** 🐛 Open — feature ships disabled-by-default, Twilio path remains the recommended option until this is resolved
+- **Severity:** High (blocks the entire native-WhatsApp feature)
+- **Symptom:**
+  - **Pair-code path:** User enters Indian phone (`+91…`) into the WhatsApp Native screen, taps **Request pair code**, ZeroClaw shows an 8-digit code, user types it into WhatsApp → Linked Devices → "Link with phone number instead" → WhatsApp responds **"Invalid code"** (or similar).
+  - **QR path:** ZeroClaw renders the QR successfully, user scans it from a second device with WhatsApp's Linked-Devices camera → nothing happens, no link.
+- **Hypotheses (not yet verified):**
+  1. **Phone-number normalization.** `WhatsAppNativeManager.requestPairCode` strips a leading `+` but doesn't validate that what remains is a real E.164 string. For an Indian number the user might enter `91…`, `+91…`, `091…`, or with leading zeros — only one of those is correct. The `whatsmeow` `PairPhone` call expects E.164 *without* the `+`.
+  2. **`PairClientChrome` browser identity.** The Go bridge calls `client.PairPhone(ctx, phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")`. WhatsApp may have tightened the allowed (clientType, name) combinations — the (chrome, "Chrome (Linux)") tuple may now be rejected for accounts in some regions. Try `PairClientFirefox` / `PairClientEdge` and a stock UA string.
+  3. **Connection state at PAIR time.** The bridge starts the QR channel, calls `client.Connect()`, and only then accepts `PAIR` from stdin. If the Connect handshake hasn't reached the "qr_ready" state when PAIR is requested, `PairPhone` may return a code that the server never honoured. Add a state-machine guard: don't accept PAIR until we've seen the first QR event.
+  4. **QR refresh timing.** whatsmeow rotates the QR every ~20s. The Compose UI re-renders on every `STATUS qr_ready` + `QR …` pair, but if the code doesn't reach the `qrPayload` field before WhatsApp reads it, the scan silently fails. Could be a stale-payload issue if our state replacement is slower than the rotation.
+  5. **Time skew.** WhatsApp's pair-code window is ~60s and the server cross-checks device time. If the Android device clock is off (some carriers misset NTP), the code is rejected with no specific error. Check `Settings → Date & time → Set automatically` on the test device.
+- **Next steps to debug:**
+  - Plumb whatsmeow's own logger through `LOG …` events instead of `waLog.Noop` so the bridge's stdout shows the real reason for the rejection.
+  - Add a "Phone format hint" line in the UI that converts whatever the user typed to canonical E.164 *before* sending PAIR (e.g. accept `+91 98765 43210` and emit `919876543210`).
+  - Test on a US/EU number to isolate "is it the +91 prefix" vs. "is it the protocol".
+  - Confirm `libwhatsmeow.so` has network access on the test device (Doze mode, VPN, firewall, MagiskHide, etc.).
+- **Files:** `whatsmeow-bridge/main.go`, `app/src/main/java/ai/zeroclaw/android/whatsapp/WhatsAppNativeManager.kt`, `app/src/main/java/ai/zeroclaw/android/ui/WhatsAppNativeScreen.kt`
+- **Lesson (so far):** Bundling an unofficial WhatsApp client is a multi-iteration job — the first build is the easy half. Treat any "invalid code" response as a logger-pipeline problem first (you can't fix what you can't see) rather than a protocol problem.
+
+---
+
 ## BUG-43 — Discovery Agent creation fails with "url or api_source is required" ✅ FIXED
 - **Phase:** 184 (Autom Discovery Agents)
 - **Status:** ✅ Fixed (2026-04-22, branch `fix/bug-43-discovery-agent-url`)

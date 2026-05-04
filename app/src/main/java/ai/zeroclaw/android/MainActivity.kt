@@ -15,6 +15,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ai.zeroclaw.android.data.ThemeManager
+import ai.zeroclaw.android.ui.AgentResultsScreen
 import ai.zeroclaw.android.ui.AgentsScreen
 import ai.zeroclaw.android.ui.AiToolsScreen
 import ai.zeroclaw.android.ui.ApiKeysScreen
@@ -23,6 +24,7 @@ import ai.zeroclaw.android.ui.InfoScreen
 import ai.zeroclaw.android.ui.SettingsScreen
 import ai.zeroclaw.android.ui.ChatScreen
 import ai.zeroclaw.android.ui.ToolPlaygroundScreen
+import ai.zeroclaw.android.ui.WhatsAppNativeScreen
 import ai.zeroclaw.android.ui.theme.ZeroClawTheme
 
 class MainActivity : ComponentActivity() {
@@ -30,8 +32,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Widget deep-link: navigate_to = "agents" | "home"
+        // Widget / notification deep-link: navigate_to = "agents" | "home" | "agent_results"
+        // For "agent_results", agent_id extra is also required.
         val navigateTo = intent?.getStringExtra("navigate_to")
+        val agentId = intent?.getStringExtra("agent_id")
+        val initialRoute = when {
+            navigateTo == "agent_results" && !agentId.isNullOrBlank() -> "agent_results/$agentId"
+            else -> navigateTo
+        }
 
         setContent {
             val themeMode by ThemeManager.themeFlow(this)
@@ -41,7 +49,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ZeroClawNavHost(initialRoute = navigateTo)
+                    ZeroClawNavHost(initialRoute = initialRoute)
                 }
             }
         }
@@ -84,8 +92,13 @@ fun ZeroClawNavHost(initialRoute: String? = null) {
                 onBack              = { navController.popBackStack() },
                 onNavigateToApiKeys = { navController.navigate("api_keys") },
                 onNavigateToAiTools = { navController.navigate("ai_tools") },
+                onNavigateToWhatsAppNative = { navController.navigate("whatsapp_native") },
                 onNavigateToInfo    = { sectionId -> navController.navigate("info/$sectionId") }
             )
+        }
+
+        composable("whatsapp_native") {
+            WhatsAppNativeScreen(onBack = { navController.popBackStack() })
         }
 
         composable("ai_tools") {
@@ -115,7 +128,15 @@ fun ZeroClawNavHost(initialRoute: String? = null) {
         }
 
         composable("agents") {
-            AgentsScreen(onBack = { navController.popBackStack() })
+            AgentsScreen(
+                onBack = { navController.popBackStack() },
+                onViewResults = { agentId -> navController.navigate("agent_results/$agentId") }
+            )
+        }
+
+        composable("agent_results/{agentId}") { backStackEntry ->
+            val id = backStackEntry.arguments?.getString("agentId") ?: ""
+            AgentResultsScreen(agentId = id, onBack = { navController.popBackStack() })
         }
 
         composable("chat") {
